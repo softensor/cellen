@@ -26,11 +26,8 @@ def upgrade() -> None:
     op.add_column("schools", sa.Column("legal_name", sa.String(255), nullable=True))
     op.add_column("schools", sa.Column("agt_series_prefix", sa.String(10), nullable=True, server_default="CE"))
 
-    # address may already exist — use try/except
-    try:
-        op.add_column("schools", sa.Column("address", sa.String(500), nullable=True))
-    except Exception:
-        pass
+    # address may already exist — use IF NOT EXISTS to avoid aborting the transaction
+    op.execute("ALTER TABLE schools ADD COLUMN IF NOT EXISTS address VARCHAR(500)")
 
     # -------------------------------------------------------------------------
     # ALTER TABLE: guardians — add NIF
