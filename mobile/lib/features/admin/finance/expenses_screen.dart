@@ -61,7 +61,7 @@ class Expense {
 final expensesProvider =
     FutureProvider.autoDispose<List<Expense>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/expenses', queryParameters: {'ordering': '-expense_date'}) as List;
+  final data = await api.get('/finance/expenses', queryParameters: {'ordering': '-expense_date'}) as List;
   return data
       .map((e) => Expense.fromJson(e as Map<String, dynamic>))
       .toList();
@@ -314,7 +314,7 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
     });
     try {
       final api = ref.read(apiClientProvider);
-      await api.post('/expenses', data: {
+      await api.post('/finance/expenses', data: {
         'description': _descCtrl.text.trim(),
         'amount': double.tryParse(_amountCtrl.text) ?? 0.0,
         'expense_date':

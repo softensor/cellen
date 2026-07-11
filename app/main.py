@@ -29,6 +29,7 @@ from app.routers import (
     appointments,
     evaluations,
     health_events,
+    immunizations,
 )
 
 app = FastAPI(
@@ -72,6 +73,7 @@ app.include_router(documents_library.router, prefix="/api/v1")
 app.include_router(appointments.router, prefix="/api/v1")
 app.include_router(evaluations.router, prefix="/api/v1")
 app.include_router(health_events.router, prefix="/api/v1")
+app.include_router(immunizations.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)

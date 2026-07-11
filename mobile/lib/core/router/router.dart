@@ -43,6 +43,7 @@ import '../../features/documents/documents_screen.dart';
 import '../../features/appointments/appointments_screen.dart';
 import '../../features/evaluations/evaluations_screen.dart';
 import '../../features/health/health_events_screen.dart';
+import '../../features/health/immunizations_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Nav item definitions per role
@@ -62,6 +63,7 @@ const _adminItems = [
   SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
   SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
   SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
 ];
@@ -73,6 +75,7 @@ const _teacherItems = [
   SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
   SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
   SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/teacher/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
@@ -366,6 +369,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const HealthEventsScreen(),
           ),
           GoRoute(
+            path: '/admin/health/immunizations',
+            builder: (_, __) => const ImmunizationsScreen(),
+          ),
+          GoRoute(
             path: '/messages',
             builder: (_, __) => const MessagesScreen(),
           ),
@@ -431,6 +438,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/health',
             builder: (_, __) => const HealthEventsScreen(),
+          ),
+          GoRoute(
+            path: '/teacher/health/immunizations',
+            builder: (_, __) => const ImmunizationsScreen(),
           ),
           GoRoute(
             path: '/appointments',

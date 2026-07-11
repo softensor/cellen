@@ -49,7 +49,7 @@ final recentInvoicesProvider =
     FutureProvider.autoDispose<List<Invoice>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data =
-      await api.get('/invoices', queryParameters: {'limit': '10', 'ordering': '-invoice_date'})
+      await api.get('/finance/invoices', queryParameters: {'limit': '10', 'ordering': '-invoice_date'})
           as List;
   return data
       .map((e) => Invoice.fromJson(e as Map<String, dynamic>))

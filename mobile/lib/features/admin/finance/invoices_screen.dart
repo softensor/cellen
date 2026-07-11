@@ -12,7 +12,7 @@ import '../../../core/models/child.dart';
 final invoicesProvider =
     FutureProvider.autoDispose<List<Invoice>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/invoices', queryParameters: {'ordering': '-invoice_date'}) as List;
+  final data = await api.get('/finance/invoices', queryParameters: {'ordering': '-invoice_date'}) as List;
   return data
       .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
       .toList();
@@ -267,7 +267,7 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
       final api = ref.read(apiClientProvider);
       final tuition = double.tryParse(_tuitionCtrl.text) ?? 0.0;
       final otherFees = double.tryParse(_otherFeesCtrl.text) ?? 0.0;
-      await api.post('/invoices', data: {
+      await api.post('/finance/invoices', data: {
         'child_id': _selectedChildId,
         'reference_month':
             '${_referenceMonth.year.toString().padLeft(4, '0')}-${_referenceMonth.month.toString().padLeft(2, '0')}-01',
