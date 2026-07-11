@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -536,3 +537,91 @@ async def revenue_by_level(
     _=Depends(require_school_admin),
 ):
     return await get_revenue_by_level(db, school_id)
+
+
+# ─── Bulk Generate Invoices ───────────────────────────────────────────────────
+
+class BulkGenerateBody(BaseModel):
+    reference_month: str  # YYYY-MM
+    tuition_amount: float
+    due_date: Optional[str] = None  # YYYY-MM-DD
+    description: Optional[str] = None
+
+
+class BulkGenerateResponse(BaseModel):
+    created: int
+    skipped: int
+    total: int
+
+
+@router.post("/invoices/bulk-generate", response_model=BulkGenerateResponse)
+async def bulk_generate_invoices(
+    body: BulkGenerateBody,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_school_admin),
+):
+    from datetime import date as _date
+    from decimal import Decimal as _Decimal
+
+    # Parse reference_month (YYYY-MM) to a date (first of month)
+    try:
+        year, month = int(body.reference_month[:4]), int(body.reference_month[5:7])
+        reference_month_date = _date(year, month, 1)
+    except (ValueError, IndexError):
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="reference_month must be in YYYY-MM format")
+
+    due_date_parsed: Optional[_date] = None
+    if body.due_date:
+        try:
+            due_date_parsed = _date.fromisoformat(body.due_date)
+        except ValueError:
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(status_code=400, detail="due_date must be in YYYY-MM-DD format")
+
+    # Get current user's employee_id for issued_by
+    employee_id = getattr(current_user, "employee_id", None)
+    if employee_id is None:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="Current user has no associated employee record")
+
+    # Get all active children in this school
+    children_result = await db.execute(
+        select(Child).where(Child.school_id == school_id, Child.is_active == True)
+    )
+    children = children_result.scalars().all()
+
+    tuition = _Decimal(str(body.tuition_amount))
+    created_count = 0
+    skipped_count = 0
+
+    for child in children:
+        existing_result = await db.execute(
+            select(Invoice).where(
+                Invoice.school_id == school_id,
+                Invoice.child_id == child.id,
+                Invoice.reference_month == reference_month_date,
+            )
+        )
+        if existing_result.scalar_one_or_none() is not None:
+            skipped_count += 1
+            continue
+
+        invoice = Invoice(
+            school_id=school_id,
+            child_id=child.id,
+            issued_by=employee_id,
+            reference_month=reference_month_date,
+            tuition_amount=tuition,
+            other_fees=_Decimal("0"),
+            total_amount=tuition,
+            due_date=due_date_parsed,
+            description=body.description,
+        )
+        db.add(invoice)
+        created_count += 1
+
+    await db.commit()
+    total = created_count + skipped_count
+    return BulkGenerateResponse(created=created_count, skipped=skipped_count, total=total)

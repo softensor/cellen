@@ -17,6 +17,12 @@ from app.routers import (
     food,
     absences,
     finance,
+    attendance,
+    messages,
+    photos,
+    incidents,
+    events,
+    notifications,
 )
 
 app = FastAPI(
@@ -48,6 +54,12 @@ app.include_router(caderneta.router, prefix="/api/v1")
 app.include_router(food.router, prefix="/api/v1")
 app.include_router(absences.router, prefix="/api/v1")
 app.include_router(finance.router, prefix="/api/v1")
+app.include_router(attendance.router, prefix="/api/v1")
+app.include_router(messages.router, prefix="/api/v1")
+app.include_router(photos.router, prefix="/api/v1")
+app.include_router(incidents.router, prefix="/api/v1")
+app.include_router(events.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)

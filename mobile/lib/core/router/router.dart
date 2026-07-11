@@ -22,9 +22,16 @@ import '../../features/platform/schools/schools_screen.dart';
 import '../../features/teacher/dashboard/teacher_dashboard_screen.dart';
 import '../../features/teacher/caderneta/caderneta_list_screen.dart';
 import '../../features/teacher/caderneta/caderneta_form_screen.dart';
+import '../../features/teacher/attendance/attendance_screen.dart';
 import '../../features/parent/dashboard/parent_dashboard_screen.dart';
 import '../../features/parent/caderneta/child_caderneta_screen.dart';
 import '../../features/parent/menu/food_menu_screen.dart';
+import '../../features/messages/messages_screen.dart';
+import '../../features/messages/thread_screen.dart';
+import '../../features/photos/photos_screen.dart';
+import '../../features/incidents/incidents_screen.dart';
+import '../../features/events/events_screen.dart';
+import '../../features/notifications/notifications_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Shell Widgets
@@ -139,6 +146,8 @@ class _AdminShellState extends ConsumerState<AdminShell> {
 
   static const _routes = [
     '/admin',
+    '/teacher/attendance',
+    '/messages',
     '/admin/children',
     '/admin/employees',
     '/admin/finance',
@@ -148,6 +157,8 @@ class _AdminShellState extends ConsumerState<AdminShell> {
 
   static const _destinations = [
     (icon: Icons.dashboard, label: 'Dashboard'),
+    (icon: Icons.how_to_reg, label: 'Presenças'),
+    (icon: Icons.chat_bubble_outline, label: 'Mensagens'),
     (icon: Icons.child_care, label: 'Crianças'),
     (icon: Icons.people, label: 'Funcionários'),
     (icon: Icons.account_balance_wallet, label: 'Finanças'),
@@ -164,6 +175,14 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 600;
     final auth = ref.read(authProvider);
+
+    // Bottom nav shows only the first 3 items; rest accessible via nav rail
+    const bottomNavCount = 3;
+    const bottomNavDestinations = [
+      (icon: Icons.dashboard, label: 'Dashboard'),
+      (icon: Icons.how_to_reg, label: 'Presenças'),
+      (icon: Icons.chat_bubble_outline, label: 'Mensagens'),
+    ];
 
     if (isWide) {
       return Scaffold(
@@ -218,19 +237,141 @@ class _AdminShellState extends ConsumerState<AdminShell> {
         ),
       );
     } else {
+      // Mobile: show 3 items + "Mais" drawer
+      final mobileIndex = _selectedIndex < bottomNavCount ? _selectedIndex : 0;
       return Scaffold(
         body: widget.child,
         bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onDestinationSelected,
-          destinations: _destinations
-              .map(
-                (d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  label: d.label,
+          selectedIndex: mobileIndex,
+          onDestinationSelected: (index) {
+            if (index < bottomNavCount) {
+              _onDestinationSelected(index);
+            }
+          },
+          destinations: [
+            ...bottomNavDestinations.map(
+              (d) => NavigationDestination(
+                icon: Icon(d.icon),
+                label: d.label,
+              ),
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.more_horiz),
+              label: 'Mais',
+            ),
+          ],
+        ),
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
                 ),
-              )
-              .toList(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const CircleAvatar(
+                      radius: 24,
+                      child: Icon(Icons.person),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      auth.username ?? 'Administrador',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              _DrawerItem(
+                icon: Icons.photo_library,
+                label: 'Galeria de Fotos',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/photos');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.warning_amber,
+                label: 'Ocorrências',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/incidents');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.event,
+                label: 'Calendário',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/events');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.notifications,
+                label: 'Notificações',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/notifications');
+                },
+              ),
+              const Divider(),
+              _DrawerItem(
+                icon: Icons.child_care,
+                label: 'Crianças',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/children');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.people,
+                label: 'Funcionários',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/employees');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.account_balance_wallet,
+                label: 'Financeiro',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/finance');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.school,
+                label: 'Turmas',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/academic/turmas');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.event_busy,
+                label: 'Ausências',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go('/admin/absences');
+                },
+              ),
+              const Divider(),
+              _DrawerItem(
+                icon: Icons.logout,
+                label: 'Sair',
+                onTap: () {
+                  Navigator.pop(context);
+                  ref.read(authProvider.notifier).logout();
+                },
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -250,11 +391,18 @@ class TeacherShell extends ConsumerStatefulWidget {
 class _TeacherShellState extends ConsumerState<TeacherShell> {
   int _selectedIndex = 0;
 
-  static const _routes = ['/teacher', '/teacher/caderneta'];
+  static const _routes = [
+    '/teacher',
+    '/teacher/attendance',
+    '/teacher/caderneta',
+    '/messages',
+  ];
 
   static const _destinations = [
     (icon: Icons.dashboard, label: 'Dashboard'),
+    (icon: Icons.how_to_reg, label: 'Presenças'),
     (icon: Icons.book, label: 'Caderneta'),
+    (icon: Icons.chat_bubble_outline, label: 'Mensagens'),
   ];
 
   void _onDestinationSelected(int index) {
@@ -352,10 +500,18 @@ class ParentShell extends ConsumerStatefulWidget {
 class _ParentShellState extends ConsumerState<ParentShell> {
   int _selectedIndex = 0;
 
-  static const _routes = ['/parent', '/parent/caderneta', '/parent/menu'];
+  static const _routes = [
+    '/parent',
+    '/messages',
+    '/photos',
+    '/parent/caderneta',
+    '/parent/menu',
+  ];
 
   static const _destinations = [
     (icon: Icons.home, label: 'Início'),
+    (icon: Icons.chat_bubble_outline, label: 'Mensagens'),
+    (icon: Icons.photo_library, label: 'Galeria'),
     (icon: Icons.assignment, label: 'Caderneta'),
     (icon: Icons.restaurant_menu, label: 'Ementa'),
   ];
@@ -439,6 +595,32 @@ class _ParentShellState extends ConsumerState<ParentShell> {
         ),
       );
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper drawer item widget
+// ---------------------------------------------------------------------------
+
+class _DrawerItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _DrawerItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      onTap: onTap,
+      dense: true,
+    );
   }
 }
 
@@ -555,6 +737,37 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/admin/absences',
             builder: (_, __) => const AbsencesScreen(),
           ),
+          GoRoute(
+            path: '/teacher/attendance',
+            builder: (_, __) => const AttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/messages',
+            builder: (_, __) => const MessagesScreen(),
+          ),
+          GoRoute(
+            path: '/messages/thread/:threadId',
+            builder: (_, s) => ThreadScreen(
+              threadId: s.pathParameters['threadId']!,
+              subject: s.uri.queryParameters['subject'],
+            ),
+          ),
+          GoRoute(
+            path: '/photos',
+            builder: (_, __) => const PhotosScreen(),
+          ),
+          GoRoute(
+            path: '/incidents',
+            builder: (_, __) => const IncidentsScreen(),
+          ),
+          GoRoute(
+            path: '/events',
+            builder: (_, __) => const EventsScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (_, __) => const NotificationsScreen(),
+          ),
         ],
       ),
 
@@ -579,6 +792,37 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, s) =>
                 CadernetaFormScreen(cadernetaId: s.pathParameters['id']),
           ),
+          GoRoute(
+            path: '/teacher/attendance',
+            builder: (_, __) => const AttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/messages',
+            builder: (_, __) => const MessagesScreen(),
+          ),
+          GoRoute(
+            path: '/messages/thread/:threadId',
+            builder: (_, s) => ThreadScreen(
+              threadId: s.pathParameters['threadId']!,
+              subject: s.uri.queryParameters['subject'],
+            ),
+          ),
+          GoRoute(
+            path: '/photos',
+            builder: (_, __) => const PhotosScreen(),
+          ),
+          GoRoute(
+            path: '/incidents',
+            builder: (_, __) => const IncidentsScreen(),
+          ),
+          GoRoute(
+            path: '/events',
+            builder: (_, __) => const EventsScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (_, __) => const NotificationsScreen(),
+          ),
         ],
       ),
 
@@ -597,6 +841,29 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/parent/menu',
             builder: (_, __) => const FoodMenuScreen(),
+          ),
+          GoRoute(
+            path: '/messages',
+            builder: (_, __) => const MessagesScreen(),
+          ),
+          GoRoute(
+            path: '/messages/thread/:threadId',
+            builder: (_, s) => ThreadScreen(
+              threadId: s.pathParameters['threadId']!,
+              subject: s.uri.queryParameters['subject'],
+            ),
+          ),
+          GoRoute(
+            path: '/photos',
+            builder: (_, __) => const PhotosScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (_, __) => const NotificationsScreen(),
+          ),
+          GoRoute(
+            path: '/events',
+            builder: (_, __) => const EventsScreen(),
           ),
         ],
       ),

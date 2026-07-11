@@ -148,6 +148,15 @@ class ApiClient {
     }
   }
 
+  Future<dynamic> put(String path, {dynamic data}) async {
+    try {
+      final response = await _dio.put(path, data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw _mapException(e);
+    }
+  }
+
   Future<dynamic> patch(String path, {dynamic data}) async {
     try {
       final response = await _dio.patch(path, data: data);
