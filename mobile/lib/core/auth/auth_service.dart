@@ -41,8 +41,8 @@ class AuthService {
       throw const ApiException(message: 'Resposta inválida do servidor');
     }
 
-    final accessToken = data['access'] as String?;
-    final refreshToken = data['refresh'] as String?;
+    final accessToken = data['access_token'] as String?;
+    final refreshToken = data['refresh_token'] as String?;
 
     if (accessToken == null || accessToken.isEmpty) {
       throw const ApiException(message: 'Token de acesso não recebido');
@@ -146,13 +146,13 @@ class AuthService {
 
     try {
       final data = await _api.post('/auth/refresh', data: {'refresh': refreshToken});
-      final newAccess = data['access'] as String?;
+      final newAccess = data['access_token'] as String?;
       if (newAccess == null || newAccess.isEmpty) {
         await _clearAll();
         return const AuthState.initial();
       }
 
-      final newRefresh = data['refresh'] as String? ?? refreshToken;
+      final newRefresh = data['refresh_token'] as String? ?? refreshToken;
       await _storage.write(key: _accessTokenKey, value: newAccess);
       await _storage.write(key: _refreshTokenKey, value: newRefresh);
 
