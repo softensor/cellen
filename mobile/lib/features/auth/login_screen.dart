@@ -55,93 +55,64 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     final authState = ref.watch(authProvider);
-    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Gradient top section (40% height)
-          Container(
-            height: size.height * 0.42,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF3B82F6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-
-          // White card bottom section with rounded top
-          Positioned(
-            top: size.height * 0.30,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(28),
-                  topRight: Radius.circular(28),
+      backgroundColor: Colors.white,
+      body: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // ── Gradient hero ──────────────────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 60, 24, 40),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF4F46E5), Color(0xFF3B82F6)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: const Icon(Icons.school_rounded,
+                          color: Colors.white, size: 44),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Cellen',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Gestão de Creche',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
 
-          // Logo + Name (centered in gradient area)
-          Positioned(
-            top: size.height * 0.06,
-            left: 0,
-            right: 0,
-            child: Column(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Cellen',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Gestão de Creche',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Form content scrollable
-          Positioned(
-            top: size.height * 0.33,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+              // ── Form panel ─────────────────────────────────────────
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxWidth: 480),
+                padding: const EdgeInsets.fromLTRB(28, 32, 28, 48),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -156,91 +127,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         padding: const EdgeInsets.all(4),
                         child: Row(
                           children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setState(() => _isPlatformLogin = false),
-                                child: AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 180),
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: !_isPlatformLogin
-                                        ? AppTheme.primary
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                  child: Text(
-                                    'Escola',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: !_isPlatformLogin
-                                          ? Colors.white
-                                          : Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                            _ModeTab(
+                              label: 'Escola',
+                              selected: !_isPlatformLogin,
+                              onTap: () =>
+                                  setState(() => _isPlatformLogin = false),
                             ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setState(() => _isPlatformLogin = true),
-                                child: AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 180),
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: _isPlatformLogin
-                                        ? AppTheme.primary
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                  child: Text(
-                                    'Plataforma',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: _isPlatformLogin
-                                          ? Colors.white
-                                          : Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                            _ModeTab(
+                              label: 'Plataforma',
+                              selected: _isPlatformLogin,
+                              onTap: () =>
+                                  setState(() => _isPlatformLogin = true),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 28),
 
-                      // School slug (only for school login)
+                      // School slug
                       if (!_isPlatformLogin) ...[
                         TextFormField(
                           controller: _schoolSlugController,
                           textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Código da Escola',
-                            hintText: 'código da escola',
-                            prefixIcon: const Icon(Icons.business_outlined),
-                            helperText:
-                                'Deixar em branco para acesso à plataforma',
-                            helperStyle: TextStyle(
-                                color: Colors.grey.shade500, fontSize: 11),
+                            hintText: 'ex: jardim-infancia',
+                            prefixIcon: Icon(Icons.business_outlined),
                           ),
-                          validator: (v) => !_isPlatformLogin &&
-                                  (v == null || v.trim().isEmpty)
-                              ? 'Campo obrigatório'
-                              : null,
+                          validator: (v) =>
+                              !_isPlatformLogin && (v == null || v.trim().isEmpty)
+                                  ? 'Campo obrigatório'
+                                  : null,
                         ),
                         const SizedBox(height: 16),
                       ],
 
+                      // Username
                       TextFormField(
                         controller: _usernameController,
                         textInputAction: TextInputAction.next,
@@ -248,13 +170,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           labelText: 'Utilizador',
                           prefixIcon: Icon(Icons.person_outline),
                         ),
-                        validator: (v) =>
-                            v == null || v.trim().isEmpty
-                                ? 'Campo obrigatório'
-                                : null,
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'Campo obrigatório'
+                            : null,
                       ),
                       const SizedBox(height: 16),
 
+                      // Password
                       TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
@@ -277,16 +199,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             v == null || v.isEmpty ? 'Campo obrigatório' : null,
                       ),
 
-                      // Error
+                      // Error banner
                       if (authState.error != null) ...[
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: AppTheme.danger.withOpacity(0.07),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: AppTheme.danger.withOpacity(0.3)),
+                            border:
+                                Border.all(color: AppTheme.danger.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
@@ -294,57 +216,75 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   color: AppTheme.danger, size: 18),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: Text(
-                                  authState.error!,
-                                  style: TextStyle(
-                                    color: AppTheme.danger,
-                                    fontSize: 13,
-                                  ),
-                                ),
+                                child: Text(authState.error!,
+                                    style: TextStyle(
+                                        color: AppTheme.danger, fontSize: 13)),
                               ),
                             ],
                           ),
                         ),
                       ],
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 28),
 
                       SizedBox(
                         height: 52,
                         child: ElevatedButton(
                           onPressed: authState.isLoading ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            elevation: 0,
-                          ),
                           child: authState.isLoading
                               ? const SizedBox(
                                   height: 22,
                                   width: 22,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.white,
-                                  ),
+                                      strokeWidth: 2.5, color: Colors.white),
                                 )
-                              : const Text(
-                                  'Entrar',
+                              : const Text('Entrar',
                                   style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w700),
-                                ),
+                                      fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeTab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ModeTab(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? Colors.white : Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
