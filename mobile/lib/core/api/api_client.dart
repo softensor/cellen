@@ -7,7 +7,7 @@ import 'api_exception.dart';
 // IMPORTANT: Change kBaseUrl to your host machine IP when running from a VM.
 // Example: 'http://192.168.1.100:8000/api/v1'
 // ---------------------------------------------------------------------------
-const String kBaseUrl = 'http://localhost:8000/api/v1';
+const String kBaseUrl = 'http://167.235.158.77:8080/api/v1';
 
 // The media root (for photo URLs) is the base without /api/v1
 const String kMediaBase = 'http://localhost:8000';
