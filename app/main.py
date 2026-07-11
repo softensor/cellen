@@ -24,6 +24,11 @@ from app.routers import (
     events,
     notifications,
     parent,
+    announcements,
+    documents_library,
+    appointments,
+    evaluations,
+    health_events,
 )
 
 app = FastAPI(
@@ -62,6 +67,11 @@ app.include_router(incidents.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(parent.router, prefix="/api/v1")
+app.include_router(announcements.router, prefix="/api/v1")
+app.include_router(documents_library.router, prefix="/api/v1")
+app.include_router(appointments.router, prefix="/api/v1")
+app.include_router(evaluations.router, prefix="/api/v1")
+app.include_router(health_events.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)

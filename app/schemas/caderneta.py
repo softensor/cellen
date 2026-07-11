@@ -19,6 +19,9 @@ class CadernetaBase(BaseModel):
     social_development: Optional[str] = None
     affective_development: Optional[str] = None
     general_observations: Optional[str] = None
+    behavior: Optional[str] = None
+    activities: Optional[str] = None
+    health_observations: Optional[str] = None
 
 
 class CadernetaCreate(CadernetaBase):
@@ -36,6 +39,9 @@ class CadernetaUpdate(BaseModel):
     social_development: Optional[str] = None
     affective_development: Optional[str] = None
     general_observations: Optional[str] = None
+    behavior: Optional[str] = None
+    activities: Optional[str] = None
+    health_observations: Optional[str] = None
 
 
 class CadernetaResponse(CadernetaBase):
@@ -43,5 +49,8 @@ class CadernetaResponse(CadernetaBase):
 
     id: uuid.UUID
     school_id: uuid.UUID
+    behavior: Optional[str] = None
+    activities: Optional[str] = None
+    health_observations: Optional[str] = None
     created_at: datetime
     updated_at: datetime

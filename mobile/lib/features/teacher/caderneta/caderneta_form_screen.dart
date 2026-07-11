@@ -53,12 +53,15 @@ class _CadernetaFormScreenState
   String? _snackRating;
   String? _physioNeeds;
   bool _hadNap = false;
+  String? _behavior;
 
   final _sensorialCtrl = TextEditingController();
   final _intellectualCtrl = TextEditingController();
   final _socialCtrl = TextEditingController();
   final _affectiveCtrl = TextEditingController();
   final _observationsCtrl = TextEditingController();
+  final _activitiesCtrl = TextEditingController();
+  final _healthObsCtrl = TextEditingController();
 
   bool _isLoading = false;
   bool _isLoadingExisting = false;
@@ -143,6 +146,11 @@ class _CadernetaFormScreenState
         'affective_development': _affectiveCtrl.text.trim(),
       if (_observationsCtrl.text.trim().isNotEmpty)
         'general_observations': _observationsCtrl.text.trim(),
+      if (_behavior != null) 'behavior': _behavior,
+      if (_activitiesCtrl.text.trim().isNotEmpty)
+        'activities': _activitiesCtrl.text.trim(),
+      if (_healthObsCtrl.text.trim().isNotEmpty)
+        'health_observations': _healthObsCtrl.text.trim(),
     };
 
     try {
@@ -170,8 +178,20 @@ class _CadernetaFormScreenState
     _socialCtrl.dispose();
     _affectiveCtrl.dispose();
     _observationsCtrl.dispose();
+    _activitiesCtrl.dispose();
+    _healthObsCtrl.dispose();
     super.dispose();
   }
+
+  String _behaviorLabel(String b) => switch (b) {
+        'happy' => 'Feliz',
+        'calm' => 'Calmo',
+        'agitated' => 'Agitado',
+        'sad' => 'Triste',
+        'tired' => 'Cansado',
+        'irritable' => 'Irritável',
+        _ => b,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -357,6 +377,43 @@ class _CadernetaFormScreenState
                   prefixIcon: Icon(Icons.favorite),
                   alignLabelWithHint: true,
                 ),
+              ),
+              const SizedBox(height: 24),
+
+              // ---- Humor & Comportamento ----
+              _SectionHeader('Humor & Comportamento'),
+              const SizedBox(height: 12),
+
+              DropdownButtonFormField<String>(
+                value: _behavior,
+                decoration: const InputDecoration(labelText: 'Humor'),
+                items: ['happy', 'calm', 'agitated', 'sad', 'tired', 'irritable']
+                    .map((b) => DropdownMenuItem(
+                          value: b,
+                          child: Text(_behaviorLabel(b)),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _behavior = v),
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _activitiesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Actividades realizadas',
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _healthObsCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Observações de saúde',
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 2,
               ),
               const SizedBox(height: 24),
 

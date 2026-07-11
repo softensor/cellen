@@ -33,6 +33,16 @@ import '../../features/photos/photos_screen.dart';
 import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
+import '../../features/finance/contracts_screen.dart';
+import '../../features/finance/receipts_screen.dart';
+import '../../features/finance/credit_notes_screen.dart';
+import '../../features/finance/saft_screen.dart';
+import '../../features/finance/delinquent_screen.dart';
+import '../../features/announcements/announcements_screen.dart';
+import '../../features/documents/documents_screen.dart';
+import '../../features/appointments/appointments_screen.dart';
+import '../../features/evaluations/evaluations_screen.dart';
+import '../../features/health/health_events_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Nav item definitions per role
@@ -48,6 +58,11 @@ const _adminItems = [
   SidebarItem(path: '/events', label: 'Calendário', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
   SidebarItem(path: '/incidents', label: 'Ocorrências', icon: Icons.report_outlined, selectedIcon: Icons.report),
+  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
+  SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
+  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
+  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
 ];
 
@@ -55,6 +70,10 @@ const _teacherItems = [
   SidebarItem(path: '/teacher', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
   SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
   SidebarItem(path: '/teacher/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
+  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
+  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
 ];
@@ -65,6 +84,10 @@ const _parentItems = [
   SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
   SidebarItem(path: '/parent/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
   SidebarItem(path: '/parent/menu', label: 'Ementa', icon: Icons.restaurant_outlined, selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
+  SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
+  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
+  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
 ];
 
 const _platformItems = [
@@ -299,8 +322,48 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const AbsencesScreen(),
           ),
           GoRoute(
+            path: '/admin/finance/contracts',
+            builder: (_, __) => const ContractsScreen(),
+          ),
+          GoRoute(
+            path: '/admin/finance/receipts',
+            builder: (_, __) => const ReceiptsScreen(),
+          ),
+          GoRoute(
+            path: '/admin/finance/credit-notes',
+            builder: (_, __) => const CreditNotesScreen(),
+          ),
+          GoRoute(
+            path: '/admin/finance/saft',
+            builder: (_, __) => const SaftScreen(),
+          ),
+          GoRoute(
+            path: '/admin/finance/delinquent',
+            builder: (_, __) => const DelinquentScreen(),
+          ),
+          GoRoute(
             path: '/teacher/attendance',
             builder: (_, __) => const AttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/announcements',
+            builder: (_, __) => const AnnouncementsScreen(),
+          ),
+          GoRoute(
+            path: '/documents',
+            builder: (_, __) => const DocumentsScreen(),
+          ),
+          GoRoute(
+            path: '/appointments',
+            builder: (_, __) => const AppointmentsScreen(),
+          ),
+          GoRoute(
+            path: '/evaluations',
+            builder: (_, __) => const EvaluationsScreen(),
+          ),
+          GoRoute(
+            path: '/health',
+            builder: (_, __) => const HealthEventsScreen(),
           ),
           GoRoute(
             path: '/messages',
@@ -356,6 +419,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/teacher/attendance',
             builder: (_, __) => const AttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/announcements',
+            builder: (_, __) => const AnnouncementsScreen(),
+          ),
+          GoRoute(
+            path: '/evaluations',
+            builder: (_, __) => const EvaluationsScreen(),
+          ),
+          GoRoute(
+            path: '/health',
+            builder: (_, __) => const HealthEventsScreen(),
+          ),
+          GoRoute(
+            path: '/appointments',
+            builder: (_, __) => const AppointmentsScreen(),
           ),
           GoRoute(
             path: '/messages',
@@ -425,6 +504,26 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/events',
             builder: (_, __) => const EventsScreen(),
+          ),
+          GoRoute(
+            path: '/announcements',
+            builder: (_, __) => const AnnouncementsScreen(),
+          ),
+          GoRoute(
+            path: '/documents',
+            builder: (_, __) => const DocumentsScreen(),
+          ),
+          GoRoute(
+            path: '/evaluations',
+            builder: (_, __) => const EvaluationsScreen(),
+          ),
+          GoRoute(
+            path: '/appointments',
+            builder: (_, __) => const AppointmentsScreen(),
+          ),
+          GoRoute(
+            path: '/health',
+            builder: (_, __) => const HealthEventsScreen(),
           ),
         ],
       ),

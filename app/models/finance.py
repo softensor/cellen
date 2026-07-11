@@ -4,8 +4,8 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String,
-    Text, UniqueConstraint, func
+    Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer,
+    Numeric, String, Text, UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -94,6 +94,20 @@ class Invoice(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, partially_paid, paid, cancelled, overdue
     due_date: Mapped[Optional[date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # AGT compliance fields
+    document_type: Mapped[str] = mapped_column(String(5), nullable=False, default="FT")
+    series_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    series_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    full_document_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    nif_cliente: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    taxable_base: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+    iva_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("14.00"))
+    iva_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+    hash_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    previous_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_void: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    void_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

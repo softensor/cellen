@@ -43,6 +43,7 @@ class Guardian(Base):
     city: Mapped[Optional[str]] = mapped_column(String(100))
     municipio: Mapped[Optional[str]] = mapped_column(String(100))
     bairro: Mapped[Optional[str]] = mapped_column(String(100))
+    nif: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     # Contacts
     mobile_first: Mapped[Optional[str]] = mapped_column(String(50))
     mobile_second: Mapped[Optional[str]] = mapped_column(String(50))
