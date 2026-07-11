@@ -21,7 +21,13 @@
       "styles": [
         "styles.css"
       ],
-      "scripts": [],
+      "scripts": [
+        "./assets/vendor/jquery/jquery.min.js",
+        "./assets/vendor/bootstrap/js/bootstrap.min.js",
+        "./assets/vendor/jquery/navbarcollapse.js",
+        "./assets/vendor/metisMenu/metisMenu.min.js",
+        "./assets/dist/js/sb-admin-2.js"
+      ],
       "environmentSource": "environments/environment.ts",
       "environments": {
         "dev": "environments/environment.ts",

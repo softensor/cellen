@@ -1,0 +1,91 @@
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.core.config import settings
+from app.routers import (
+    auth,
+    platform,
+    schools,
+    children,
+    guardians,
+    employees,
+    academic,
+    caderneta,
+    food,
+    absences,
+    finance,
+)
+
+app = FastAPI(
+    title="Cellen API",
+    version="1.0.0",
+    description="Multi-tenant SaaS childcare management system",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# CORS — configure origins properly in production
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include all routers under /api/v1 prefix
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(platform.router, prefix="/api/v1")
+app.include_router(schools.router, prefix="/api/v1")
+app.include_router(children.router, prefix="/api/v1")
+app.include_router(guardians.router, prefix="/api/v1")
+app.include_router(employees.router, prefix="/api/v1")
+app.include_router(academic.router, prefix="/api/v1")
+app.include_router(caderneta.router, prefix="/api/v1")
+app.include_router(food.router, prefix="/api/v1")
+app.include_router(absences.router, prefix="/api/v1")
+app.include_router(finance.router, prefix="/api/v1")
+
+# Ensure media directory exists and mount static files
+_media_path = Path(settings.MEDIA_DIR)
+_media_path.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(_media_path)), name="media")
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Create platform admin if not exists
+    await _seed_platform_admin()
+
+
+async def _seed_platform_admin():
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.core.security import hash_password
+    from app.models.school import PlatformUser
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(PlatformUser).where(PlatformUser.email == settings.PLATFORM_ADMIN_EMAIL)
+            )
+            if result.scalar_one_or_none() is None:
+                admin = PlatformUser(
+                    email=settings.PLATFORM_ADMIN_EMAIL,
+                    password_hash=hash_password(settings.PLATFORM_ADMIN_PASSWORD),
+                    is_active=True,
+                )
+                db.add(admin)
+                await db.commit()
+        except Exception:
+            # DB might not be ready at startup — skip silently
+            pass
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "cellen-api", "version": "1.0.0"}
