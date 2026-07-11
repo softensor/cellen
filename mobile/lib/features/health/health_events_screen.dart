@@ -66,8 +66,8 @@ final healthEventsProvider =
     final path = childId != null
         ? '/health-events?child_id=$childId'
         : '/health-events';
-    final res = await client.get(path);
-    return (res.data as List)
+    final res = await client.get(path) as List;
+    return res
         .map((e) => HealthEvent.fromJson(e as Map<String, dynamic>))
         .toList();
   },
@@ -75,8 +75,8 @@ final healthEventsProvider =
 
 final childrenForHealthProvider = FutureProvider.autoDispose((ref) async {
   final client = ref.read(apiClientProvider);
-  final res = await client.get('/children?limit=200');
-  return (res.data as List)
+  final res = await client.get('/children?limit=200') as List;
+  return res
       .map((e) => Child.fromJson(e as Map<String, dynamic>))
       .toList();
 });

@@ -47,6 +47,8 @@ class AppointmentResponse(BaseModel):
     response_notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    employee_name: Optional[str] = None
+    child_name: Optional[str] = None
 
 
 @router.get("", response_model=list[AppointmentResponse])
@@ -58,6 +60,8 @@ async def list_appointments(
     current_user=Depends(get_current_user),
 ):
     from app.models.modern import Appointment
+    from app.models.employee import Employee
+    from app.models.person import Child
 
     role = getattr(current_user, "_role", "parent")
     query = select(Appointment).where(Appointment.school_id == school_id)
@@ -75,7 +79,36 @@ async def list_appointments(
     result = await db.execute(
         query.order_by(Appointment.proposed_date.desc()).offset(skip).limit(limit)
     )
-    return result.scalars().all()
+    appointments = result.scalars().all()
+
+    # Bulk fetch employee names
+    emp_ids = list({a.employee_id for a in appointments})
+    employee_names: dict = {}
+    if emp_ids:
+        emp_result = await db.execute(
+            select(Employee.id, Employee.first_name, Employee.last_name)
+            .where(Employee.id.in_(emp_ids))
+        )
+        employee_names = {row.id: f"{row.first_name} {row.last_name}" for row in emp_result}
+
+    # Bulk fetch child names
+    child_ids = list({a.child_id for a in appointments if a.child_id is not None})
+    child_names: dict = {}
+    if child_ids:
+        child_result = await db.execute(
+            select(Child.id, Child.first_name, Child.last_name)
+            .where(Child.id.in_(child_ids))
+        )
+        child_names = {row.id: f"{row.first_name} {row.last_name}" for row in child_result}
+
+    return [
+        {
+            **a.__dict__,
+            "employee_name": employee_names.get(a.employee_id),
+            "child_name": child_names.get(a.child_id) if a.child_id else None,
+        }
+        for a in appointments
+    ]
 
 
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)

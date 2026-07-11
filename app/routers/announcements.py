@@ -51,6 +51,7 @@ class AnnouncementResponse(BaseModel):
     expires_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    created_by_name: Optional[str] = None
 
 
 @router.get("", response_model=list[AnnouncementResponse])
@@ -62,6 +63,7 @@ async def list_announcements(
     current_user=Depends(get_current_user),
 ):
     from app.models.modern import Announcement
+    from app.models.employee import Employee
 
     role = getattr(current_user, "_role", "parent")
     query = select(Announcement).where(Announcement.school_id == school_id)
@@ -80,7 +82,22 @@ async def list_announcements(
         .offset(skip)
         .limit(limit)
     )
-    return result.scalars().all()
+    announcements = result.scalars().all()
+
+    # Bulk fetch creator names
+    creator_ids = [a.created_by for a in announcements]
+    employee_names: dict = {}
+    if creator_ids:
+        emp_result = await db.execute(
+            select(Employee.id, Employee.first_name, Employee.last_name)
+            .where(Employee.id.in_(creator_ids))
+        )
+        employee_names = {row.id: f"{row.first_name} {row.last_name}" for row in emp_result}
+
+    return [
+        {**a.__dict__, "created_by_name": employee_names.get(a.created_by)}
+        for a in announcements
+    ]
 
 
 @router.get("/pinned", response_model=list[AnnouncementResponse])
@@ -90,6 +107,7 @@ async def get_pinned_announcements(
     _=Depends(get_current_user),
 ):
     from app.models.modern import Announcement
+    from app.models.employee import Employee
 
     result = await db.execute(
         select(Announcement).where(
@@ -97,7 +115,21 @@ async def get_pinned_announcements(
             Announcement.pinned == True,
         ).order_by(Announcement.created_at.desc())
     )
-    return result.scalars().all()
+    announcements = result.scalars().all()
+
+    creator_ids = [a.created_by for a in announcements]
+    employee_names: dict = {}
+    if creator_ids:
+        emp_result = await db.execute(
+            select(Employee.id, Employee.first_name, Employee.last_name)
+            .where(Employee.id.in_(creator_ids))
+        )
+        employee_names = {row.id: f"{row.first_name} {row.last_name}" for row in emp_result}
+
+    return [
+        {**a.__dict__, "created_by_name": employee_names.get(a.created_by)}
+        for a in announcements
+    ]
 
 
 @router.post("", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED)

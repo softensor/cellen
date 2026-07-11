@@ -67,6 +67,7 @@ class EvaluationResponse(BaseModel):
     objectives_next_period: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    child_name: Optional[str] = None
 
 
 @router.get("", response_model=list[EvaluationResponse])
@@ -109,7 +110,23 @@ async def list_evaluations(
     result = await db.execute(
         query.order_by(ChildEvaluation.evaluation_date.desc()).offset(skip).limit(limit)
     )
-    return result.scalars().all()
+    evaluations = result.scalars().all()
+
+    # Bulk fetch child names
+    child_ids = list({e.child_id for e in evaluations})
+    child_names: dict = {}
+    if child_ids:
+        from app.models.person import Child
+        child_result = await db.execute(
+            select(Child.id, Child.first_name, Child.last_name)
+            .where(Child.id.in_(child_ids))
+        )
+        child_names = {row.id: f"{row.first_name} {row.last_name}" for row in child_result}
+
+    return [
+        {**e.__dict__, "child_name": child_names.get(e.child_id)}
+        for e in evaluations
+    ]
 
 
 @router.post("", response_model=EvaluationResponse, status_code=status.HTTP_201_CREATED)

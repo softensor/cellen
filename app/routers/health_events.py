@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_school_id, require_teacher
 
-router = APIRouter(prefix="/health", tags=["Health Events"])
+router = APIRouter(prefix="/health-events", tags=["Health Events"])
 
 
 class HealthEventCreate(BaseModel):
@@ -54,6 +54,7 @@ class HealthEventResponse(BaseModel):
     parent_notified_at: Optional[datetime] = None
     action_taken: Optional[str] = None
     created_at: Optional[datetime] = None
+    child_name: Optional[str] = None
 
 
 @router.get("", response_model=list[HealthEventResponse])
@@ -96,7 +97,23 @@ async def list_health_events(
     result = await db.execute(
         query.order_by(HealthEvent.event_date.desc()).offset(skip).limit(limit)
     )
-    return result.scalars().all()
+    events = result.scalars().all()
+
+    # Bulk fetch child names
+    child_ids = list({e.child_id for e in events})
+    child_names: dict = {}
+    if child_ids:
+        from app.models.person import Child
+        child_result = await db.execute(
+            select(Child.id, Child.first_name, Child.last_name)
+            .where(Child.id.in_(child_ids))
+        )
+        child_names = {row.id: f"{row.first_name} {row.last_name}" for row in child_result}
+
+    return [
+        {**e.__dict__, "child_name": child_names.get(e.child_id)}
+        for e in events
+    ]
 
 
 @router.post("", response_model=HealthEventResponse, status_code=status.HTTP_201_CREATED)

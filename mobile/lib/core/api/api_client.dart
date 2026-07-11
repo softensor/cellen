@@ -60,10 +60,10 @@ class AuthInterceptor extends Interceptor {
         final refreshDio = Dio(BaseOptions(baseUrl: kBaseUrl));
         final refreshResponse = await refreshDio.post(
           '/auth/refresh',
-          data: {'refresh': refreshToken},
+          data: {'refresh_token': refreshToken},
         );
 
-        final newAccess = refreshResponse.data['access'] as String?;
+        final newAccess = refreshResponse.data['access_token'] as String?;
         if (newAccess == null || newAccess.isEmpty) {
           await _clearTokens();
           _isRefreshing = false;
@@ -74,7 +74,7 @@ class AuthInterceptor extends Interceptor {
         await _storage.write(key: kAccessTokenKey, value: newAccess);
 
         // Check if a new refresh token is also returned
-        final newRefresh = refreshResponse.data['refresh'] as String?;
+        final newRefresh = refreshResponse.data['refresh_token'] as String?;
         if (newRefresh != null && newRefresh.isNotEmpty) {
           await _storage.write(key: kRefreshTokenKey, value: newRefresh);
         }

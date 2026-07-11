@@ -1118,6 +1118,7 @@ class ContractResponse(BaseModel):
     notes: Optional[str] = None
     created_at: Optional[date] = None
     updated_at: Optional[date] = None
+    child_name: Optional[str] = None
 
 
 @router.post("/contracts", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
@@ -1152,7 +1153,22 @@ async def list_contracts(
     if is_active is not None:
         query = query.where(Contract.is_active == is_active)
     result = await db.execute(query.order_by(Contract.created_at.desc()).offset(skip).limit(limit))
-    return result.scalars().all()
+    contracts = result.scalars().all()
+
+    # Bulk fetch child names
+    child_ids = list({c.child_id for c in contracts})
+    child_name_map: dict = {}
+    if child_ids:
+        child_result = await db.execute(
+            select(Child.id, Child.first_name, Child.last_name)
+            .where(Child.id.in_(child_ids))
+        )
+        child_name_map = {row.id: f"{row.first_name} {row.last_name}" for row in child_result}
+
+    return [
+        {**c.__dict__, "child_name": child_name_map.get(c.child_id)}
+        for c in contracts
+    ]
 
 
 @router.patch("/contracts/{contract_id}", response_model=ContractResponse)
