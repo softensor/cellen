@@ -42,7 +42,7 @@ async def list_absences(
     return result.scalars().all()
 
 
-@router.post("/", response_model=AbsenceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AbsenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_absence(
     body: AbsenceCreate,
     school_id: uuid.UUID = Depends(get_school_id),

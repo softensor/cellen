@@ -14,7 +14,7 @@ from app.services.storage import save_upload
 router = APIRouter(prefix="/employees", tags=["Employees"])
 
 
-@router.get("/", response_model=list[EmployeeResponse])
+@router.get("", response_model=list[EmployeeResponse])
 async def list_employees(
     skip: int = 0,
     limit: int = 50,
@@ -34,7 +34,7 @@ async def list_employees(
     return result.scalars().all()
 
 
-@router.post("/", response_model=EmployeeResponse, status_code=201)
+@router.post("", response_model=EmployeeResponse, status_code=201)
 async def create_employee(
     body: EmployeeCreate,
     school_id: uuid.UUID = Depends(get_school_id),

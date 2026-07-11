@@ -59,7 +59,7 @@ class Enrollment {
 final enrollmentsProvider =
     FutureProvider.autoDispose<List<Enrollment>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/enrollments') as List;
+  final data = await api.get('/academic/enrollments') as List;
   return data
       .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
       .toList();

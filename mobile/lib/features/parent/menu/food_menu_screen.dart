@@ -22,7 +22,7 @@ final weeklyMenuProvider =
   final endStr =
       '${endOfWeek.year.toString().padLeft(4, '0')}-${endOfWeek.month.toString().padLeft(2, '0')}-${endOfWeek.day.toString().padLeft(2, '0')}';
 
-  final data = await api.get('/food-menus',
+  final data = await api.get('/food/menus',
       queryParameters: {
         'date_from': startStr,
         'date_to': endStr,

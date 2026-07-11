@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_provider.dart';
 import '../../core/auth/auth_state.dart';
+import '../../core/widgets/sidebar_layout.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/admin/dashboard/admin_dashboard_screen.dart';
 import '../../features/admin/children/children_list_screen.dart';
@@ -34,601 +35,152 @@ import '../../features/events/events_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
 
 // ---------------------------------------------------------------------------
+// Nav item definitions per role
+// ---------------------------------------------------------------------------
+
+const _adminItems = [
+  SidebarItem(path: '/admin', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/children', label: 'Crianças', icon: Icons.child_care_outlined, selectedIcon: Icons.child_care),
+  SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/admin/finance', label: 'Financeiro', icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/admin/employees', label: 'Funcionários', icon: Icons.badge_outlined, selectedIcon: Icons.badge),
+  SidebarItem(path: '/events', label: 'Calendário', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
+  SidebarItem(path: '/incidents', label: 'Ocorrências', icon: Icons.report_outlined, selectedIcon: Icons.report),
+  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
+];
+
+const _teacherItems = [
+  SidebarItem(path: '/teacher', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/teacher/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
+];
+
+const _parentItems = [
+  SidebarItem(path: '/parent', label: 'Início', icon: Icons.home_outlined, selectedIcon: Icons.home),
+  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
+  SidebarItem(path: '/parent/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/parent/menu', label: 'Ementa', icon: Icons.restaurant_outlined, selectedIcon: Icons.restaurant),
+];
+
+const _platformItems = [
+  SidebarItem(path: '/platform', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/platform/schools', label: 'Escolas', icon: Icons.school_outlined, selectedIcon: Icons.school),
+];
+
+// ---------------------------------------------------------------------------
+// Title helper
+// ---------------------------------------------------------------------------
+
+String _titleForPath(String path, List<SidebarItem> items) {
+  // Find the most specific matching item
+  SidebarItem? best;
+  for (final item in items) {
+    if (path.startsWith(item.path)) {
+      if (best == null || item.path.length > best.path.length) {
+        best = item;
+      }
+    }
+  }
+  return best?.label ?? 'Cellen';
+}
+
+// ---------------------------------------------------------------------------
 // Shell Widgets
 // ---------------------------------------------------------------------------
 
-class PlatformShell extends ConsumerStatefulWidget {
+class PlatformShell extends ConsumerWidget {
   final Widget child;
   const PlatformShell({super.key, required this.child});
 
   @override
-  ConsumerState<PlatformShell> createState() => _PlatformShellState();
-}
-
-class _PlatformShellState extends ConsumerState<PlatformShell> {
-  int _selectedIndex = 0;
-
-  static const _routes = ['/platform', '/platform/schools'];
-
-  static const _destinations = [
-    (icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard'),
-    (icon: Icons.school_outlined, selectedIcon: Icons.school, label: 'Escolas'),
-  ];
-
-  void _onDestinationSelected(int index) {
-    setState(() => _selectedIndex = index);
-    context.go(_routes[index]);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 600;
-    final auth = ref.read(authProvider);
-
-    if (isWide) {
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      child: Icon(Icons.admin_panel_settings),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      auth.username ?? 'Platform',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      icon: const Icon(Icons.logout),
-                      tooltip: 'Sair',
-                      onPressed: () =>
-                          ref.read(authProvider.notifier).logout(),
-                    ),
-                  ),
-                ),
-              ),
-              destinations: _destinations
-                  .map((d) => NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: Text(d.label),
-                      ))
-                  .toList(),
-            ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(child: widget.child),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentPath = GoRouterState.of(context).uri.path;
+    return SidebarLayout(
+      child: child,
+      items: _platformItems,
+      currentPath: currentPath,
+      title: _titleForPath(currentPath, _platformItems),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.logout),
+          tooltip: 'Sair',
+          onPressed: () => ref.read(authProvider.notifier).logout(),
         ),
-      );
-    } else {
-      return Scaffold(
-        body: widget.child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onDestinationSelected,
-          destinations: _destinations
-              .map((d) => NavigationDestination(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selectedIcon),
-                    label: d.label,
-                  ))
-              .toList(),
-        ),
-      );
-    }
+      ],
+    );
   }
 }
 
-class AdminShell extends ConsumerStatefulWidget {
+class AdminShell extends ConsumerWidget {
   final Widget child;
   const AdminShell({super.key, required this.child});
 
   @override
-  ConsumerState<AdminShell> createState() => _AdminShellState();
-}
-
-class _AdminShellState extends ConsumerState<AdminShell> {
-  int _selectedIndex = 0;
-
-  static const _routes = [
-    '/admin',
-    '/teacher/attendance',
-    '/messages',
-    '/admin/children',
-    '/admin/employees',
-    '/admin/finance',
-    '/admin/academic/turmas',
-    '/admin/absences',
-  ];
-
-  static const _destinations = [
-    (icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard'),
-    (icon: Icons.how_to_reg, selectedIcon: Icons.how_to_reg, label: 'Presenças'),
-    (icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble, label: 'Mensagens'),
-    (icon: Icons.child_care, selectedIcon: Icons.child_care, label: 'Crianças'),
-    (icon: Icons.people_outline, selectedIcon: Icons.people, label: 'Funcionários'),
-    (icon: Icons.account_balance_wallet, selectedIcon: Icons.account_balance_wallet, label: 'Finanças'),
-    (icon: Icons.school_outlined, selectedIcon: Icons.school, label: 'Turmas'),
-    (icon: Icons.event_busy, selectedIcon: Icons.event_busy, label: 'Ausências'),
-  ];
-
-  void _onDestinationSelected(int index) {
-    setState(() => _selectedIndex = index);
-    context.go(_routes[index]);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 600;
-    final auth = ref.read(authProvider);
-
-    // Bottom nav shows only the first 3 items; rest accessible via nav rail
-    const bottomNavCount = 3;
-    const bottomNavDestinations = [
-      (icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard'),
-      (icon: Icons.how_to_reg, selectedIcon: Icons.how_to_reg, label: 'Presenças'),
-      (icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble, label: 'Mensagens'),
-    ];
-
-    if (isWide) {
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      child: Icon(Icons.person),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      auth.username ?? 'Admin',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      icon: const Icon(Icons.logout),
-                      tooltip: 'Sair',
-                      onPressed: () =>
-                          ref.read(authProvider.notifier).logout(),
-                    ),
-                  ),
-                ),
-              ),
-              destinations: _destinations
-                  .map(
-                    (d) => NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
-                      label: Text(d.label),
-                    ),
-                  )
-                  .toList(),
-            ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(child: widget.child),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentPath = GoRouterState.of(context).uri.path;
+    return SidebarLayout(
+      child: child,
+      items: _adminItems,
+      currentPath: currentPath,
+      title: _titleForPath(currentPath, _adminItems),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.logout),
+          tooltip: 'Sair',
+          onPressed: () => ref.read(authProvider.notifier).logout(),
         ),
-      );
-    } else {
-      // Mobile: show 3 items + "Mais" drawer
-      final mobileIndex = _selectedIndex < bottomNavCount ? _selectedIndex : 0;
-      return Scaffold(
-        body: widget.child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: mobileIndex,
-          onDestinationSelected: (index) {
-            if (index < bottomNavCount) {
-              _onDestinationSelected(index);
-            }
-          },
-          destinations: [
-            ...bottomNavDestinations.map(
-              (d) => NavigationDestination(
-                icon: Icon(d.icon),
-                selectedIcon: Icon(d.selectedIcon),
-                label: d.label,
-              ),
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.more_horiz_outlined),
-              selectedIcon: Icon(Icons.more_horiz),
-              label: 'Mais',
-            ),
-          ],
-        ),
-        drawer: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              DrawerHeader(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const CircleAvatar(
-                      radius: 24,
-                      child: Icon(Icons.person),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      auth.username ?? 'Administrador',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimaryContainer,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              _DrawerItem(
-                icon: Icons.photo_library,
-                label: 'Galeria de Fotos',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/photos');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.warning_amber,
-                label: 'Ocorrências',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/incidents');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.event,
-                label: 'Calendário',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/events');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.notifications,
-                label: 'Notificações',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.push('/notifications');
-                },
-              ),
-              const Divider(),
-              _DrawerItem(
-                icon: Icons.child_care,
-                label: 'Crianças',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/admin/children');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.people,
-                label: 'Funcionários',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/admin/employees');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.account_balance_wallet,
-                label: 'Financeiro',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/admin/finance');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.school,
-                label: 'Turmas',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/admin/academic/turmas');
-                },
-              ),
-              _DrawerItem(
-                icon: Icons.event_busy,
-                label: 'Ausências',
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go('/admin/absences');
-                },
-              ),
-              const Divider(),
-              _DrawerItem(
-                icon: Icons.logout,
-                label: 'Sair',
-                onTap: () {
-                  Navigator.pop(context);
-                  ref.read(authProvider.notifier).logout();
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+      ],
+    );
   }
 }
 
-// ---------------------------------------------------------------------------
-
-class TeacherShell extends ConsumerStatefulWidget {
+class TeacherShell extends ConsumerWidget {
   final Widget child;
   const TeacherShell({super.key, required this.child});
 
   @override
-  ConsumerState<TeacherShell> createState() => _TeacherShellState();
-}
-
-class _TeacherShellState extends ConsumerState<TeacherShell> {
-  int _selectedIndex = 0;
-
-  static const _routes = [
-    '/teacher',
-    '/teacher/attendance',
-    '/teacher/caderneta',
-    '/messages',
-  ];
-
-  static const _destinations = [
-    (icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard'),
-    (icon: Icons.how_to_reg, selectedIcon: Icons.how_to_reg, label: 'Presenças'),
-    (icon: Icons.book_outlined, selectedIcon: Icons.book, label: 'Caderneta'),
-    (icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble, label: 'Mensagens'),
-  ];
-
-  void _onDestinationSelected(int index) {
-    setState(() => _selectedIndex = index);
-    context.go(_routes[index]);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 600;
-    final auth = ref.read(authProvider);
-
-    if (isWide) {
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      child: Icon(Icons.person),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      auth.username ?? 'Educador',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      icon: const Icon(Icons.logout),
-                      tooltip: 'Sair',
-                      onPressed: () =>
-                          ref.read(authProvider.notifier).logout(),
-                    ),
-                  ),
-                ),
-              ),
-              destinations: _destinations
-                  .map(
-                    (d) => NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
-                      label: Text(d.label),
-                    ),
-                  )
-                  .toList(),
-            ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(child: widget.child),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentPath = GoRouterState.of(context).uri.path;
+    return SidebarLayout(
+      child: child,
+      items: _teacherItems,
+      currentPath: currentPath,
+      title: _titleForPath(currentPath, _teacherItems),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.logout),
+          tooltip: 'Sair',
+          onPressed: () => ref.read(authProvider.notifier).logout(),
         ),
-      );
-    } else {
-      return Scaffold(
-        body: widget.child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onDestinationSelected,
-          destinations: _destinations
-              .map(
-                (d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon),
-                  label: d.label,
-                ),
-              )
-              .toList(),
-        ),
-      );
-    }
+      ],
+    );
   }
 }
 
-// ---------------------------------------------------------------------------
-
-class ParentShell extends ConsumerStatefulWidget {
+class ParentShell extends ConsumerWidget {
   final Widget child;
   const ParentShell({super.key, required this.child});
 
   @override
-  ConsumerState<ParentShell> createState() => _ParentShellState();
-}
-
-class _ParentShellState extends ConsumerState<ParentShell> {
-  int _selectedIndex = 0;
-
-  static const _routes = [
-    '/parent',
-    '/messages',
-    '/photos',
-    '/parent/caderneta',
-    '/parent/menu',
-  ];
-
-  static const _destinations = [
-    (icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Início'),
-    (icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble, label: 'Mensagens'),
-    (icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library, label: 'Galeria'),
-    (icon: Icons.book_outlined, selectedIcon: Icons.book, label: 'Caderneta'),
-    (icon: Icons.restaurant_menu, selectedIcon: Icons.restaurant_menu, label: 'Ementa'),
-  ];
-
-  void _onDestinationSelected(int index) {
-    setState(() => _selectedIndex = index);
-    context.go(_routes[index]);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 600;
-    final auth = ref.read(authProvider);
-
-    if (isWide) {
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      child: Icon(Icons.person),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      auth.username ?? 'Encarregado',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  ],
-                ),
-              ),
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      icon: const Icon(Icons.logout),
-                      tooltip: 'Sair',
-                      onPressed: () =>
-                          ref.read(authProvider.notifier).logout(),
-                    ),
-                  ),
-                ),
-              ),
-              destinations: _destinations
-                  .map(
-                    (d) => NavigationRailDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
-                      label: Text(d.label),
-                    ),
-                  )
-                  .toList(),
-            ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(child: widget.child),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentPath = GoRouterState.of(context).uri.path;
+    return SidebarLayout(
+      child: child,
+      items: _parentItems,
+      currentPath: currentPath,
+      title: _titleForPath(currentPath, _parentItems),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.logout),
+          tooltip: 'Sair',
+          onPressed: () => ref.read(authProvider.notifier).logout(),
         ),
-      );
-    } else {
-      return Scaffold(
-        body: widget.child,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: _onDestinationSelected,
-          destinations: _destinations
-              .map(
-                (d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  selectedIcon: Icon(d.selectedIcon),
-                  label: d.label,
-                ),
-              )
-              .toList(),
-        ),
-      );
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helper drawer item widget
-// ---------------------------------------------------------------------------
-
-class _DrawerItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _DrawerItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      onTap: onTap,
-      dense: true,
+      ],
     );
   }
 }

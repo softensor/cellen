@@ -21,7 +21,7 @@ from app.services.storage import save_upload
 router = APIRouter(prefix="/children", tags=["Children"])
 
 
-@router.get("/", response_model=list[ChildResponse])
+@router.get("", response_model=list[ChildResponse])
 async def list_children(
     skip: int = 0,
     limit: int = 50,
@@ -48,7 +48,7 @@ async def list_children(
     return result.scalars().all()
 
 
-@router.post("/", response_model=ChildResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ChildResponse, status_code=status.HTTP_201_CREATED)
 async def create_child(
     body: ChildCreate,
     school_id: uuid.UUID = Depends(get_school_id),
@@ -177,6 +177,45 @@ async def upload_child_photo(
     child.photo_url = url
     await db.commit()
     return {"photo_url": url}
+
+
+@router.get("/{child_id}/guardians")
+async def get_child_guardians(
+    child_id: uuid.UUID,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    from app.models.person import Guardian
+    from app.schemas.guardian import GuardianResponse
+
+    child_result = await db.execute(
+        select(Child).where(Child.id == child_id, Child.school_id == school_id)
+    )
+    if child_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Child not found")
+
+    result = await db.execute(
+        select(Guardian)
+        .join(ChildGuardian, ChildGuardian.guardian_id == Guardian.id)
+        .where(ChildGuardian.child_id == child_id, ChildGuardian.school_id == school_id)
+    )
+    guardians = result.scalars().all()
+    return [
+        {
+            "id": str(g.id),
+            "school_id": str(g.school_id),
+            "first_name": g.first_name,
+            "middle_name": g.middle_name,
+            "last_name": g.last_name,
+            "mobile_first": g.mobile_first,
+            "mobile_second": g.mobile_second,
+            "email": g.email,
+            "profession": g.profession,
+            "id_card_number": g.id_card_number,
+        }
+        for g in guardians
+    ]
 
 
 @router.get("/{child_id}/cadernetas", response_model=list[CadernetaResponse])

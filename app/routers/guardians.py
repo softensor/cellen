@@ -15,7 +15,7 @@ from app.schemas.guardian import (
 router = APIRouter(prefix="/guardians", tags=["Guardians"])
 
 
-@router.get("/", response_model=list[GuardianResponse])
+@router.get("", response_model=list[GuardianResponse])
 async def list_guardians(
     skip: int = 0,
     limit: int = 50,
@@ -37,7 +37,7 @@ async def list_guardians(
     return result.scalars().all()
 
 
-@router.post("/", response_model=GuardianResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=GuardianResponse, status_code=status.HTTP_201_CREATED)
 async def create_guardian(
     body: GuardianCreate,
     school_id: uuid.UUID = Depends(get_school_id),

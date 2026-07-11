@@ -9,6 +9,7 @@ import '../../../core/models/attendance.dart';
 import '../../../core/models/caderneta.dart';
 import '../../../core/models/child.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_stat_card.dart';
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -93,6 +94,7 @@ class _TeacherDashboardScreenState
     final childrenAsync = ref.watch(teacherChildrenProvider);
     final unreadAsync = ref.watch(teacherUnreadMsgProvider);
     final theme = Theme.of(context);
+    final isWide = MediaQuery.of(context).size.width >= 900;
 
     final now = DateTime.now();
     final hour = now.hour;
@@ -111,421 +113,394 @@ class _TeacherDashboardScreenState
       ref.invalidate(teacherUnreadMsgProvider);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        actions: [
-          unreadAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (count) => Stack(
+    return RefreshIndicator(
+      onRefresh: () async => refresh(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(isWide ? 32 : 16, 24, isWide ? 32 : 16, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Greeting row ──
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined),
-                  onPressed: () => context.push('/notifications'),
-                ),
-                if (count > 0)
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: AppTheme.danger,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          count > 9 ? '9+' : '$count',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$greeting, ${auth.username ?? 'Educador(a)'}',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: AppTheme.textSecondary),
+                  onPressed: refresh,
+                  tooltip: 'Actualizar',
+                ),
               ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: refresh,
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => refresh(),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Header card ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: AppTheme.gradientBlue,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$greeting, ${auth.username ?? 'Educador(a)'}!',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Aqui está o resumo de hoje',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      dateStr,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
-              // ── Attendance summary card ──
-              Container(
+            // ── Stat cards ──
+            const Text(
+              'Presenças de Hoje',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            attendanceAsync.when(
+              loading: () => GridView.count(
+                crossAxisCount: isWide ? 3 : 3,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: isWide ? 1.8 : 1.3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: const [
+                  AppStatCard(label: 'Total', value: '...', icon: Icons.people, color: AppTheme.primary),
+                  AppStatCard(label: 'Presentes', value: '...', icon: Icons.check_circle, color: AppTheme.success),
+                  AppStatCard(label: 'Ausentes', value: '...', icon: Icons.cancel, color: AppTheme.danger),
+                ],
+              ),
+              error: (_, __) => Container(
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
                 ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Presenças — ',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey.shade800),
-                        ),
-                        Text(
-                          DateFormat('d MMM', 'pt_PT').format(now),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primary),
-                        ),
-                      ],
+                child: const Text('Erro ao carregar presenças',
+                    style: TextStyle(color: AppTheme.danger)),
+              ),
+              data: (s) => GridView.count(
+                crossAxisCount: isWide ? 3 : 3,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: isWide ? 1.8 : 1.3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  AppStatCard(
+                    label: 'Total',
+                    value: '${s.totalEnrolled}',
+                    icon: Icons.people,
+                    color: AppTheme.primary,
+                    onTap: () => context.go('/teacher/attendance'),
+                  ),
+                  AppStatCard(
+                    label: 'Presentes',
+                    value: '${s.checkedIn}',
+                    icon: Icons.check_circle,
+                    color: AppTheme.success,
+                    onTap: () => context.go('/teacher/attendance'),
+                  ),
+                  AppStatCard(
+                    label: 'Ausentes',
+                    value: '${s.absent}',
+                    icon: Icons.cancel,
+                    color: AppTheme.danger,
+                    onTap: () => context.go('/teacher/attendance'),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── View attendance button ──
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/teacher/attendance'),
+                icon: const Icon(Icons.fact_check_outlined, size: 18),
+                label: const Text('Gerir Presenças'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primary,
+                  side: const BorderSide(color: AppTheme.primary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 28),
+
+            // ── Quick links ──
+            const Text(
+              'Acesso Rápido',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickLinkTile(
+                    icon: Icons.menu_book_outlined,
+                    label: 'Caderneta',
+                    subtitle: 'Novo relatório',
+                    color: const Color(0xFF7C3AED),
+                    onTap: () => context.go('/teacher/caderneta/new'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: unreadAsync.when(
+                    loading: () => _QuickLinkTile(
+                      icon: Icons.chat_bubble_outline,
+                      label: 'Mensagens',
+                      subtitle: 'A carregar...',
+                      color: AppTheme.secondary,
+                      onTap: () => context.go('/messages'),
                     ),
-                    const SizedBox(height: 16),
-                    attendanceAsync.when(
-                      loading: () => const Center(
-                          child: CircularProgressIndicator()),
-                      error: (_, __) => Text('Erro ao carregar',
-                          style: TextStyle(color: AppTheme.danger)),
-                      data: (s) => Row(
+                    error: (_, __) => _QuickLinkTile(
+                      icon: Icons.chat_bubble_outline,
+                      label: 'Mensagens',
+                      subtitle: 'Abrir',
+                      color: AppTheme.secondary,
+                      onTap: () => context.go('/messages'),
+                    ),
+                    data: (count) => _QuickLinkTile(
+                      icon: Icons.chat_bubble_outline,
+                      label: 'Mensagens',
+                      subtitle: count > 0
+                          ? '$count não lida(s)'
+                          : 'Sem novas mensagens',
+                      color: AppTheme.secondary,
+                      badge: count > 0 ? count : null,
+                      onTap: () => context.go('/messages'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 28),
+
+            // ── My Children ──
+            const Text(
+              'As Minhas Crianças',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            childrenAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Text('Erro: $e',
+                  style: TextStyle(color: theme.colorScheme.error)),
+              data: (children) {
+                if (children.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: const Center(
+                      child: Text('Nenhuma criança atribuída.',
+                          style: TextStyle(color: AppTheme.textSecondary)),
+                    ),
+                  );
+                }
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Column(
+                    children: children
+                        .take(8)
+                        .toList()
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                      final isLast = entry.key == (children.length < 8 ? children.length - 1 : 7);
+                      final child = entry.value;
+                      final initials = child.fullName.isNotEmpty
+                          ? child.fullName.trim().split(' ').take(2).map((w) => w[0]).join()
+                          : '?';
+                      return Column(
                         children: [
-                          _AttendStat(
-                            value: '${s.totalEnrolled}',
-                            label: 'Total',
-                            color: const Color(0xFF4F46E5),
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            leading: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: AppTheme.primaryLight,
+                              child: Text(
+                                initials.toUpperCase(),
+                                style: const TextStyle(
+                                  color: AppTheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              child.fullName,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: AppTheme.textPrimary),
+                            ),
+                            subtitle: child.turmaName != null
+                                ? Text(child.turmaName!,
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary))
+                                : null,
                           ),
-                          _dividerLine(),
-                          _AttendStat(
-                            value: '${s.checkedIn}',
-                            label: 'Presentes',
-                            color: AppTheme.success,
-                          ),
-                          _dividerLine(),
-                          _AttendStat(
-                            value: '${s.absent}',
-                            label: 'Ausentes',
-                            color: AppTheme.danger,
-                          ),
+                          if (!isLast)
+                            const Divider(height: 1, color: AppTheme.border),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 28),
+
+            // ── Recent cadernetas ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Cadernetas Recentes',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/teacher/caderneta'),
+                  child: const Text(
+                    'Ver todas',
+                    style: TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            cadernetasAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Text('Erro: $e'),
+              data: (cadernetas) {
+                if (cadernetas.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: const Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.menu_book_outlined,
+                              size: 48, color: AppTheme.border),
+                          SizedBox(height: 8),
+                          Text('Nenhuma caderneta preenchida ainda',
+                              style: TextStyle(color: AppTheme.textSecondary)),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            context.push('/teacher/attendance'),
-                        icon: const Icon(Icons.how_to_reg, size: 18),
-                        label: const Text('Ver Presenças'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primary,
-                          side: BorderSide(color: AppTheme.primary),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── Caderneta & Messages cards side by side ──
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionCard(
-                      icon: Icons.edit_note,
-                      label: 'Caderneta',
-                      subtitle: 'Preencher relatório',
-                      color: const Color(0xFF8B5CF6),
-                      onTap: () =>
-                          context.push('/teacher/caderneta/new'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: unreadAsync.when(
-                      loading: () => _ActionCard(
-                        icon: Icons.chat_bubble_outline,
-                        label: 'Mensagens',
-                        subtitle: 'A carregar...',
-                        color: AppTheme.info,
-                        onTap: () => context.push('/messages'),
-                      ),
-                      error: (_, __) => _ActionCard(
-                        icon: Icons.chat_bubble_outline,
-                        label: 'Mensagens',
-                        subtitle: 'Abrir',
-                        color: AppTheme.info,
-                        onTap: () => context.push('/messages'),
-                      ),
-                      data: (count) => _ActionCard(
-                        icon: Icons.chat_bubble_outline,
-                        label: 'Mensagens',
-                        subtitle: count > 0
-                            ? '$count não lida(s)'
-                            : 'Sem mensagens novas',
-                        color: AppTheme.info,
-                        badge: count > 0 ? count : null,
-                        onTap: () => context.push('/messages'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // ── My Children ──
-              Text(
-                'As Minhas Crianças',
-                style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade800),
-              ),
-              const SizedBox(height: 12),
-              childrenAsync.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Erro: $e',
-                    style: TextStyle(
-                        color: theme.colorScheme.error)),
-                data: (children) {
-                  if (children.isEmpty) {
-                    return Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Center(
-                        child: Text('Nenhuma criança atribuída.',
-                            style: TextStyle(
-                                color: Colors.grey.shade500)),
-                      ),
-                    );
-                  }
-                  return SizedBox(
-                    height: 90,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: children.length,
-                      itemBuilder: (context, i) {
-                        final child = children[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: Column(
-                            children: [
-                              _ChildAvatar(
-                                name: child.fullName,
-                                photoUrl: child.photoUrl,
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: 56,
-                                child: Text(
-                                  child.firstName,
-                                  style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
                   );
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── Recent cadernetas ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Cadernetas Recentes',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade800),
+                }
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border),
                   ),
-                  TextButton(
-                    onPressed: () => context.go('/teacher/caderneta'),
-                    child: const Text('Ver todas'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              cadernetasAsync.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Erro: $e'),
-                data: (cadernetas) {
-                  if (cadernetas.isEmpty) {
-                    return Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.book_outlined,
-                                size: 48, color: Colors.grey.shade300),
-                            const SizedBox(height: 8),
-                            Text('Nenhuma caderneta preenchida ainda',
-                                style: TextStyle(
-                                    color: Colors.grey.shade500)),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      children: cadernetas
-                          .asMap()
-                          .entries
-                          .map((entry) {
-                        final isLast =
-                            entry.key == cadernetas.length - 1;
-                        final c = entry.value;
-                        return Column(
-                          children: [
-                            ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 4),
-                              leading: Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF8B5CF6)
-                                      .withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.book_outlined,
-                                    color: Color(0xFF8B5CF6), size: 20),
+                  child: Column(
+                    children: cadernetas
+                        .asMap()
+                        .entries
+                        .map((entry) {
+                      final isLast = entry.key == cadernetas.length - 1;
+                      final c = entry.value;
+                      return Column(
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7C3AED).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              title: Text(
-                                c.childName ??
-                                    'Criança ${c.childId.substring(0, 6)}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14),
-                              ),
-                              subtitle: Text(
-                                DateFormat('dd/MM/yyyy')
-                                    .format(c.reportDate),
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500),
-                              ),
-                              trailing: _RatingBadge(
-                                  rating: c.lunchRating ??
-                                      c.breakfastRating),
-                              onTap: () => context.push(
-                                  '/teacher/caderneta/${c.id}/edit'),
+                              child: const Icon(Icons.menu_book_outlined,
+                                  color: Color(0xFF7C3AED), size: 20),
                             ),
-                            if (!isLast)
-                              Divider(
-                                  height: 1,
-                                  color: Colors.grey.shade100),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+                            title: Text(
+                              c.childName ??
+                                  'Criança ${c.childId.substring(0, 6)}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: AppTheme.textPrimary),
+                            ),
+                            subtitle: Text(
+                              DateFormat('dd/MM/yyyy').format(c.reportDate),
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppTheme.textSecondary),
+                            ),
+                            trailing: _RatingBadge(
+                                rating: c.lunchRating ?? c.breakfastRating),
+                            onTap: () => context
+                                .go('/teacher/caderneta/${c.id}/edit'),
+                          ),
+                          if (!isLast)
+                            const Divider(height: 1, color: AppTheme.border),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _dividerLine() {
-    return Container(
-      width: 1,
-      height: 40,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      color: Colors.grey.shade200,
     );
   }
 }
@@ -534,56 +509,7 @@ class _TeacherDashboardScreenState
 // Widgets
 // ---------------------------------------------------------------------------
 
-class _AttendStat extends StatelessWidget {
-  final String value;
-  final String label;
-  final Color color;
-
-  const _AttendStat({
-    required this.value,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: color,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionCard extends StatelessWidget {
+class _QuickLinkTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String subtitle;
@@ -591,7 +517,7 @@ class _ActionCard extends StatelessWidget {
   final int? badge;
   final VoidCallback onTap;
 
-  const _ActionCard({
+  const _QuickLinkTile({
     required this.icon,
     required this.label,
     required this.subtitle,
@@ -608,31 +534,30 @@ class _ActionCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 24),
+                  child: Icon(icon, color: color, size: 20),
                 ),
                 if (badge != null && badge! > 0)
                   Positioned(
                     top: -4,
                     right: -4,
                     child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
                         color: AppTheme.danger,
                         shape: BoxShape.circle,
                       ),
@@ -647,54 +572,32 @@ class _ActionCard extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: TextStyle(
-                  fontSize: 12, color: Colors.grey.shade500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            const Icon(Icons.chevron_right,
+                size: 18, color: AppTheme.textSecondary),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChildAvatar extends StatelessWidget {
-  final String name;
-  final String? photoUrl;
-
-  const _ChildAvatar({required this.name, this.photoUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    if (photoUrl != null && photoUrl!.isNotEmpty) {
-      return CircleAvatar(
-        radius: 26,
-        backgroundImage: NetworkImage(photoUrl!),
-        onBackgroundImageError: (_, __) {},
-      );
-    }
-    final initials = name.isNotEmpty
-        ? name.trim().split(' ').take(2).map((w) => w[0]).join()
-        : '?';
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: AppTheme.primary.withOpacity(0.1),
-      child: Text(
-        initials.toUpperCase(),
-        style: TextStyle(
-          color: AppTheme.primary,
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
         ),
       ),
     );
@@ -715,19 +618,19 @@ class _RatingBadge extends StatelessWidget {
         color = AppTheme.success;
         break;
       case 'Bem':
-        color = const Color(0xFF14B8A6);
+        color = const Color(0xFF0369A1);
         break;
       case 'Mal':
         color = AppTheme.danger;
         break;
       default:
-        color = Colors.grey;
+        color = AppTheme.textSecondary;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         rating!,

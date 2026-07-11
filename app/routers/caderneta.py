@@ -14,7 +14,7 @@ from app.schemas.caderneta import CadernetaCreate, CadernetaResponse, CadernetaU
 router = APIRouter(prefix="/cadernetas", tags=["Caderneta"])
 
 
-@router.get("/", response_model=list[CadernetaResponse])
+@router.get("", response_model=list[CadernetaResponse])
 async def list_cadernetas(
     skip: int = 0,
     limit: int = 50,
@@ -39,7 +39,7 @@ async def list_cadernetas(
     return result.scalars().all()
 
 
-@router.post("/", response_model=CadernetaResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CadernetaResponse, status_code=status.HTTP_201_CREATED)
 async def create_caderneta(
     body: CadernetaCreate,
     school_id: uuid.UUID = Depends(get_school_id),

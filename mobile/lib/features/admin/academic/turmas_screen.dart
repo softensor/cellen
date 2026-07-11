@@ -58,7 +58,7 @@ class Turma {
 // ---------------------------------------------------------------------------
 final turmasProvider = FutureProvider.autoDispose<List<Turma>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/turmas') as List;
+  final data = await api.get('/academic/turmas') as List;
   return data
       .map((e) => Turma.fromJson(e as Map<String, dynamic>))
       .toList();
@@ -314,9 +314,9 @@ class _TurmaFormSheetState extends ConsumerState<_TurmaFormSheet> {
     try {
       final api = ref.read(apiClientProvider);
       if (widget.turma != null) {
-        await api.patch('/turmas/${widget.turma!.id}', data: body);
+        await api.patch('/academic/turmas/${widget.turma!.id}', data: body);
       } else {
-        await api.post('/turmas', data: body);
+        await api.post('/academic/turmas', data: body);
       }
       widget.onSaved();
     } catch (e) {
