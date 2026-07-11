@@ -44,6 +44,8 @@ import '../../features/appointments/appointments_screen.dart';
 import '../../features/evaluations/evaluations_screen.dart';
 import '../../features/health/health_events_screen.dart';
 import '../../features/health/immunizations_screen.dart';
+import '../../features/admin/guardians/guardians_list_screen.dart';
+import '../../features/admin/guardians/guardian_form_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Nav item definitions per role
@@ -52,6 +54,7 @@ import '../../features/health/immunizations_screen.dart';
 const _adminItems = [
   SidebarItem(path: '/admin', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
   SidebarItem(path: '/admin/children', label: 'Crianças', icon: Icons.child_care_outlined, selectedIcon: Icons.child_care),
+  SidebarItem(path: '/admin/guardians', label: 'Encarregados', icon: Icons.people_outline, selectedIcon: Icons.people),
   SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
   SidebarItem(path: '/admin/finance', label: 'Financeiro', icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
   SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
@@ -286,6 +289,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/admin/children/:id/edit',
             builder: (_, s) =>
                 ChildFormScreen(childId: s.pathParameters['id']),
+          ),
+          GoRoute(
+            path: '/admin/guardians',
+            builder: (_, __) => const GuardiansListScreen(),
+          ),
+          GoRoute(
+            path: '/admin/guardians/new',
+            builder: (_, __) => const GuardianFormScreen(),
+          ),
+          GoRoute(
+            path: '/admin/guardians/:id/edit',
+            builder: (_, s) =>
+                GuardianFormScreen(guardianId: s.pathParameters['id']),
           ),
           GoRoute(
             path: '/admin/employees',

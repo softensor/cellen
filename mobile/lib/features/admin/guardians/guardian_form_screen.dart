@@ -1,0 +1,305 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/api/api_client.dart';
+
+class GuardianFormScreen extends ConsumerStatefulWidget {
+  final String? guardianId;
+  const GuardianFormScreen({super.key, this.guardianId});
+
+  @override
+  ConsumerState<GuardianFormScreen> createState() =>
+      _GuardianFormScreenState();
+}
+
+class _GuardianFormScreenState extends ConsumerState<GuardianFormScreen> {
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  bool _isFetching = false;
+  String? _error;
+
+  // Fields
+  final _firstNameCtrl = TextEditingController();
+  final _middleNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
+  final _professionCtrl = TextEditingController();
+  final _qualificationsCtrl = TextEditingController();
+  final _idCardCtrl = TextEditingController();
+  final _mobileFirstCtrl = TextEditingController();
+  final _mobileSecondCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _streetCtrl = TextEditingController();
+  final _houseNumCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
+  final _municipioCtrl = TextEditingController();
+  final _bairroCtrl = TextEditingController();
+  String? _sex;
+  String? _civilState;
+
+  bool get _isEdit => widget.guardianId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEdit) _loadGuardian();
+  }
+
+  Future<void> _loadGuardian() async {
+    setState(() => _isFetching = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      final data = await api.get('/guardians/${widget.guardianId}')
+          as Map<String, dynamic>;
+      _firstNameCtrl.text = data['first_name'] as String? ?? '';
+      _middleNameCtrl.text = data['middle_name'] as String? ?? '';
+      _lastNameCtrl.text = data['last_name'] as String? ?? '';
+      _professionCtrl.text = data['profession'] as String? ?? '';
+      _qualificationsCtrl.text = data['qualifications'] as String? ?? '';
+      _idCardCtrl.text = data['id_card_number'] as String? ?? '';
+      _mobileFirstCtrl.text = data['mobile_first'] as String? ?? '';
+      _mobileSecondCtrl.text = data['mobile_second'] as String? ?? '';
+      _emailCtrl.text = data['email'] as String? ?? '';
+      _streetCtrl.text = data['street'] as String? ?? '';
+      _houseNumCtrl.text = data['house_number'] as String? ?? '';
+      _cityCtrl.text = data['city'] as String? ?? '';
+      _municipioCtrl.text = data['municipio'] as String? ?? '';
+      _bairroCtrl.text = data['bairro'] as String? ?? '';
+      _sex = data['sex'] as String?;
+      _civilState = data['civil_state'] as String?;
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _isFetching = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [
+      _firstNameCtrl, _middleNameCtrl, _lastNameCtrl, _professionCtrl,
+      _qualificationsCtrl, _idCardCtrl, _mobileFirstCtrl, _mobileSecondCtrl,
+      _emailCtrl, _streetCtrl, _houseNumCtrl, _cityCtrl, _municipioCtrl,
+      _bairroCtrl,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final api = ref.read(apiClientProvider);
+      final body = <String, dynamic>{
+        'first_name': _firstNameCtrl.text.trim(),
+        'last_name': _lastNameCtrl.text.trim(),
+        if (_middleNameCtrl.text.trim().isNotEmpty)
+          'middle_name': _middleNameCtrl.text.trim(),
+        if (_professionCtrl.text.trim().isNotEmpty)
+          'profession': _professionCtrl.text.trim(),
+        if (_qualificationsCtrl.text.trim().isNotEmpty)
+          'qualifications': _qualificationsCtrl.text.trim(),
+        if (_idCardCtrl.text.trim().isNotEmpty)
+          'id_card_number': _idCardCtrl.text.trim(),
+        if (_mobileFirstCtrl.text.trim().isNotEmpty)
+          'mobile_first': _mobileFirstCtrl.text.trim(),
+        if (_mobileSecondCtrl.text.trim().isNotEmpty)
+          'mobile_second': _mobileSecondCtrl.text.trim(),
+        if (_emailCtrl.text.trim().isNotEmpty)
+          'email': _emailCtrl.text.trim(),
+        if (_streetCtrl.text.trim().isNotEmpty)
+          'street': _streetCtrl.text.trim(),
+        if (_houseNumCtrl.text.trim().isNotEmpty)
+          'house_number': _houseNumCtrl.text.trim(),
+        if (_cityCtrl.text.trim().isNotEmpty)
+          'city': _cityCtrl.text.trim(),
+        if (_municipioCtrl.text.trim().isNotEmpty)
+          'municipio': _municipioCtrl.text.trim(),
+        if (_bairroCtrl.text.trim().isNotEmpty)
+          'bairro': _bairroCtrl.text.trim(),
+        if (_sex != null) 'sex': _sex,
+        if (_civilState != null) 'civil_state': _civilState,
+      };
+
+      if (_isEdit) {
+        await api.patch('/guardians/${widget.guardianId}', data: body);
+      } else {
+        await api.post('/guardians', data: body);
+      }
+
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isFetching) {
+      return Scaffold(
+        appBar: AppBar(
+            title: Text(_isEdit ? 'Editar Encarregado' : 'Novo Encarregado')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isEdit ? 'Editar Encarregado' : 'Novo Encarregado'),
+        actions: [
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else
+            TextButton(
+              onPressed: _submit,
+              child: const Text('Guardar'),
+            ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_error != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(_error!,
+                    style: TextStyle(color: Colors.red.shade800)),
+              ),
+
+            _SectionHeader(title: 'Dados Pessoais'),
+            const SizedBox(height: 12),
+
+            _field(_firstNameCtrl, 'Primeiro Nome *', required: true),
+            const SizedBox(height: 12),
+            _field(_middleNameCtrl, 'Nome do Meio'),
+            const SizedBox(height: 12),
+            _field(_lastNameCtrl, 'Apelido *', required: true),
+            const SizedBox(height: 12),
+
+            DropdownButtonFormField<String>(
+              value: _sex,
+              decoration: const InputDecoration(
+                labelText: 'Sexo',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'M', child: Text('Masculino')),
+                DropdownMenuItem(value: 'F', child: Text('Feminino')),
+              ],
+              onChanged: (v) => setState(() => _sex = v),
+            ),
+            const SizedBox(height: 12),
+
+            DropdownButtonFormField<String>(
+              value: _civilState,
+              decoration: const InputDecoration(
+                labelText: 'Estado Civil',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'single', child: Text('Solteiro(a)')),
+                DropdownMenuItem(
+                    value: 'married', child: Text('Casado(a)')),
+                DropdownMenuItem(
+                    value: 'divorced', child: Text('Divorciado(a)')),
+                DropdownMenuItem(
+                    value: 'widowed', child: Text('Viúvo(a)')),
+              ],
+              onChanged: (v) => setState(() => _civilState = v),
+            ),
+            const SizedBox(height: 12),
+            _field(_idCardCtrl, 'Nº Bilhete de Identidade'),
+            const SizedBox(height: 12),
+            _field(_professionCtrl, 'Profissão'),
+            const SizedBox(height: 12),
+            _field(_qualificationsCtrl, 'Habilitações'),
+
+            const SizedBox(height: 24),
+            _SectionHeader(title: 'Contactos'),
+            const SizedBox(height: 12),
+
+            _field(_mobileFirstCtrl, 'Telemóvel Principal'),
+            const SizedBox(height: 12),
+            _field(_mobileSecondCtrl, 'Telemóvel Secundário'),
+            const SizedBox(height: 12),
+            _field(_emailCtrl, 'Email',
+                keyboardType: TextInputType.emailAddress),
+
+            const SizedBox(height: 24),
+            _SectionHeader(title: 'Morada'),
+            const SizedBox(height: 12),
+
+            _field(_streetCtrl, 'Rua / Avenida'),
+            const SizedBox(height: 12),
+            _field(_houseNumCtrl, 'Nº da Casa'),
+            const SizedBox(height: 12),
+            _field(_bairroCtrl, 'Bairro'),
+            const SizedBox(height: 12),
+            _field(_municipioCtrl, 'Município'),
+            const SizedBox(height: 12),
+            _field(_cityCtrl, 'Cidade / Província'),
+
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    TextEditingController ctrl,
+    String label, {
+    bool required = false,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      validator: required
+          ? (v) => (v == null || v.trim().isEmpty) ? 'Campo obrigatório' : null
+          : null,
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+    );
+  }
+}
