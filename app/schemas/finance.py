@@ -63,6 +63,7 @@ class ExpenseResponse(ExpenseBase):
     school_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    category_name: Optional[str] = None
 
 
 # Invoice

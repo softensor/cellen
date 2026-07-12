@@ -3,16 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/auth/auth_provider.dart';
 
 // ---------------------------------------------------------------------------
-// Data model
+// Data models
 // ---------------------------------------------------------------------------
+class ExpenseCategory {
+  final String id;
+  final String name;
+
+  const ExpenseCategory({required this.id, required this.name});
+
+  factory ExpenseCategory.fromJson(Map<String, dynamic> json) {
+    return ExpenseCategory(
+      id: json['id']?.toString() ?? '',
+      name: json['name'] as String? ?? '',
+    );
+  }
+}
+
 class Expense {
   final String id;
   final String description;
   final double amount;
   final DateTime expenseDate;
-  final String category;
+  final String categoryId;
+  final String? categoryName;
   final String? notes;
 
   const Expense({
@@ -20,26 +36,12 @@ class Expense {
     required this.description,
     required this.amount,
     required this.expenseDate,
-    required this.category,
+    required this.categoryId,
+    this.categoryName,
     this.notes,
   });
 
-  String get categoryLabel {
-    switch (category) {
-      case 'salary':
-        return 'Salários';
-      case 'utilities':
-        return 'Serviços';
-      case 'supplies':
-        return 'Material';
-      case 'food':
-        return 'Alimentação';
-      case 'maintenance':
-        return 'Manutenção';
-      default:
-        return category;
-    }
-  }
+  String get categoryLabel => categoryName ?? categoryId;
 
   factory Expense.fromJson(Map<String, dynamic> json) {
     return Expense(
@@ -49,14 +51,15 @@ class Expense {
       expenseDate: json['expense_date'] != null
           ? DateTime.tryParse(json['expense_date'] as String) ?? DateTime.now()
           : DateTime.now(),
-      category: json['category'] as String? ?? 'other',
+      categoryId: json['category_id']?.toString() ?? '',
+      categoryName: json['category_name'] as String?,
       notes: json['notes'] as String?,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Provider
+// Providers
 // ---------------------------------------------------------------------------
 final expensesProvider =
     FutureProvider.autoDispose<List<Expense>>((ref) async {
@@ -64,6 +67,15 @@ final expensesProvider =
   final data = await api.get('/finance/expenses', queryParameters: {'ordering': '-expense_date'}) as List;
   return data
       .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+      .toList();
+});
+
+final expenseCategoriesProvider =
+    FutureProvider.autoDispose<List<ExpenseCategory>>((ref) async {
+  final api = ref.read(apiClientProvider);
+  final data = await api.get('/finance/expense-categories') as List;
+  return data
+      .map((e) => ExpenseCategory.fromJson(e as Map<String, dynamic>))
       .toList();
 });
 
@@ -284,19 +296,10 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
   final _descCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
-  String _category = 'other';
+  String? _selectedCategoryId;
   DateTime _date = DateTime.now();
   bool _isLoading = false;
   String? _error;
-
-  static const _categories = [
-    ('salary', 'Salários'),
-    ('utilities', 'Serviços'),
-    ('food', 'Alimentação'),
-    ('supplies', 'Material'),
-    ('maintenance', 'Manutenção'),
-    ('other', 'Outro'),
-  ];
 
   @override
   void dispose() {
@@ -308,6 +311,18 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedCategoryId == null) {
+      setState(() => _error = 'Seleccione uma categoria');
+      return;
+    }
+    final employeeId = ref.read(authProvider).employeeId;
+    if (employeeId == null) {
+      setState(() {
+        _error = 'Utilizador não tem registo de funcionário associado';
+        _isLoading = false;
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
@@ -319,7 +334,8 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
         'amount': double.tryParse(_amountCtrl.text) ?? 0.0,
         'expense_date':
             '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
-        'category': _category,
+        'category_id': _selectedCategoryId,
+        'registered_by': employeeId,
         if (_notesCtrl.text.trim().isNotEmpty) 'notes': _notesCtrl.text.trim(),
       });
       widget.onAdded();
@@ -333,6 +349,8 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final categoriesAsync = ref.watch(expenseCategoriesProvider);
+
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -377,21 +395,27 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
             ),
             const SizedBox(height: 12),
 
-            DropdownButtonFormField<String>(
-              value: _category,
-              decoration: const InputDecoration(
-                labelText: 'Categoria',
-                prefixIcon: Icon(Icons.category),
+            categoriesAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, __) => const Text('Erro ao carregar categorias'),
+              data: (categories) => DropdownButtonFormField<String>(
+                value: _selectedCategoryId,
+                decoration: const InputDecoration(
+                  labelText: 'Categoria *',
+                  prefixIcon: Icon(Icons.category),
+                ),
+                items: categories
+                    .map((c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Text(c.name),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setState(() => _selectedCategoryId = v);
+                },
+                validator: (v) =>
+                    v == null ? 'Seleccione uma categoria' : null,
               ),
-              items: _categories
-                  .map((c) => DropdownMenuItem(
-                        value: c.$1,
-                        child: Text(c.$2),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => _category = v);
-              },
             ),
             const SizedBox(height: 12),
 

@@ -43,6 +43,8 @@ class AuthState {
   final String? userId;
   final String? schoolId;
   final String? username;
+  final String? employeeId;
+  final String? guardianId;
   final String? error;
 
   const AuthState({
@@ -54,6 +56,8 @@ class AuthState {
     this.userId,
     this.schoolId,
     this.username,
+    this.employeeId,
+    this.guardianId,
     this.error,
   });
 
@@ -66,6 +70,8 @@ class AuthState {
         userId = null,
         schoolId = null,
         username = null,
+        employeeId = null,
+        guardianId = null,
         error = null;
 
   const AuthState.loading()
@@ -77,6 +83,8 @@ class AuthState {
         userId = null,
         schoolId = null,
         username = null,
+        employeeId = null,
+        guardianId = null,
         error = null;
 
   AuthState.error(String message)
@@ -88,6 +96,8 @@ class AuthState {
         userId = null,
         schoolId = null,
         username = null,
+        employeeId = null,
+        guardianId = null,
         error = message;
 
   AuthState copyWith({
@@ -99,6 +109,8 @@ class AuthState {
     String? userId,
     String? schoolId,
     String? username,
+    String? employeeId,
+    String? guardianId,
     String? error,
   }) {
     return AuthState(
@@ -110,6 +122,8 @@ class AuthState {
       userId: userId ?? this.userId,
       schoolId: schoolId ?? this.schoolId,
       username: username ?? this.username,
+      employeeId: employeeId ?? this.employeeId,
+      guardianId: guardianId ?? this.guardianId,
       error: error,
     );
   }

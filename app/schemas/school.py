@@ -13,6 +13,7 @@ class SchoolBase(BaseModel):
     country: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    nif: Optional[str] = None
     logo_url: Optional[str] = None
     subscription_notes: Optional[str] = None
 
@@ -29,6 +30,7 @@ class SchoolUpdate(BaseModel):
     country: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    nif: Optional[str] = None
     logo_url: Optional[str] = None
     subscription_notes: Optional[str] = None
     subscription_started_at: Optional[datetime] = None

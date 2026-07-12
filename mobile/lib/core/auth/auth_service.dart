@@ -16,12 +16,14 @@ class AuthService {
   static const String _userIdKey = 'user_id';
   static const String _schoolIdKey = 'school_id';
   static const String _usernameKey = 'username';
+  static const String _employeeIdKey = 'employee_id';
+  static const String _guardianIdKey = 'guardian_id';
 
   AuthService(this._api, this._storage);
 
   /// Login: POST /auth/login with {username, password, school_slug?}
   /// Stores tokens in FlutterSecureStorage.
-  /// Decodes JWT to extract role, user_id, school_id.
+  /// Decodes JWT to extract role, user_id, school_id, employee_id, guardian_id.
   Future<AuthState> login({
     required String username,
     required String password,
@@ -57,8 +59,9 @@ class AuthService {
     final userId =
         payload['user_id']?.toString() ?? payload['sub']?.toString() ?? '';
     final schoolId = payload['school_id']?.toString() ?? '';
-    final storedUsername =
-        payload['username']?.toString() ?? username;
+    final storedUsername = payload['username']?.toString() ?? username;
+    final employeeId = payload['employee_id'] as String?;
+    final guardianId = payload['guardian_id'] as String?;
 
     // Persist everything to secure storage
     await _storage.write(key: _accessTokenKey, value: accessToken);
@@ -70,6 +73,16 @@ class AuthService {
     await _storage.write(key: _userIdKey, value: userId);
     await _storage.write(key: _schoolIdKey, value: schoolId);
     await _storage.write(key: _usernameKey, value: storedUsername);
+    if (employeeId != null && employeeId.isNotEmpty) {
+      await _storage.write(key: _employeeIdKey, value: employeeId);
+    } else {
+      await _storage.delete(key: _employeeIdKey);
+    }
+    if (guardianId != null && guardianId.isNotEmpty) {
+      await _storage.write(key: _guardianIdKey, value: guardianId);
+    } else {
+      await _storage.delete(key: _guardianIdKey);
+    }
 
     return AuthState(
       isAuthenticated: true,
@@ -80,6 +93,8 @@ class AuthService {
       userId: userId,
       schoolId: schoolId.isNotEmpty ? schoolId : null,
       username: storedUsername,
+      employeeId: employeeId?.isNotEmpty == true ? employeeId : null,
+      guardianId: guardianId?.isNotEmpty == true ? guardianId : null,
     );
   }
 
@@ -124,6 +139,8 @@ class AuthService {
     final userId = await _storage.read(key: _userIdKey);
     final schoolId = await _storage.read(key: _schoolIdKey);
     final username = await _storage.read(key: _usernameKey);
+    final employeeId = await _storage.read(key: _employeeIdKey);
+    final guardianId = await _storage.read(key: _guardianIdKey);
 
     return AuthState(
       isAuthenticated: true,
@@ -134,6 +151,8 @@ class AuthService {
       userId: userId,
       schoolId: schoolId?.isNotEmpty == true ? schoolId : null,
       username: username,
+      employeeId: employeeId?.isNotEmpty == true ? employeeId : null,
+      guardianId: guardianId?.isNotEmpty == true ? guardianId : null,
     );
   }
 
@@ -163,12 +182,24 @@ class AuthService {
       final userId = payload['user_id']?.toString() ?? '';
       final schoolId = payload['school_id']?.toString() ?? '';
       final username = payload['username']?.toString() ?? '';
+      final employeeId = payload['employee_id'] as String?;
+      final guardianId = payload['guardian_id'] as String?;
 
       await _storage.write(
           key: _roleKey, value: AuthState.roleToStorageString(role));
       await _storage.write(key: _userIdKey, value: userId);
       await _storage.write(key: _schoolIdKey, value: schoolId);
       await _storage.write(key: _usernameKey, value: username);
+      if (employeeId != null && employeeId.isNotEmpty) {
+        await _storage.write(key: _employeeIdKey, value: employeeId);
+      } else {
+        await _storage.delete(key: _employeeIdKey);
+      }
+      if (guardianId != null && guardianId.isNotEmpty) {
+        await _storage.write(key: _guardianIdKey, value: guardianId);
+      } else {
+        await _storage.delete(key: _guardianIdKey);
+      }
 
       return AuthState(
         isAuthenticated: true,
@@ -179,6 +210,8 @@ class AuthService {
         userId: userId.isNotEmpty ? userId : null,
         schoolId: schoolId.isNotEmpty ? schoolId : null,
         username: username.isNotEmpty ? username : null,
+        employeeId: employeeId?.isNotEmpty == true ? employeeId : null,
+        guardianId: guardianId?.isNotEmpty == true ? guardianId : null,
       );
     } catch (_) {
       await _clearAll();
@@ -193,6 +226,8 @@ class AuthService {
     await _storage.delete(key: _userIdKey);
     await _storage.delete(key: _schoolIdKey);
     await _storage.delete(key: _usernameKey);
+    await _storage.delete(key: _employeeIdKey);
+    await _storage.delete(key: _guardianIdKey);
   }
 
   /// Decodes the JWT payload without verifying the signature.

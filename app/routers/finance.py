@@ -113,7 +113,23 @@ async def list_expenses(
     if date_to:
         query = query.where(Expense.expense_date <= date_to)
     result = await db.execute(query.order_by(Expense.expense_date.desc()).offset(skip).limit(limit))
-    return result.scalars().all()
+    expenses = result.scalars().all()
+
+    # Enrich with category names
+    cat_ids = list({e.category_id for e in expenses})
+    cat_map: dict = {}
+    if cat_ids:
+        cat_result = await db.execute(
+            select(ExpenseCategory.id, ExpenseCategory.name).where(ExpenseCategory.id.in_(cat_ids))
+        )
+        cat_map = {row[0]: row[1] for row in cat_result.all()}
+
+    output = []
+    for expense in expenses:
+        data = ExpenseResponse.model_validate(expense)
+        data.category_name = cat_map.get(expense.category_id)
+        output.append(data)
+    return output
 
 
 @router.post("/expenses", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)

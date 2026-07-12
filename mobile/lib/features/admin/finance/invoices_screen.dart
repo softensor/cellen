@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/auth/auth_provider.dart';
 import '../../../core/models/invoice.dart';
 import '../../../core/models/child.dart';
 
@@ -267,8 +268,17 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
       final api = ref.read(apiClientProvider);
       final tuition = double.tryParse(_tuitionCtrl.text) ?? 0.0;
       final otherFees = double.tryParse(_otherFeesCtrl.text) ?? 0.0;
+      final employeeId = ref.read(authProvider).employeeId;
+      if (employeeId == null) {
+        setState(() {
+          _error = 'Utilizador não tem registo de funcionário associado';
+          _isLoading = false;
+        });
+        return;
+      }
       await api.post('/finance/invoices', data: {
         'child_id': _selectedChildId,
+        'issued_by': employeeId,
         'reference_month':
             '${_referenceMonth.year.toString().padLeft(4, '0')}-${_referenceMonth.month.toString().padLeft(2, '0')}-01',
         'tuition_amount': tuition,

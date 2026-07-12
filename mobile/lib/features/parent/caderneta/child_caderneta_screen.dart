@@ -11,7 +11,7 @@ import '../../../core/models/caderneta.dart';
 final parentCadernetasProvider =
     FutureProvider.autoDispose<List<Caderneta>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/cadernetas',
+  final data = await api.get('/parent/cadernetas',
       queryParameters: {'ordering': '-report_date'}) as List;
   return data
       .map((e) => Caderneta.fromJson(e as Map<String, dynamic>))

@@ -374,12 +374,92 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                         ? 'Guardar Alterações'
                         : 'Criar Funcionário'),
               ),
+
+              if (isEditing) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.lock_reset),
+                  label: const Text('Repor Palavra-passe'),
+                  onPressed: () => _showResetPasswordDialog(context),
+                ),
+              ],
+
               const SizedBox(height: 16),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showResetPasswordDialog(BuildContext context) async {
+    final pwCtrl = TextEditingController();
+    bool obscure = true;
+    String? dialogError;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Repor Palavra-passe'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: pwCtrl,
+                obscureText: obscure,
+                decoration: InputDecoration(
+                  labelText: 'Nova Palavra-passe',
+                  suffixIcon: IconButton(
+                    icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (pwCtrl.text.length < 6) {
+                  setDialogState(() => dialogError = 'Mínimo 6 caracteres');
+                  return;
+                }
+                try {
+                  final api = ref.read(apiClientProvider);
+                  await api.patch(
+                    '/employees/${widget.employeeId}/set-password',
+                    data: {'password': pwCtrl.text},
+                  );
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Palavra-passe reposta com sucesso')),
+                    );
+                  }
+                } catch (e) {
+                  setDialogState(() => dialogError = e.toString());
+                }
+              },
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    pwCtrl.dispose();
   }
 
   Widget _sectionHeader(BuildContext context, String text) {

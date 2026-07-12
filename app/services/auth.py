@@ -45,6 +45,8 @@ def build_tokens_for_school_user(user: User) -> dict:
         "sub": str(user.id),
         "role": user.role,
         "school_id": str(user.school_id),
+        "employee_id": str(user.employee_id) if user.employee_id else None,
+        "guardian_id": str(user.guardian_id) if user.guardian_id else None,
     }
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
