@@ -48,6 +48,8 @@ import '../../features/health/immunizations_screen.dart';
 import '../../features/admin/guardians/guardians_list_screen.dart';
 import '../../features/admin/guardians/guardian_form_screen.dart';
 import '../../features/trip_authorizations/trip_authorizations_screen.dart';
+import '../../features/pickup/pickup_authorizations_screen.dart';
+import '../../features/pickup/meal_orders_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Nav item definitions per role
@@ -71,6 +73,8 @@ const _adminItems = [
   SidebarItem(path: '/admin/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders', label: 'Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
 ];
 
@@ -84,6 +88,8 @@ const _teacherItems = [
   SidebarItem(path: '/teacher/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders', label: 'Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
   SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
 ];
@@ -99,6 +105,8 @@ const _parentItems = [
   SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders', label: 'Pré-Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
   SidebarItem(path: '/parent/invoices', label: 'Faturas', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long),
 ];
 
@@ -387,6 +395,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const TripAuthorizationsScreen(),
           ),
           GoRoute(
+            path: '/pickup-authorizations',
+            builder: (_, __) => const PickupAuthorizationsScreen(),
+          ),
+          GoRoute(
+            path: '/meal-orders',
+            builder: (_, __) => const MealOrdersScreen(),
+          ),
+          GoRoute(
             path: '/evaluations',
             builder: (_, __) => const EvaluationsScreen(),
           ),
@@ -472,6 +488,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/appointments',
             builder: (_, __) => const AppointmentsScreen(),
+          ),
+          GoRoute(
+            path: '/trip-authorizations',
+            builder: (_, __) => const TripAuthorizationsScreen(),
+          ),
+          GoRoute(
+            path: '/pickup-authorizations',
+            builder: (_, __) => const PickupAuthorizationsScreen(),
+          ),
+          GoRoute(
+            path: '/meal-orders',
+            builder: (_, __) => const MealOrdersScreen(),
           ),
           GoRoute(
             path: '/messages',
@@ -565,6 +593,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/health',
             builder: (_, __) => const HealthEventsScreen(),
+          ),
+          GoRoute(
+            path: '/trip-authorizations',
+            builder: (_, __) => const TripAuthorizationsScreen(),
+          ),
+          GoRoute(
+            path: '/pickup-authorizations',
+            builder: (_, __) => const PickupAuthorizationsScreen(),
+          ),
+          GoRoute(
+            path: '/meal-orders',
+            builder: (_, __) => const MealOrdersScreen(),
           ),
         ],
       ),
