@@ -239,7 +239,7 @@ class _ParentMealViewState extends ConsumerState<_ParentMealView> {
                 // Build ordered map: date -> mealType -> order
                 final orderMap = <String, Map<String, MealOrder>>{};
                 for (final o in childOrders) {
-                  orderMap.putIfAbsent(o.orderDate, () {})[o.mealType] = o;
+                  orderMap.putIfAbsent(o.orderDate, () => <String, MealOrder>{})[o.mealType] = o;
                 }
 
                 return ListView(
@@ -439,7 +439,7 @@ class _StaffMealView extends ConsumerWidget {
                   grouped[d] = {};
                 }
                 for (final c in counts) {
-                  grouped.putIfAbsent(c.orderDate, () {})[c.mealType] = c.total;
+                  grouped.putIfAbsent(c.orderDate, () => <String, int>{})[c.mealType] = c.total;
                 }
 
                 return ListView(
