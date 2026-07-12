@@ -20,6 +20,19 @@ def compute_hash(
     return hashlib.sha256(data.encode()).hexdigest()
 
 
+async def get_last_document_hash(db, school_id, model_class) -> str:
+    """Get hash_code of the most recent document of this type for chain linking."""
+    from sqlalchemy import desc, select
+    result = await db.execute(
+        select(model_class.hash_code)
+        .where(model_class.school_id == school_id)
+        .order_by(desc(model_class.series_number))
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    return row or ""
+
+
 async def get_next_series_number(db, school_id, doc_type: str, year: int) -> int:
     """Atomically get and increment next number for document series"""
     from sqlalchemy import select

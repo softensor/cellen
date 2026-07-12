@@ -36,7 +36,7 @@ async def list_employees(
     employee_status: Optional[str] = None,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(require_school_admin),
 ):
     query = select(Employee).where(Employee.school_id == school_id)
     if employee_type:
@@ -86,7 +86,7 @@ async def get_employee(
     employee_id: uuid.UUID,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(require_school_admin),
 ):
     result = await db.execute(
         select(Employee).where(Employee.id == employee_id, Employee.school_id == school_id)

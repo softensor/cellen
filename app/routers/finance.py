@@ -991,7 +991,7 @@ async def void_invoice(
 ):
     from app.models.modern import CreditNote
     from app.models.school import School
-    from app.utils.agt import compute_hash, generate_document_number, get_next_series_number
+    from app.utils.agt import compute_hash, generate_document_number, get_last_document_hash, get_next_series_number
 
     result = await db.execute(
         select(Invoice).where(Invoice.id == invoice_id, Invoice.school_id == school_id)
@@ -1021,7 +1021,7 @@ async def void_invoice(
     iva_amount = invoice.iva_amount if invoice.iva_amount else Decimal("0")
     total_amount = taxable_base + iva_amount
 
-    prev_hash = invoice.hash_code or ""
+    prev_hash = await get_last_document_hash(db, school_id, CreditNote)
     nc_hash = compute_hash(
         nc_doc_number, today, nif_emitter,
         invoice.nif_cliente or "Consumidor Final",
@@ -1104,7 +1104,7 @@ async def create_receipt(
 ):
     from app.models.modern import Receipt
     from app.models.school import School
-    from app.utils.agt import compute_hash, generate_document_number, get_next_series_number
+    from app.utils.agt import compute_hash, generate_document_number, get_last_document_hash, get_next_series_number
 
     # Verify payment belongs to school
     pay_result = await db.execute(
@@ -1126,7 +1126,7 @@ async def create_receipt(
     rc_number = await get_next_series_number(db, school_id, "RC", today.year)
     rc_doc_number = generate_document_number("RC", today.year, rc_number)
 
-    prev_hash = ""
+    prev_hash = await get_last_document_hash(db, school_id, Receipt)
     rc_hash = compute_hash(
         rc_doc_number, today, nif_emitter,
         body.nif_cliente or "Consumidor Final",
@@ -1339,7 +1339,7 @@ async def generate_invoice_for_contract(
 ):
     from app.models.modern import Contract
     from app.models.school import School
-    from app.utils.agt import compute_hash, generate_document_number, get_next_series_number
+    from app.utils.agt import compute_hash, generate_document_number, get_last_document_hash, get_next_series_number
 
     result = await db.execute(
         select(Contract).where(Contract.id == contract_id, Contract.school_id == school_id)
@@ -1368,7 +1368,7 @@ async def generate_invoice_for_contract(
 
     ft_number = await get_next_series_number(db, school_id, "FT", today.year)
     ft_doc_number = generate_document_number("FT", today.year, ft_number)
-    ft_hash = compute_hash(ft_doc_number, today, nif_emitter, "Consumidor Final", float(total_amount), "")
+    ft_hash = compute_hash(ft_doc_number, today, nif_emitter, "Consumidor Final", float(total_amount), await get_last_document_hash(db, school_id, Invoice))
 
     invoice = Invoice(
         school_id=school_id,
@@ -1413,7 +1413,7 @@ async def auto_generate_contract_invoices(
 ):
     from app.models.modern import Contract
     from app.models.school import School
-    from app.utils.agt import compute_hash, generate_document_number, get_next_series_number
+    from app.utils.agt import compute_hash, generate_document_number, get_last_document_hash, get_next_series_number
 
     employee_id = getattr(current_user, "employee_id", None)
     if employee_id is None:
@@ -1461,7 +1461,8 @@ async def auto_generate_contract_invoices(
             ft_number = await get_next_series_number(db, school_id, "FT", today.year)
             ft_doc_number = generate_document_number("FT", today.year, ft_number)
             ft_hash = compute_hash(
-                ft_doc_number, today, nif_emitter, "Consumidor Final", float(total_amount), ""
+                ft_doc_number, today, nif_emitter, "Consumidor Final", float(total_amount),
+                await get_last_document_hash(db, school_id, Invoice)
             )
 
             invoice = Invoice(

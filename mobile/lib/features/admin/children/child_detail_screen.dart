@@ -210,63 +210,250 @@ class _InfoTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Guardians Tab
 // ---------------------------------------------------------------------------
-class _GuardiansTab extends ConsumerWidget {
+class _GuardiansTab extends ConsumerStatefulWidget {
   final String childId;
   const _GuardiansTab({required this.childId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final guardiansAsync = ref.watch(childGuardiansProvider(childId));
-    return guardiansAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Erro: $e'),
+  ConsumerState<_GuardiansTab> createState() => _GuardiansTabState();
+}
+
+class _GuardiansTabState extends ConsumerState<_GuardiansTab> {
+  static const _relationships = [
+    ('father', 'Pai'),
+    ('mother', 'Mãe'),
+    ('grandparent', 'Avô/Avó'),
+    ('legal_guardian', 'Tutor Legal'),
+    ('sibling', 'Irmão/Irmã'),
+    ('uncle_aunt', 'Tio/Tia'),
+    ('other', 'Outro'),
+  ];
+
+  Future<void> _showLinkDialog() async {
+    // Load all school guardians
+    final api = ref.read(apiClientProvider);
+    List allGuardians = [];
+    try {
+      allGuardians = await api.get('/guardians') as List;
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted) return;
+
+    String? selectedGuardianId;
+    String selectedRelationship = 'father';
+    bool isPrimary = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: const Text('Ligar Encarregado'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(
+                      labelText: 'Encarregado *',
+                      border: OutlineInputBorder()),
+                  items: allGuardians
+                      .map((g) => DropdownMenuItem<String>(
+                            value: g['id'].toString(),
+                            child: Text(
+                                '${g['first_name']} ${g['last_name']}'),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setS(() => selectedGuardianId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedRelationship,
+                  decoration: const InputDecoration(
+                      labelText: 'Parentesco',
+                      border: OutlineInputBorder()),
+                  items: _relationships
+                      .map((r) => DropdownMenuItem(
+                          value: r.$1, child: Text(r.$2)))
+                      .toList(),
+                  onChanged: (v) =>
+                      setS(() => selectedRelationship = v!),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  value: isPrimary,
+                  onChanged: (v) => setS(() => isPrimary = v!),
+                  title: const Text('Contacto principal'),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
+            ),
+          ),
+          actions: [
             TextButton(
-              onPressed: () =>
-                  ref.invalidate(childGuardiansProvider(childId)),
-              child: const Text('Tentar novamente'),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: selectedGuardianId == null
+                  ? null
+                  : () async {
+                      try {
+                        await api.post(
+                          '/guardians/$selectedGuardianId/children',
+                          data: {
+                            'child_id': widget.childId,
+                            'relationship_type': selectedRelationship,
+                            'is_primary_contact': isPrimary,
+                          },
+                        );
+                        ref.invalidate(childGuardiansProvider(widget.childId));
+                        if (mounted) Navigator.pop(ctx);
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())));
+                        }
+                      }
+                    },
+              child: const Text('Ligar'),
             ),
           ],
         ),
       ),
-      data: (guardians) {
-        if (guardians.isEmpty) {
-          return const Center(
-            child: Text('Nenhum encarregado registado'),
-          );
+    );
+  }
+
+  Future<void> _unlink(String guardianId, String guardianName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remover ligação'),
+        content: Text('Remover $guardianName desta criança?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final api = ref.read(apiClientProvider);
+      try {
+        await api.delete('/guardians/$guardianId/children/${widget.childId}');
+        ref.invalidate(childGuardiansProvider(widget.childId));
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e.toString())));
         }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: guardians.length,
-          itemBuilder: (context, i) {
-            final g = guardians[i];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(child: Text(g.fullName[0])),
-                title: Text(g.fullName),
-                subtitle: Text(g.relationshipLabel),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (g.isPrimary)
-                      const Chip(
-                          label: Text('Principal',
-                              style: TextStyle(fontSize: 11))),
-                    if (g.authorizedPickup)
-                      const Text('Autorizado recolha',
-                          style: TextStyle(fontSize: 11, color: Colors.green)),
-                  ],
-                ),
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final guardiansAsync = ref.watch(childGuardiansProvider(widget.childId));
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showLinkDialog,
+        icon: const Icon(Icons.person_add),
+        label: const Text('Ligar Encarregado'),
+      ),
+      body: guardiansAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Erro: $e'),
+              TextButton(
+                onPressed: () =>
+                    ref.invalidate(childGuardiansProvider(widget.childId)),
+                child: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+        data: (guardians) {
+          if (guardians.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.people_outline,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.outlineVariant),
+                  const SizedBox(height: 16),
+                  const Text('Nenhum encarregado ligado'),
+                  const SizedBox(height: 8),
+                  const Text('Use o botão abaixo para ligar um encarregado',
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ],
               ),
             );
-          },
-        );
-      },
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+            itemCount: guardians.length,
+            itemBuilder: (context, i) {
+              final g = guardians[i];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(child: Text(g.fullName[0])),
+                  title: Text(g.fullName),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(g.relationshipLabel),
+                      if (g.phone != null)
+                        Text(g.phone!,
+                            style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (g.isPrimary)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text('Principal',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimaryContainer)),
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.link_off,
+                            color: Colors.red, size: 20),
+                        tooltip: 'Remover ligação',
+                        onPressed: () => _unlink(g.id, g.fullName),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

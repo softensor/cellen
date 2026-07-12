@@ -29,7 +29,7 @@ async def list_guardians(
     search: Optional[str] = None,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(require_school_admin),
 ):
     query = select(Guardian).where(Guardian.school_id == school_id)
     if search:
@@ -81,7 +81,7 @@ async def get_guardian(
     guardian_id: uuid.UUID,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(require_school_admin),
 ):
     result = await db.execute(
         select(Guardian).where(Guardian.id == guardian_id, Guardian.school_id == school_id)

@@ -72,7 +72,7 @@ class GuardianResponse(GuardianBase):
 
 
 class ChildGuardianLink(BaseModel):
-    guardian_id: uuid.UUID
+    child_id: uuid.UUID
     relationship_type: str  # father, mother, legal_guardian, grandparent, other
     is_primary_contact: bool = False
 
