@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
 
@@ -1038,7 +1038,7 @@ class CreditNoteResponse(BaseModel):
     iva_amount: Decimal
     total_amount: Decimal
     hash_code: Optional[str] = None
-    created_at: Optional[date] = None
+    created_at: Optional[datetime] = None
 
 
 @router.post("/invoices/{invoice_id}/void", response_model=CreditNoteResponse)

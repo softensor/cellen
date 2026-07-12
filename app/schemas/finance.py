@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.base import DecimalFloat
+
 
 # Expense Category
 class ExpenseCategoryBase(BaseModel):
@@ -33,7 +35,7 @@ class ExpenseBase(BaseModel):
     registered_by: uuid.UUID
     school_year_id: Optional[uuid.UUID] = None
     description: str
-    amount: Decimal
+    amount: DecimalFloat
     expense_date: date
     payment_method: Optional[str] = None
     reference: Optional[str] = None
@@ -49,7 +51,7 @@ class ExpenseUpdate(BaseModel):
     category_id: Optional[uuid.UUID] = None
     school_year_id: Optional[uuid.UUID] = None
     description: Optional[str] = None
-    amount: Optional[Decimal] = None
+    amount: Optional[DecimalFloat] = None
     expense_date: Optional[date] = None
     payment_method: Optional[str] = None
     reference: Optional[str] = None
@@ -74,8 +76,8 @@ class InvoiceBase(BaseModel):
     invoice_date: Optional[date] = None
     reference_month: date
     description: Optional[str] = None
-    tuition_amount: Decimal = Decimal("0")
-    other_fees: Decimal = Decimal("0")
+    tuition_amount: DecimalFloat = Decimal("0")
+    other_fees: DecimalFloat = Decimal("0")
     due_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -88,16 +90,16 @@ class InvoiceBulkCreate(BaseModel):
     school_year_id: uuid.UUID
     issued_by: uuid.UUID
     reference_month: date
-    tuition_amount: Decimal
-    other_fees: Decimal = Decimal("0")
+    tuition_amount: DecimalFloat
+    other_fees: DecimalFloat = Decimal("0")
     due_date: Optional[date] = None
     description: Optional[str] = None
 
 
 class InvoiceUpdate(BaseModel):
     description: Optional[str] = None
-    tuition_amount: Optional[Decimal] = None
-    other_fees: Optional[Decimal] = None
+    tuition_amount: Optional[DecimalFloat] = None
+    other_fees: Optional[DecimalFloat] = None
     due_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -106,10 +108,10 @@ class InvoiceResponse(InvoiceBase):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     school_id: uuid.UUID
-    total_amount: Decimal
+    total_amount: DecimalFloat
     status: str
-    amount_paid: Decimal = Decimal("0")
-    balance: Decimal = Decimal("0")
+    amount_paid: DecimalFloat = Decimal("0")
+    balance: DecimalFloat = Decimal("0")
     multicaixa_entity: Optional[str] = None
     multicaixa_ref: Optional[str] = None
     created_at: datetime
@@ -128,19 +130,19 @@ class ParentInvoiceResponse(BaseModel):
     child_id: uuid.UUID
     child_name: str
     reference_month: date
-    total_amount: Decimal
+    total_amount: DecimalFloat
     status: str
     due_date: Optional[date] = None
     multicaixa_entity: Optional[str] = None
     multicaixa_ref: Optional[str] = None
-    amount_paid: Decimal = Decimal("0")
-    balance: Decimal = Decimal("0")
+    amount_paid: DecimalFloat = Decimal("0")
+    balance: DecimalFloat = Decimal("0")
 
 
 # Payment
 class PaymentAllocation(BaseModel):
     invoice_id: uuid.UUID
-    amount_applied: Decimal
+    amount_applied: DecimalFloat
 
 
 class PaymentBase(BaseModel):
@@ -148,7 +150,7 @@ class PaymentBase(BaseModel):
     received_by: uuid.UUID
     payment_date: Optional[date] = None
     receipt_number: Optional[str] = None
-    amount: Decimal
+    amount: DecimalFloat
     payment_method: Optional[str] = None
     notes: Optional[str] = None
 
@@ -169,31 +171,31 @@ class PaymentInvoiceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     payment_id: uuid.UUID
     invoice_id: uuid.UUID
-    amount_applied: Decimal
+    amount_applied: DecimalFloat
 
 
 # Finance Reports
 class PLByCategory(BaseModel):
     category_id: uuid.UUID
     category_name: str
-    total: Decimal
+    total: DecimalFloat
 
 
 class MonthlyPL(BaseModel):
     year: int
     month: int
-    income: Decimal
-    expenses: Decimal
-    net: Decimal
+    income: DecimalFloat
+    expenses: DecimalFloat
+    net: DecimalFloat
     by_category: List[PLByCategory] = []
 
 
 class AnnualPL(BaseModel):
     year: int
     months: List[MonthlyPL]
-    total_income: Decimal
-    total_expenses: Decimal
-    total_net: Decimal
+    total_income: DecimalFloat
+    total_expenses: DecimalFloat
+    total_net: DecimalFloat
 
 
 class OutstandingInvoice(BaseModel):
@@ -201,9 +203,9 @@ class OutstandingInvoice(BaseModel):
     child_id: uuid.UUID
     child_name: str
     reference_month: date
-    total_amount: Decimal
-    amount_paid: Decimal
-    balance: Decimal
+    total_amount: DecimalFloat
+    amount_paid: DecimalFloat
+    balance: DecimalFloat
     due_date: Optional[date]
     days_overdue: int
     status: str
@@ -212,13 +214,13 @@ class OutstandingInvoice(BaseModel):
 class CashFlowMonth(BaseModel):
     year: int
     month: int
-    inflows: Decimal
-    outflows: Decimal
-    net: Decimal
+    inflows: DecimalFloat
+    outflows: DecimalFloat
+    net: DecimalFloat
 
 
 class RevenuByLevel(BaseModel):
     level: str
-    total_invoiced: Decimal
-    total_paid: Decimal
-    outstanding: Decimal
+    total_invoiced: DecimalFloat
+    total_paid: DecimalFloat
+    outstanding: DecimalFloat

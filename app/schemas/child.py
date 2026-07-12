@@ -5,6 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.base import DecimalFloat
+
 
 class ChildBase(BaseModel):
     cedula: str
@@ -16,7 +18,7 @@ class ChildBase(BaseModel):
     sex: Optional[str] = None
     nationality: Optional[str] = None
     naturality: Optional[str] = None
-    height: Optional[Decimal] = None
+    height: Optional[DecimalFloat] = None
     special_needs: Optional[str] = None
     medical_prescription: Optional[str] = None
     photo_url: Optional[str] = None
@@ -45,7 +47,7 @@ class ChildUpdate(BaseModel):
     sex: Optional[str] = None
     nationality: Optional[str] = None
     naturality: Optional[str] = None
-    height: Optional[Decimal] = None
+    height: Optional[DecimalFloat] = None
     special_needs: Optional[str] = None
     medical_prescription: Optional[str] = None
     photo_url: Optional[str] = None
@@ -73,4 +75,4 @@ class ChildResponse(ChildBase):
 
 class ChildBalance(BaseModel):
     child_id: uuid.UUID
-    outstanding_balance: Decimal
+    outstanding_balance: DecimalFloat

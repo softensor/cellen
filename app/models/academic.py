@@ -87,8 +87,8 @@ class Schedule(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    slots = relationship("ScheduleSlot", back_populates="schedule", cascade="all, delete-orphan")
-    teacher_links = relationship("ScheduleTeacher", back_populates="schedule", cascade="all, delete-orphan")
+    slots = relationship("ScheduleSlot", back_populates="schedule", cascade="all, delete-orphan", lazy="selectin")
+    teacher_links = relationship("ScheduleTeacher", back_populates="schedule", cascade="all, delete-orphan", lazy="selectin")
 
 
 class ScheduleTeacher(Base):

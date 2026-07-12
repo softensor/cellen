@@ -5,6 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.base import DecimalFloat
+
 
 class EmployeeBase(BaseModel):
     first_name: str
@@ -16,7 +18,7 @@ class EmployeeBase(BaseModel):
     civil_state: Optional[str] = None
     nationality: Optional[str] = None
     naturality: Optional[str] = None
-    height: Optional[Decimal] = None
+    height: Optional[DecimalFloat] = None
     profession: Optional[str] = None
     qualifications: Optional[str] = None
     id_card_number: Optional[str] = None
@@ -37,7 +39,7 @@ class EmployeeBase(BaseModel):
     social_security: Optional[str] = None
     contract_type: Optional[str] = None
     hire_date: Optional[date] = None
-    salary: Optional[Decimal] = None
+    salary: Optional[DecimalFloat] = None
     status: str = "active"
     privilege: Optional[str] = None
 
@@ -57,7 +59,7 @@ class EmployeeUpdate(BaseModel):
     civil_state: Optional[str] = None
     nationality: Optional[str] = None
     naturality: Optional[str] = None
-    height: Optional[Decimal] = None
+    height: Optional[DecimalFloat] = None
     profession: Optional[str] = None
     qualifications: Optional[str] = None
     id_card_number: Optional[str] = None
@@ -78,7 +80,7 @@ class EmployeeUpdate(BaseModel):
     social_security: Optional[str] = None
     contract_type: Optional[str] = None
     hire_date: Optional[date] = None
-    salary: Optional[Decimal] = None
+    salary: Optional[DecimalFloat] = None
     status: Optional[str] = None
     privilege: Optional[str] = None
 

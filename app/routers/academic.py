@@ -207,6 +207,7 @@ async def create_schedule(
     db.add(schedule)
     await db.commit()
     await db.refresh(schedule)
+    await db.refresh(schedule, attribute_names=["slots", "teacher_links"])
     return schedule
 
 
