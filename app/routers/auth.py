@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.core.security import decode_token, create_access_token
+from app.core.security import decode_token, create_access_token, hash_password, verify_password
 from app.schemas.auth import (
     LoginRequest, TokenResponse, RefreshRequest, AccessTokenResponse, MeResponse
 )
@@ -14,6 +15,11 @@ from app.services.auth import (
     build_tokens_for_school_user,
     build_tokens_for_platform_user,
 )
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -69,6 +75,23 @@ async def refresh_token(body: RefreshRequest):
 async def logout():
     # Stateless JWT — client discards token
     return {"message": "Logged out successfully"}
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordBody,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    password_hash = getattr(current_user, "password_hash", None)
+    if password_hash is None or not verify_password(body.current_password, password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Palavra-passe actual incorrecta",
+        )
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return {"message": "Palavra-passe alterada com sucesso"}
 
 
 @router.get("/me", response_model=MeResponse)

@@ -9,8 +9,8 @@ import 'api_exception.dart';
 // ---------------------------------------------------------------------------
 const String kBaseUrl = 'https://167.235.158.77.nip.io/api/v1';
 
-// The media root (for photo URLs) is the base without /api/v1
-const String kMediaBase = 'http://localhost:8000';
+// The media root (for photo URLs) — derived from kBaseUrl so it uses the same host
+final String kMediaBase = Uri.parse(kBaseUrl).origin;
 
 // Storage keys shared with AuthService
 const String kAccessTokenKey = 'access_token';

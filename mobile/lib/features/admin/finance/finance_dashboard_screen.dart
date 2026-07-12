@@ -196,6 +196,59 @@ class FinanceDashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.go('/admin/finance/contracts'),
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('Contratos'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.go('/admin/finance/receipts'),
+                      icon: const Icon(Icons.point_of_sale_outlined),
+                      label: const Text('Recibos'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.go('/admin/finance/credit-notes'),
+                      icon: const Icon(Icons.undo_outlined),
+                      label: const Text('Notas Crédito'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.go('/admin/finance/delinquent'),
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      label: const Text('Devedores'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.go('/admin/finance/saft'),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('Exportar SAF-T AO'),
+                ),
+              ),
 
               const SizedBox(height: 24),
 

@@ -1,62 +1,55 @@
-class FoodMenuItem {
-  final String id;
-  final String schoolId;
-  final DateTime menuDate;
-  final String? breakfast;
-  final String? lunchSoup;
-  final String? lunchMain;
-  final String? lunchDessert;
-  final String? lunchDrink;
-  final String? snack;
-  final String? notes;
+class FoodMenuItemEntry {
+  final int dayOfWeek;
+  final String mealType;
+  final String? mealComponent;
 
-  const FoodMenuItem({
-    required this.id,
-    required this.schoolId,
-    required this.menuDate,
-    this.breakfast,
-    this.lunchSoup,
-    this.lunchMain,
-    this.lunchDessert,
-    this.lunchDrink,
-    this.snack,
-    this.notes,
+  const FoodMenuItemEntry({
+    required this.dayOfWeek,
+    required this.mealType,
+    this.mealComponent,
   });
 
-  String get weekdayLabel {
-    const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-    final index = menuDate.weekday - 1;
-    return index >= 0 && index < labels.length ? labels[index] : '';
-  }
-
-  factory FoodMenuItem.fromJson(Map<String, dynamic> json) {
-    return FoodMenuItem(
-      id: json['id']?.toString() ?? '',
-      schoolId: json['school_id']?.toString() ?? '',
-      menuDate: json['menu_date'] != null
-          ? DateTime.tryParse(json['menu_date'] as String) ?? DateTime.now()
-          : DateTime.now(),
-      breakfast: json['breakfast'] as String?,
-      lunchSoup: json['lunch_soup'] as String?,
-      lunchMain: json['lunch_main'] as String?,
-      lunchDessert: json['lunch_dessert'] as String?,
-      lunchDrink: json['lunch_drink'] as String?,
-      snack: json['snack'] as String?,
-      notes: json['notes'] as String?,
+  factory FoodMenuItemEntry.fromJson(Map<String, dynamic> json) {
+    return FoodMenuItemEntry(
+      dayOfWeek: (json['day_of_week'] as num?)?.toInt() ?? 1,
+      mealType: json['meal_type'] as String? ?? '',
+      mealComponent: json['meal_component'] as String?,
     );
   }
+}
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'school_id': schoolId,
-        'menu_date':
-            '${menuDate.year.toString().padLeft(4, '0')}-${menuDate.month.toString().padLeft(2, '0')}-${menuDate.day.toString().padLeft(2, '0')}',
-        if (breakfast != null) 'breakfast': breakfast,
-        if (lunchSoup != null) 'lunch_soup': lunchSoup,
-        if (lunchMain != null) 'lunch_main': lunchMain,
-        if (lunchDessert != null) 'lunch_dessert': lunchDessert,
-        if (lunchDrink != null) 'lunch_drink': lunchDrink,
-        if (snack != null) 'snack': snack,
-        if (notes != null) 'notes': notes,
-      };
+class FoodMenu {
+  final String id;
+  final String schoolId;
+  final String level;
+  final DateTime startDate;
+  final DateTime endDate;
+  final List<FoodMenuItemEntry> items;
+
+  const FoodMenu({
+    required this.id,
+    required this.schoolId,
+    required this.level,
+    required this.startDate,
+    required this.endDate,
+    required this.items,
+  });
+
+  factory FoodMenu.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List<dynamic>? ?? [];
+    return FoodMenu(
+      id: json['id']?.toString() ?? '',
+      schoolId: json['school_id']?.toString() ?? '',
+      level: json['level'] as String? ?? '',
+      startDate: json['start_date'] != null
+          ? DateTime.tryParse(json['start_date'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      endDate: json['end_date'] != null
+          ? DateTime.tryParse(json['end_date'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      items: rawItems
+          .map((e) => FoodMenuItemEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }

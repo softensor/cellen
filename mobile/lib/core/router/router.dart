@@ -47,9 +47,142 @@ import '../../features/health/health_events_screen.dart';
 import '../../features/health/immunizations_screen.dart';
 import '../../features/admin/guardians/guardians_list_screen.dart';
 import '../../features/admin/guardians/guardian_form_screen.dart';
+import '../../features/admin/school_settings_screen.dart';
 import '../../features/trip_authorizations/trip_authorizations_screen.dart';
 import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
+import '../../core/api/api_client.dart';
+
+// ---------------------------------------------------------------------------
+// Change Password Dialog
+// ---------------------------------------------------------------------------
+
+class _ChangePasswordDialog extends ConsumerStatefulWidget {
+  const _ChangePasswordDialog();
+
+  @override
+  ConsumerState<_ChangePasswordDialog> createState() =>
+      _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState
+    extends ConsumerState<_ChangePasswordDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _currentCtrl = TextEditingController();
+  final _newCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _currentCtrl.dispose();
+    _newCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.post('/auth/change-password', data: {
+        'current_password': _currentCtrl.text,
+        'new_password': _newCtrl.text,
+      });
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Palavra-passe alterada com sucesso')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Alterar Palavra-passe'),
+      content: SizedBox(
+        width: 360,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_error != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(_error!,
+                      style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onErrorContainer)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: _currentCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Palavra-passe actual'),
+                obscureText: true,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Obrigatório' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _newCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Nova palavra-passe'),
+                obscureText: true,
+                validator: (v) => v == null || v.length < 6
+                    ? 'Mínimo 6 caracteres'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _confirmCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Confirmar nova palavra-passe'),
+                obscureText: true,
+                validator: (v) =>
+                    v != _newCtrl.text ? 'As palavras-passe não coincidem' : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Alterar'),
+        ),
+      ],
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Nav item definitions per role
@@ -63,6 +196,10 @@ const _adminItems = [
   SidebarItem(path: '/admin/finance', label: 'Financeiro', icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
   SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
   SidebarItem(path: '/admin/employees', label: 'Funcionários', icon: Icons.badge_outlined, selectedIcon: Icons.badge),
+  SidebarItem(path: '/admin/absences', label: 'Faltas', icon: Icons.event_busy_outlined, selectedIcon: Icons.event_busy),
+  SidebarItem(path: '/admin/academic/turmas', label: 'Turmas', icon: Icons.class_outlined, selectedIcon: Icons.class_),
+  SidebarItem(path: '/admin/academic/enrollments', label: 'Matrículas', icon: Icons.how_to_reg_outlined, selectedIcon: Icons.how_to_reg),
+  SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
   SidebarItem(path: '/events', label: 'Calendário', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
   SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
   SidebarItem(path: '/incidents', label: 'Ocorrências', icon: Icons.report_outlined, selectedIcon: Icons.report),
@@ -102,8 +239,9 @@ const _parentItems = [
   SidebarItem(path: '/parent/menu', label: 'Ementa', icon: Icons.restaurant_outlined, selectedIcon: Icons.restaurant),
   SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
   SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
-  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
   SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
   SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
   SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
   SidebarItem(path: '/meal-orders', label: 'Pré-Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
@@ -150,6 +288,14 @@ class PlatformShell extends ConsumerWidget {
       title: _titleForPath(currentPath, _platformItems),
       actions: [
         IconButton(
+          icon: const Icon(Icons.lock_outline),
+          tooltip: 'Alterar palavra-passe',
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => const _ChangePasswordDialog(),
+          ),
+        ),
+        IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'Sair',
           onPressed: () => ref.read(authProvider.notifier).logout(),
@@ -172,6 +318,14 @@ class AdminShell extends ConsumerWidget {
       currentPath: currentPath,
       title: _titleForPath(currentPath, _adminItems),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.lock_outline),
+          tooltip: 'Alterar palavra-passe',
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => const _ChangePasswordDialog(),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'Sair',
@@ -196,6 +350,14 @@ class TeacherShell extends ConsumerWidget {
       title: _titleForPath(currentPath, _teacherItems),
       actions: [
         IconButton(
+          icon: const Icon(Icons.lock_outline),
+          tooltip: 'Alterar palavra-passe',
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => const _ChangePasswordDialog(),
+          ),
+        ),
+        IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'Sair',
           onPressed: () => ref.read(authProvider.notifier).logout(),
@@ -218,6 +380,14 @@ class ParentShell extends ConsumerWidget {
       currentPath: currentPath,
       title: _titleForPath(currentPath, _parentItems),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.lock_outline),
+          tooltip: 'Alterar palavra-passe',
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => const _ChangePasswordDialog(),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'Sair',
@@ -353,6 +523,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/absences',
             builder: (_, __) => const AbsencesScreen(),
+          ),
+          GoRoute(
+            path: '/admin/school-settings',
+            builder: (_, __) => const SchoolSettingsScreen(),
           ),
           GoRoute(
             path: '/admin/finance/contracts',

@@ -174,6 +174,44 @@ class ReceiptsScreen extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Payment model for picker
+// ---------------------------------------------------------------------------
+class _PaymentEntry {
+  final String id;
+  final double amount;
+  final String paymentDate;
+  final String? paymentMethod;
+
+  const _PaymentEntry({
+    required this.id,
+    required this.amount,
+    required this.paymentDate,
+    this.paymentMethod,
+  });
+
+  factory _PaymentEntry.fromJson(Map<String, dynamic> json) => _PaymentEntry(
+        id: json['id']?.toString() ?? '',
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+        paymentDate: json['payment_date'] as String? ?? '',
+        paymentMethod: json['payment_method'] as String?,
+      );
+
+  String get label {
+    final currency = NumberFormat.currency(locale: 'pt_PT', symbol: 'Kz');
+    final dateStr = paymentDate.isNotEmpty
+        ? (() {
+            try {
+              return DateFormat('dd/MM/yyyy').format(DateTime.parse(paymentDate));
+            } catch (_) {
+              return paymentDate;
+            }
+          })()
+        : '';
+    return '$dateStr — ${currency.format(amount)}${paymentMethod != null ? ' ($paymentMethod)' : ''}';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Create Receipt Dialog
 // ---------------------------------------------------------------------------
 class _CreateReceiptDialog extends ConsumerStatefulWidget {
@@ -187,22 +225,48 @@ class _CreateReceiptDialog extends ConsumerStatefulWidget {
 
 class _CreateReceiptDialogState extends ConsumerState<_CreateReceiptDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _paymentIdCtrl = TextEditingController();
-  final _invoiceIdCtrl = TextEditingController();
   final _nifCtrl = TextEditingController();
+  List<_PaymentEntry> _payments = [];
+  String? _selectedPaymentId;
+  bool _loadingPayments = true;
   bool _isLoading = false;
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _loadPayments();
+  }
+
+  @override
   void dispose() {
-    _paymentIdCtrl.dispose();
-    _invoiceIdCtrl.dispose();
     _nifCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _loadPayments() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final data = await api.get('/finance/payments', queryParameters: {'limit': '100'}) as List;
+      if (mounted) {
+        setState(() {
+          _payments = data
+              .map((e) => _PaymentEntry.fromJson(e as Map<String, dynamic>))
+              .toList();
+          _loadingPayments = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingPayments = false);
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedPaymentId == null) {
+      setState(() => _error = 'Seleccione um pagamento');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
@@ -210,9 +274,7 @@ class _CreateReceiptDialogState extends ConsumerState<_CreateReceiptDialog> {
     try {
       final api = ref.read(apiClientProvider);
       await api.post('/finance/receipts', data: {
-        'payment_id': _paymentIdCtrl.text.trim(),
-        if (_invoiceIdCtrl.text.trim().isNotEmpty)
-          'invoice_id': _invoiceIdCtrl.text.trim(),
+        'payment_id': _selectedPaymentId,
         if (_nifCtrl.text.trim().isNotEmpty) 'nif_cliente': _nifCtrl.text.trim(),
       });
       widget.onCreated();
@@ -230,30 +292,35 @@ class _CreateReceiptDialogState extends ConsumerState<_CreateReceiptDialog> {
     return AlertDialog(
       title: const Text('Novo Recibo'),
       content: SizedBox(
-        width: 400,
+        width: 420,
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _paymentIdCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'ID do Pagamento *'),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Obrigatório' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _invoiceIdCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'ID da Factura (opcional)'),
-              ),
+              if (_loadingPayments)
+                const Center(child: CircularProgressIndicator())
+              else
+                DropdownButtonFormField<String>(
+                  value: _selectedPaymentId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Pagamento *'),
+                  items: _payments
+                      .map((p) => DropdownMenuItem(
+                            value: p.id,
+                            child: Text(p.label,
+                                overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedPaymentId = v),
+                  validator: (v) =>
+                      v == null ? 'Seleccione um pagamento' : null,
+                ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _nifCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'NIF do cliente (opcional)'),
+                decoration: const InputDecoration(
+                    labelText: 'NIF do cliente (opcional)'),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 8),

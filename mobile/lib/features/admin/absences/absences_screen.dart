@@ -10,7 +10,6 @@ import '../../../core/api/api_client.dart';
 class EmployeeAbsence {
   final String id;
   final String employeeId;
-  final String employeeName;
   final DateTime absenceDate;
   final bool isJustified;
   final String? reason;
@@ -18,7 +17,6 @@ class EmployeeAbsence {
   const EmployeeAbsence({
     required this.id,
     required this.employeeId,
-    required this.employeeName,
     required this.absenceDate,
     required this.isJustified,
     this.reason,
@@ -28,12 +26,11 @@ class EmployeeAbsence {
     return EmployeeAbsence(
       id: json['id']?.toString() ?? '',
       employeeId: json['employee_id']?.toString() ?? '',
-      employeeName: json['employee_name'] as String? ?? '',
       absenceDate: json['absence_date'] != null
           ? DateTime.tryParse(json['absence_date'] as String) ??
               DateTime.now()
           : DateTime.now(),
-      isJustified: json['is_justified'] as bool? ?? false,
+      isJustified: json['justified'] as bool? ?? false,
       reason: json['reason'] as String?,
     );
   }
@@ -136,7 +133,7 @@ class AbsencesScreen extends ConsumerWidget {
                       ),
                     ),
                     title: Text(
-                      absence.employeeName,
+                      'Funcionário: ${absence.employeeId}',
                       style:
                           const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -237,7 +234,7 @@ class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
         'employee_id': _employeeIdCtrl.text.trim(),
         'absence_date':
             '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
-        'is_justified': _isJustified,
+        'justified': _isJustified,
         if (_reasonCtrl.text.trim().isNotEmpty)
           'reason': _reasonCtrl.text.trim(),
       });

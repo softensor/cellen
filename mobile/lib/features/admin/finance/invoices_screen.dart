@@ -13,7 +13,8 @@ import '../../../core/models/child.dart';
 final invoicesProvider =
     FutureProvider.autoDispose<List<Invoice>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/finance/invoices', queryParameters: {'ordering': '-invoice_date'}) as List;
+  final data = await api.get('/finance/invoices',
+      queryParameters: {'ordering': '-invoice_date'}) as List;
   return data
       .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
       .toList();
@@ -49,6 +50,28 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Facturas'),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'bulk_generate') {
+                _showBulkGenerateDialog(context);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'bulk_generate',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_awesome, size: 20),
+                    SizedBox(width: 8),
+                    Text('Gerar Facturas em Massa'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showCreateInvoiceSheet(context),
@@ -170,19 +193,73 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                                 ),
                             ],
                           ),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                currency.format(inv.totalAmount),
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
+                              Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    currency.format(inv.totalAmount),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  _StatusChip(
+                                      status: inv.status,
+                                      label: inv.statusLabel),
+                                ],
                               ),
-                              const SizedBox(height: 4),
-                              _StatusChip(
-                                  status: inv.status,
-                                  label: inv.statusLabel),
+                              const SizedBox(width: 4),
+                              // Action menu per invoice
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert,
+                                    size: 18),
+                                padding: EdgeInsets.zero,
+                                onSelected: (action) {
+                                  if (action == 'pay') {
+                                    _showRecordPaymentDialog(
+                                        context, inv);
+                                  } else if (action == 'void') {
+                                    _showVoidConfirmation(
+                                        context, inv);
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  if (inv.status != 'paid' &&
+                                      inv.status != 'cancelled' &&
+                                      inv.status != 'void')
+                                    const PopupMenuItem(
+                                      value: 'pay',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.payments_outlined,
+                                              size: 18,
+                                              color: Colors.green),
+                                          SizedBox(width: 8),
+                                          Text('Pagar'),
+                                        ],
+                                      ),
+                                    ),
+                                  if (inv.status != 'void' &&
+                                      inv.status != 'cancelled')
+                                    const PopupMenuItem(
+                                      value: 'void',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.cancel_outlined,
+                                              size: 18,
+                                              color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text('Anular'),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -221,6 +298,544 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
       ),
     );
   }
+
+  // -------------------------------------------------------------------------
+  // Task 1: Record Payment dialog
+  // -------------------------------------------------------------------------
+  void _showRecordPaymentDialog(BuildContext context, Invoice inv) {
+    showDialog(
+      context: context,
+      builder: (_) => _RecordPaymentDialog(
+        invoice: inv,
+        onSuccess: () => ref.invalidate(invoicesProvider),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Task 5: Void invoice confirmation
+  // -------------------------------------------------------------------------
+  void _showVoidConfirmation(BuildContext context, Invoice inv) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Anular Factura'),
+        content: const Text(
+            'Tem a certeza que deseja anular esta factura? Esta acção não pode ser desfeita.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _voidInvoice(inv);
+            },
+            child: const Text('Anular'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _voidInvoice(Invoice inv) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.post('/finance/invoices/${inv.id}/void');
+      ref.invalidate(invoicesProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Factura anulada com sucesso')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao anular factura: $e')),
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Task 4: Bulk generate dialog
+  // -------------------------------------------------------------------------
+  void _showBulkGenerateDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _BulkGenerateDialog(
+        onSuccess: (count) {
+          ref.invalidate(invoicesProvider);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content:
+                    Text('$count factura(s) gerada(s) com sucesso')),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Task 1: Record Payment dialog
+// ---------------------------------------------------------------------------
+class _RecordPaymentDialog extends ConsumerStatefulWidget {
+  final Invoice invoice;
+  final VoidCallback onSuccess;
+
+  const _RecordPaymentDialog(
+      {required this.invoice, required this.onSuccess});
+
+  @override
+  ConsumerState<_RecordPaymentDialog> createState() =>
+      _RecordPaymentDialogState();
+}
+
+class _RecordPaymentDialogState
+    extends ConsumerState<_RecordPaymentDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _amountCtrl;
+  final _notesCtrl = TextEditingController();
+  DateTime _paymentDate = DateTime.now();
+  String _paymentMethod = 'multicaixa_express';
+  bool _isLoading = false;
+  String? _error;
+
+  static const _paymentMethods = {
+    'multicaixa_express': 'Multicaixa Express',
+    'bank_transfer': 'Transferência Bancária',
+    'cash': 'Numerário',
+    'cheque': 'Cheque',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _amountCtrl = TextEditingController(
+        text: widget.invoice.totalAmount.toStringAsFixed(2));
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final employeeId = ref.read(authProvider).employeeId;
+    if (employeeId == null) {
+      setState(() =>
+          _error = 'Funcionário não associado a esta conta');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final api = ref.read(apiClientProvider);
+      final amount = double.tryParse(_amountCtrl.text) ?? 0.0;
+      final dateStr =
+          '${_paymentDate.year.toString().padLeft(4, '0')}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}';
+
+      await api.post('/finance/payments', data: {
+        'invoice_id': widget.invoice.id,
+        'amount': amount,
+        'payment_date': dateStr,
+        'payment_method': _paymentMethod,
+        'received_by': employeeId,
+        if (_notesCtrl.text.trim().isNotEmpty)
+          'notes': _notesCtrl.text.trim(),
+      });
+
+      widget.onSuccess();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _paymentDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (picked != null) setState(() => _paymentDate = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Registar Pagamento'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Valor (€) *',
+                  prefixIcon: Icon(Icons.euro),
+                ),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty)
+                    return 'Campo obrigatório';
+                  if (double.tryParse(v) == null)
+                    return 'Valor inválido';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: _pickDate,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Data de Pagamento',
+                    prefixIcon: Icon(Icons.calendar_today),
+                  ),
+                  child: Text(
+                      DateFormat('dd/MM/yyyy').format(_paymentDate)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _paymentMethod,
+                decoration: const InputDecoration(
+                  labelText: 'Método de Pagamento *',
+                  prefixIcon: Icon(Icons.payment),
+                ),
+                items: _paymentMethods.entries
+                    .map((e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(e.value),
+                        ))
+                    .toList(),
+                onChanged: (v) =>
+                    setState(() => _paymentMethod = v!),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _notesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Notas (opcional)',
+                  prefixIcon: Icon(Icons.notes),
+                ),
+                maxLines: 2,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _isLoading ? null : _submit,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('Confirmar'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Task 4: Bulk generate invoices dialog
+// ---------------------------------------------------------------------------
+class _BulkGenerateDialog extends ConsumerStatefulWidget {
+  final void Function(int count) onSuccess;
+
+  const _BulkGenerateDialog({required this.onSuccess});
+
+  @override
+  ConsumerState<_BulkGenerateDialog> createState() =>
+      _BulkGenerateDialogState();
+}
+
+class _BulkGenerateDialogState
+    extends ConsumerState<_BulkGenerateDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _tuitionCtrl = TextEditingController();
+  final _otherFeesCtrl = TextEditingController(text: '0');
+  DateTime _referenceMonth = DateTime.now();
+  DateTime? _dueDate;
+  String? _selectedSchoolYearId;
+  bool _isLoading = false;
+  bool _loadingYears = true;
+  String? _error;
+  List<Map<String, dynamic>> _schoolYears = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSchoolYears();
+  }
+
+  @override
+  void dispose() {
+    _tuitionCtrl.dispose();
+    _otherFeesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSchoolYears() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final data =
+          await api.get('/schools/school-years') as List;
+      setState(() {
+        _schoolYears = data
+            .map((e) => e as Map<String, dynamic>)
+            .toList();
+        _loadingYears = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Erro ao carregar anos lectivos: $e';
+        _loadingYears = false;
+      });
+    }
+  }
+
+  Future<void> _pickReferenceMonth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _referenceMonth,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      helpText: 'Seleccionar mês de referência',
+    );
+    if (picked != null) {
+      setState(() =>
+          _referenceMonth = DateTime(picked.year, picked.month, 1));
+    }
+  }
+
+  Future<void> _pickDueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) setState(() => _dueDate = picked);
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedSchoolYearId == null) {
+      setState(() => _error = 'Seleccione um ano lectivo');
+      return;
+    }
+
+    final employeeId = ref.read(authProvider).employeeId;
+    if (employeeId == null) {
+      setState(() =>
+          _error = 'Funcionário não associado a esta conta');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final api = ref.read(apiClientProvider);
+      final tuition = double.tryParse(_tuitionCtrl.text) ?? 0.0;
+      final otherFees =
+          double.tryParse(_otherFeesCtrl.text) ?? 0.0;
+      final refMonthStr =
+          '${_referenceMonth.year.toString().padLeft(4, '0')}-${_referenceMonth.month.toString().padLeft(2, '0')}-01';
+
+      final body = <String, dynamic>{
+        'school_year_id': _selectedSchoolYearId,
+        'issued_by': employeeId,
+        'reference_month': refMonthStr,
+        'tuition_amount': tuition,
+        'other_fees': otherFees,
+      };
+      if (_dueDate != null) {
+        body['due_date'] =
+            '${_dueDate!.year.toString().padLeft(4, '0')}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}';
+      }
+
+      final response =
+          await api.post('/finance/invoices/bulk-generate', data: body);
+
+      final count = (response is Map)
+          ? (response['count'] as int? ??
+              (response['invoices'] as List?)?.length ??
+              0)
+          : 0;
+
+      if (mounted) Navigator.pop(context);
+      widget.onSuccess(count);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Gerar Facturas em Massa'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _loadingYears
+            ? const SizedBox(
+                height: 80,
+                child: Center(child: CircularProgressIndicator()))
+            : Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedSchoolYearId,
+                        decoration: const InputDecoration(
+                          labelText: 'Ano Lectivo *',
+                          prefixIcon: Icon(Icons.school),
+                        ),
+                        items: _schoolYears
+                            .map((y) => DropdownMenuItem(
+                                  value:
+                                      y['id']?.toString() ?? '',
+                                  child: Text(
+                                      y['year_label'] as String? ??
+                                          ''),
+                                ))
+                            .toList(),
+                        onChanged: (v) => setState(
+                            () => _selectedSchoolYearId = v),
+                        validator: (v) => v == null
+                            ? 'Seleccione um ano lectivo'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: _pickReferenceMonth,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Mês de Referência *',
+                            prefixIcon: Icon(Icons.date_range),
+                          ),
+                          child: Text(DateFormat('MMMM yyyy', 'pt_PT')
+                              .format(_referenceMonth)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _tuitionCtrl,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                                decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Mensalidade (€) *',
+                          prefixIcon: Icon(Icons.euro),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty)
+                            return 'Campo obrigatório';
+                          if (double.tryParse(v) == null)
+                            return 'Valor inválido';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _otherFeesCtrl,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                                decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Outras taxas (€)',
+                          prefixIcon:
+                              Icon(Icons.add_circle_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: _pickDueDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Data Limite (opcional)',
+                            prefixIcon:
+                                Icon(Icons.event_available),
+                          ),
+                          child: Text(_dueDate == null
+                              ? 'Não definida'
+                              : DateFormat('dd/MM/yyyy')
+                                  .format(_dueDate!)),
+                        ),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 12),
+                        Text(_error!,
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .error)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _isLoading ? null : _submit,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('Gerar'),
+        ),
+      ],
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +850,8 @@ class _CreateInvoiceSheet extends ConsumerStatefulWidget {
       _CreateInvoiceSheetState();
 }
 
-class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
+class _CreateInvoiceSheetState
+    extends ConsumerState<_CreateInvoiceSheet> {
   final _formKey = GlobalKey<FormState>();
   final _tuitionCtrl = TextEditingController();
   final _otherFeesCtrl = TextEditingController(text: '0');
@@ -267,11 +883,13 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
     try {
       final api = ref.read(apiClientProvider);
       final tuition = double.tryParse(_tuitionCtrl.text) ?? 0.0;
-      final otherFees = double.tryParse(_otherFeesCtrl.text) ?? 0.0;
+      final otherFees =
+          double.tryParse(_otherFeesCtrl.text) ?? 0.0;
       final employeeId = ref.read(authProvider).employeeId;
       if (employeeId == null) {
         setState(() {
-          _error = 'Utilizador não tem registo de funcionário associado';
+          _error =
+              'Utilizador não tem registo de funcionário associado';
           _isLoading = false;
         });
         return;
@@ -284,7 +902,8 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
         'tuition_amount': tuition,
         'other_fees': otherFees,
         'total_amount': tuition + otherFees,
-        if (_descCtrl.text.trim().isNotEmpty) 'description': _descCtrl.text.trim(),
+        if (_descCtrl.text.trim().isNotEmpty)
+          'description': _descCtrl.text.trim(),
         if (_dueDate != null)
           'due_date':
               '${_dueDate!.year.toString().padLeft(4, '0')}-${_dueDate!.month.toString().padLeft(2, '0')}-${_dueDate!.day.toString().padLeft(2, '0')}',
@@ -323,9 +942,11 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
             const SizedBox(height: 16),
 
             childrenAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
               error: (e, _) => Text('Erro: $e'),
-              data: (children) => DropdownButtonFormField<String>(
+              data: (children) =>
+                  DropdownButtonFormField<String>(
                 value: _selectedChildId,
                 decoration: const InputDecoration(
                   labelText: 'Criança *',
@@ -337,29 +958,33 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
                           child: Text(c.fullName),
                         ))
                     .toList(),
-                onChanged: (v) => setState(() => _selectedChildId = v),
-                validator: (v) => v == null ? 'Seleccione uma criança' : null,
+                onChanged: (v) =>
+                    setState(() => _selectedChildId = v),
+                validator: (v) =>
+                    v == null ? 'Seleccione uma criança' : null,
               ),
             ),
             const SizedBox(height: 12),
 
             TextFormField(
               controller: _tuitionCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Mensalidade (€) *',
                 prefixIcon: Icon(Icons.euro),
               ),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Campo obrigatório' : null,
+                  v == null || v.trim().isEmpty
+                      ? 'Campo obrigatório'
+                      : null,
             ),
             const SizedBox(height: 12),
 
             TextFormField(
               controller: _otherFeesCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Outras taxas (€)',
                 prefixIcon: Icon(Icons.add_circle_outline),
@@ -379,7 +1004,8 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
               const SizedBox(height: 12),
               Text(_error!,
                   style: TextStyle(
-                      color: Theme.of(context).colorScheme.error)),
+                      color:
+                          Theme.of(context).colorScheme.error)),
             ],
 
             const SizedBox(height: 16),
@@ -390,7 +1016,8 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white))
                   : const Text('Criar Factura'),
             ),
           ],
@@ -419,6 +1046,7 @@ class _StatusChip extends StatelessWidget {
         color = Colors.orange;
         break;
       case 'cancelled':
+      case 'void':
         color = Colors.grey;
         break;
       default:

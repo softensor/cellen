@@ -68,6 +68,18 @@ class _SchoolsScreenState extends ConsumerState<SchoolsScreen> {
     );
   }
 
+  Future<void> _showEditDialog(Map<String, dynamic> school) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _EditSchoolDialog(
+        school: school,
+        onUpdated: _load,
+        apiClient: ref.read(apiClientProvider),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,10 +172,20 @@ class _SchoolsScreenState extends ConsumerState<SchoolsScreen> {
                                   ),
                                 ],
                               ),
-                              trailing: Switch(
-                                value: isActive,
-                                onChanged: (_) =>
-                                    _toggleActive(s['id'] as String, isActive),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    tooltip: 'Editar',
+                                    onPressed: () => _showEditDialog(s),
+                                  ),
+                                  Switch(
+                                    value: isActive,
+                                    onChanged: (_) =>
+                                        _toggleActive(s['id'] as String, isActive),
+                                  ),
+                                ],
                               ),
                               isThreeLine: true,
                             ),
@@ -381,6 +403,177 @@ class _CreateSchoolDialogState extends State<_CreateSchoolDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Text('Criar Escola'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Edit School Dialog
+// ---------------------------------------------------------------------------
+
+class _EditSchoolDialog extends StatefulWidget {
+  final Map<String, dynamic> school;
+  final VoidCallback onUpdated;
+  final ApiClient apiClient;
+
+  const _EditSchoolDialog({
+    required this.school,
+    required this.onUpdated,
+    required this.apiClient,
+  });
+
+  @override
+  State<_EditSchoolDialog> createState() => _EditSchoolDialogState();
+}
+
+class _EditSchoolDialogState extends State<_EditSchoolDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _cityCtrl;
+  late final TextEditingController _countryCtrl;
+  late final TextEditingController _emailCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _nifCtrl;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.school;
+    _nameCtrl = TextEditingController(text: s['name'] as String? ?? '');
+    _cityCtrl = TextEditingController(text: s['city'] as String? ?? '');
+    _countryCtrl = TextEditingController(text: s['country'] as String? ?? '');
+    _emailCtrl = TextEditingController(text: s['email'] as String? ?? '');
+    _phoneCtrl = TextEditingController(text: s['phone'] as String? ?? '');
+    _nifCtrl = TextEditingController(text: s['nif'] as String? ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _cityCtrl.dispose();
+    _countryCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    _nifCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final id = widget.school['id'] as String;
+      await widget.apiClient.patch('/platform/schools/$id', data: {
+        'name': _nameCtrl.text.trim(),
+        'city': _cityCtrl.text.trim().isEmpty ? null : _cityCtrl.text.trim(),
+        'country': _countryCtrl.text.trim().isEmpty ? null : _countryCtrl.text.trim(),
+        'email': _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        'nif': _nifCtrl.text.trim().isEmpty ? null : _nifCtrl.text.trim(),
+      });
+      if (mounted) Navigator.of(context).pop();
+      widget.onUpdated();
+    } on ApiException catch (e) {
+      setState(() {
+        _error = e.message;
+        _saving = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar Escola'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(_error!,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.onErrorContainer)),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Nome *'),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Obrigatório' : null,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _cityCtrl,
+                        decoration: const InputDecoration(labelText: 'Cidade'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _countryCtrl,
+                        decoration: const InputDecoration(labelText: 'País'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _emailCtrl,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'Telefone'),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _nifCtrl,
+                  decoration: const InputDecoration(labelText: 'NIF'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Guardar'),
         ),
       ],
     );

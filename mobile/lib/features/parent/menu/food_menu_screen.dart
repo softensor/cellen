@@ -9,27 +9,11 @@ import '../../../core/models/food.dart';
 // Provider
 // ---------------------------------------------------------------------------
 final weeklyMenuProvider =
-    FutureProvider.autoDispose<List<FoodMenuItem>>((ref) async {
+    FutureProvider.autoDispose<List<FoodMenu>>((ref) async {
   final api = ref.read(apiClientProvider);
-  // Get the current week's menu
-  final now = DateTime.now();
-  final startOfWeek =
-      now.subtract(Duration(days: now.weekday - 1));
-  final endOfWeek = startOfWeek.add(const Duration(days: 6));
-
-  final startStr =
-      '${startOfWeek.year.toString().padLeft(4, '0')}-${startOfWeek.month.toString().padLeft(2, '0')}-${startOfWeek.day.toString().padLeft(2, '0')}';
-  final endStr =
-      '${endOfWeek.year.toString().padLeft(4, '0')}-${endOfWeek.month.toString().padLeft(2, '0')}-${endOfWeek.day.toString().padLeft(2, '0')}';
-
-  final data = await api.get('/food/menus',
-      queryParameters: {
-        'date_from': startStr,
-        'date_to': endStr,
-        'ordering': 'menu_date',
-      }) as List;
+  final data = await api.get('/food/menus') as List;
   return data
-      .map((e) => FoodMenuItem.fromJson(e as Map<String, dynamic>))
+      .map((e) => FoodMenu.fromJson(e as Map<String, dynamic>))
       .toList();
 });
 
@@ -69,23 +53,21 @@ class FoodMenuScreen extends ConsumerWidget {
             ],
           ),
         ),
-        data: (menuItems) {
-          if (menuItems.isEmpty) {
+        data: (menus) {
+          if (menus.isEmpty) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.restaurant_menu,
                       size: 64,
-                      color:
-                          Theme.of(context).colorScheme.outlineVariant),
+                      color: Theme.of(context).colorScheme.outlineVariant),
                   const SizedBox(height: 16),
                   Text(
                     'Ementa não disponível esta semana',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                 ],
@@ -93,71 +75,9 @@ class FoodMenuScreen extends ConsumerWidget {
             );
           }
 
-          // Build tabs for Mon–Fri
-          final now = DateTime.now();
-          final startOfWeek =
-              now.subtract(Duration(days: now.weekday - 1));
-
-          // Build a map from weekday (1=Mon) to menu item
-          final menuByDay = <int, FoodMenuItem>{};
-          for (final item in menuItems) {
-            menuByDay[item.menuDate.weekday] = item;
-          }
-
-          const dayNames = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
-          final tabDays = List.generate(5, (i) {
-            final date = startOfWeek.add(Duration(days: i));
-            return (
-              label: dayNames[i],
-              date: date,
-              item: menuByDay[i + 1],
-            );
-          });
-
-          return DefaultTabController(
-            length: 5,
-            initialIndex: (now.weekday - 1).clamp(0, 4),
-            child: Column(
-              children: [
-                TabBar(
-                  tabs: tabDays.map((d) {
-                    final isToday =
-                        d.date.day == now.day &&
-                            d.date.month == now.month &&
-                            d.date.year == now.year;
-                    return Tab(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            d.label,
-                            style: TextStyle(
-                              fontWeight: isToday
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                          Text(
-                            DateFormat('d/M').format(d.date),
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: tabDays.map((d) {
-                      return _DayMenuView(
-                          item: d.item,
-                          date: d.date);
-                    }).toList(),
-                  ),
-                ),
-              ],
-            ),
-          );
+          // Use the first menu returned (most relevant)
+          final menu = menus.first;
+          return _WeeklyMenuView(menu: menu);
         },
       ),
     );
@@ -165,20 +85,93 @@ class FoodMenuScreen extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Day Menu View
+// Weekly Menu View — tabs Mon–Fri
 // ---------------------------------------------------------------------------
-class _DayMenuView extends StatelessWidget {
-  final FoodMenuItem? item;
-  final DateTime date;
+class _WeeklyMenuView extends StatelessWidget {
+  final FoodMenu menu;
 
-  const _DayMenuView({this.item, required this.date});
+  const _WeeklyMenuView({required this.menu});
 
   @override
   Widget build(BuildContext context) {
-    final dateStr =
-        DateFormat('EEEE, d \'de\' MMMM', 'pt_PT').format(date);
+    const dayNames = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+    const dayShort = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
 
-    if (item == null) {
+    // Group entries by day_of_week (1–5)
+    final byDay = <int, List<FoodMenuItemEntry>>{};
+    for (final entry in menu.items) {
+      if (entry.dayOfWeek >= 1 && entry.dayOfWeek <= 5) {
+        byDay.putIfAbsent(entry.dayOfWeek, () => []).add(entry);
+      }
+    }
+
+    final now = DateTime.now();
+    final initialTab = (now.weekday - 1).clamp(0, 4);
+
+    return DefaultTabController(
+      length: 5,
+      initialIndex: initialTab,
+      child: Column(
+        children: [
+          TabBar(
+            tabs: List.generate(5, (i) {
+              // Compute the actual date for this weekday in the menu's week
+              final monday = menu.startDate.subtract(
+                  Duration(days: menu.startDate.weekday - 1));
+              final tabDate = monday.add(Duration(days: i));
+              final isToday = tabDate.year == now.year &&
+                  tabDate.month == now.month &&
+                  tabDate.day == now.day;
+              return Tab(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      dayShort[i],
+                      style: TextStyle(
+                        fontWeight:
+                            isToday ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    Text(
+                      DateFormat('d/M').format(tabDate),
+                      style: const TextStyle(fontSize: 10),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: List.generate(5, (i) {
+                final dayNum = i + 1;
+                final entries = byDay[dayNum] ?? [];
+                return _DayView(
+                  dayName: dayNames[i],
+                  entries: entries,
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Single-day view
+// ---------------------------------------------------------------------------
+class _DayView extends StatelessWidget {
+  final String dayName;
+  final List<FoodMenuItemEntry> entries;
+
+  const _DayView({required this.dayName, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -188,7 +181,7 @@ class _DayMenuView extends StatelessWidget {
                 color: Theme.of(context).colorScheme.outlineVariant),
             const SizedBox(height: 16),
             Text(
-              'Ementa não disponível para este dia',
+              'Ementa não disponível para $dayName',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -198,83 +191,48 @@ class _DayMenuView extends StatelessWidget {
       );
     }
 
+    // Group by meal type
+    final byMealType = <String, List<FoodMenuItemEntry>>{};
+    for (final e in entries) {
+      byMealType.putIfAbsent(e.mealType, () => []).add(e);
+    }
+
+    const mealOrder = ['breakfast', 'lunch', 'snack'];
+    const mealLabels = {
+      'breakfast': 'Pequeno-almoço',
+      'lunch': 'Almoço',
+      'snack': 'Lanche',
+    };
+    const mealIcons = {
+      'breakfast': Icons.free_breakfast,
+      'lunch': Icons.lunch_dining,
+      'snack': Icons.cookie,
+    };
+    const mealColors = {
+      'breakfast': Colors.orange,
+      'lunch': Colors.teal,
+      'snack': Colors.purple,
+    };
+
+    // Build ordered list of present meal types
+    final orderedTypes = [
+      ...mealOrder.where((t) => byMealType.containsKey(t)),
+      ...byMealType.keys.where((t) => !mealOrder.contains(t)),
+    ];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            dateStr,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-          ),
-          const SizedBox(height: 16),
-
-          // Pequeno-almoço
-          if (item!.breakfast != null && item!.breakfast!.isNotEmpty) ...[
+          for (final mealType in orderedTypes) ...[
             _MealSection(
-              icon: Icons.free_breakfast,
-              title: 'Pequeno-almoço',
-              color: Colors.orange,
-              items: [item!.breakfast!],
+              icon: mealIcons[mealType] ?? Icons.restaurant,
+              title: mealLabels[mealType] ?? mealType,
+              color: mealColors[mealType] ?? Colors.grey,
+              entries: byMealType[mealType]!,
             ),
             const SizedBox(height: 16),
-          ],
-
-          // Almoço
-          _MealSection(
-            icon: Icons.lunch_dining,
-            title: 'Almoço',
-            color: Colors.teal,
-            items: [
-              if (item!.lunchSoup != null && item!.lunchSoup!.isNotEmpty)
-                'Sopa: ${item!.lunchSoup}',
-              if (item!.lunchMain != null && item!.lunchMain!.isNotEmpty)
-                'Prato: ${item!.lunchMain}',
-              if (item!.lunchDessert != null &&
-                  item!.lunchDessert!.isNotEmpty)
-                'Sobremesa: ${item!.lunchDessert}',
-              if (item!.lunchDrink != null && item!.lunchDrink!.isNotEmpty)
-                'Bebida: ${item!.lunchDrink}',
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Lanche
-          if (item!.snack != null && item!.snack!.isNotEmpty) ...[
-            _MealSection(
-              icon: Icons.cookie,
-              title: 'Lanche',
-              color: Colors.purple,
-              items: [item!.snack!],
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // Notes
-          if (item!.notes != null && item!.notes!.isNotEmpty) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 16,
-                      color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(item!.notes!)),
-                ],
-              ),
-            ),
           ],
         ],
       ),
@@ -282,28 +240,42 @@ class _DayMenuView extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Meal section card
+// ---------------------------------------------------------------------------
 class _MealSection extends StatelessWidget {
   final IconData icon;
   final String title;
   final Color color;
-  final List<String> items;
+  final List<FoodMenuItemEntry> entries;
 
   const _MealSection({
     required this.icon,
     required this.title,
     required this.color,
-    required this.items,
+    required this.entries,
   });
+
+  String _componentLabel(String? component) {
+    switch (component) {
+      case 'sopa':
+        return 'Sopa';
+      case 'prato':
+        return 'Prato';
+      case 'sobremesa':
+        return 'Sobremesa';
+      case 'drink':
+        return 'Bebida';
+      default:
+        return component ?? '—';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) return const SizedBox.shrink();
-
     return Container(
       decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(color: color, width: 4),
-        ),
+        border: Border(left: BorderSide(color: color, width: 4)),
         color: color.withOpacity(0.05),
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(8),
@@ -329,21 +301,20 @@ class _MealSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          ...items.map(
-            (item) => Padding(
+          for (final entry in entries)
+            Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.circle,
-                      size: 6,
-                      color: color.withOpacity(0.7)),
+                  Icon(Icons.circle, size: 6, color: color.withOpacity(0.7)),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(item)),
+                  Expanded(
+                    child: Text(_componentLabel(entry.mealComponent)),
+                  ),
                 ],
               ),
             ),
-          ),
         ],
       ),
     );

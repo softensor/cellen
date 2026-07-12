@@ -26,7 +26,7 @@ final parentChildrenProvider =
 final parentRecentCadernetsProvider =
     FutureProvider.autoDispose<List<Caderneta>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/cadernetas',
+  final data = await api.get('/parent/cadernetas',
       queryParameters: {'limit': '5', 'ordering': '-report_date'}) as List;
   return data
       .map((e) => Caderneta.fromJson(e as Map<String, dynamic>))
@@ -36,11 +36,9 @@ final parentRecentCadernetsProvider =
 final parentOutstandingInvoicesProvider =
     FutureProvider.autoDispose<List<Invoice>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/invoices',
+  final data = await api.get('/parent/invoices',
       queryParameters: {
         'limit': '5',
-        'ordering': '-invoice_date',
-        'status': 'pending,overdue',
       }) as List;
   return data
       .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
