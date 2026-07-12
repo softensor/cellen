@@ -42,10 +42,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — configure origins properly in production
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://jorgehel.github.io",  # Flutter web (GitHub Pages)
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:8080",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
