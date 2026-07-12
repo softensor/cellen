@@ -153,7 +153,12 @@ async def test_list_schedules(client: AsyncClient, make_school):
     )
     r = await client.get("/academic/schedules", headers=auth(token))
     assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    items = r.json()
+    assert isinstance(items, list)
+    assert len(items) >= 1
+    # Schedule list must include enriched names for the Flutter dropdown
+    assert items[0]["turma_name"] == "Sala SchedL"
+    assert items[0]["school_year_label"] is not None
 
 
 # ---------------------------------------------------------------------------

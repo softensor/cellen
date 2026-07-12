@@ -119,6 +119,8 @@ class ScheduleResponse(ScheduleBase):
     created_at: datetime
     updated_at: datetime
     slots: List[ScheduleSlotResponse] = []
+    turma_name: Optional[str] = None
+    school_year_label: Optional[str] = None
 
 
 class ScheduleTeacherAssign(BaseModel):

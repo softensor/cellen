@@ -193,7 +193,30 @@ async def list_schedules(
     if school_year_id:
         query = query.where(Schedule.school_year_id == school_year_id)
     result = await db.execute(query.offset(skip).limit(limit))
-    return result.scalars().all()
+    schedules = result.scalars().all()
+
+    # Enrich with turma names and school year labels
+    if schedules:
+        turma_ids = list({s.turma_id for s in schedules})
+        sy_ids = list({s.school_year_id for s in schedules})
+        turma_res = await db.execute(
+            select(Turma.id, Turma.name).where(Turma.id.in_(turma_ids))
+        )
+        turma_map = {row[0]: row[1] for row in turma_res.all()}
+        sy_res = await db.execute(
+            select(SchoolYear.id, SchoolYear.year_label).where(SchoolYear.id.in_(sy_ids))
+        )
+        sy_map = {row[0]: row[1] for row in sy_res.all()}
+
+        enriched = []
+        for s in schedules:
+            resp = ScheduleResponse.model_validate(s)
+            resp.turma_name = turma_map.get(s.turma_id)
+            resp.school_year_label = sy_map.get(s.school_year_id)
+            enriched.append(resp)
+        return enriched
+
+    return schedules
 
 
 @router.post("/schedules", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)

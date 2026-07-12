@@ -449,6 +449,7 @@ class _RecordPaymentDialogState
 
       await api.post('/finance/payments', data: {
         'invoice_id': widget.invoice.id,
+        'child_id': widget.invoice.childId,
         'amount': amount,
         'payment_date': dateStr,
         'payment_method': _paymentMethod,

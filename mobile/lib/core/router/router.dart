@@ -16,6 +16,7 @@ import '../../features/admin/finance/finance_dashboard_screen.dart';
 import '../../features/admin/finance/invoices_screen.dart';
 import '../../features/admin/finance/expenses_screen.dart';
 import '../../features/admin/academic/turmas_screen.dart';
+import '../../features/admin/academic/schedules_screen.dart';
 import '../../features/admin/academic/enrollments_screen.dart';
 import '../../features/admin/absences/absences_screen.dart';
 import '../../features/platform/dashboard/platform_dashboard_screen.dart';
@@ -198,6 +199,7 @@ const _adminItems = [
   SidebarItem(path: '/admin/employees', label: 'Funcionários', icon: Icons.badge_outlined, selectedIcon: Icons.badge),
   SidebarItem(path: '/admin/absences', label: 'Faltas', icon: Icons.event_busy_outlined, selectedIcon: Icons.event_busy),
   SidebarItem(path: '/admin/academic/turmas', label: 'Turmas', icon: Icons.class_outlined, selectedIcon: Icons.class_),
+  SidebarItem(path: '/admin/academic/schedules', label: 'Horários', icon: Icons.schedule_outlined, selectedIcon: Icons.schedule),
   SidebarItem(path: '/admin/academic/enrollments', label: 'Matrículas', icon: Icons.how_to_reg_outlined, selectedIcon: Icons.how_to_reg),
   SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
   SidebarItem(path: '/events', label: 'Calendário', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
@@ -515,6 +517,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/academic/turmas',
             builder: (_, __) => const TurmasScreen(),
+          ),
+          GoRoute(
+            path: '/admin/academic/schedules',
+            builder: (_, __) => const SchedulesScreen(),
           ),
           GoRoute(
             path: '/admin/academic/enrollments',
