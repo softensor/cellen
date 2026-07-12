@@ -252,12 +252,8 @@ async def test_upload_school_logo(client: AsyncClient, make_school):
     png_bytes = _minimal_png()
     r = await client.post(
         "/schools/logo",
-        content=png_bytes,
-        headers={
-            **auth(token),
-            "Content-Type": "multipart/form-data",
-        },
         files={"file": ("logo.png", png_bytes, "image/png")},
+        headers=auth(token),
     )
     assert r.status_code == 200, r.text
     data = r.json()
