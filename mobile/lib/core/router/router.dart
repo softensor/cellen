@@ -50,6 +50,7 @@ import '../../features/admin/guardians/guardians_list_screen.dart';
 import '../../features/admin/guardians/guardian_form_screen.dart';
 import '../../features/admin/school_settings_screen.dart';
 import '../../features/admin/school_profile_screen.dart';
+import '../../features/admin/food/admin_food_screen.dart';
 import '../../features/trip_authorizations/trip_authorizations_screen.dart';
 import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
@@ -203,6 +204,7 @@ const _adminItems = [
   SidebarItem(path: '/admin/academic/schedules',     label: 'Horários',      icon: Icons.schedule_outlined,                    selectedIcon: Icons.schedule),
   SidebarItem(path: '/admin/academic/enrollments',   label: 'Matrículas',    icon: Icons.how_to_reg_outlined,                  selectedIcon: Icons.how_to_reg),
   SidebarItem(path: '/teacher/caderneta',            label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/admin/food',                   label: 'Ementas',       icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
   SidebarItem(path: '/admin/finance',                label: 'Financeiro',    icon: Icons.account_balance_wallet_outlined,      selectedIcon: Icons.account_balance_wallet),
   SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
   SidebarItem(path: '/health/immunizations',         label: 'Vacinas',       icon: Icons.vaccines_outlined,                    selectedIcon: Icons.vaccines),
@@ -441,6 +443,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/academic/enrollments', builder: (_, __) => const EnrollmentsScreen()),
           GoRoute(path: '/admin/school-settings',      builder: (_, __) => const SchoolSettingsScreen()),
           GoRoute(path: '/admin/school-profile',       builder: (_, __) => const SchoolProfileScreen()),
+          GoRoute(path: '/admin/food',                 builder: (_, __) => const AdminFoodScreen()),
           GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
           GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const InvoicesScreen()),
           GoRoute(path: '/admin/finance/expenses',     builder: (_, __) => const ExpensesScreen()),

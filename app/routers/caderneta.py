@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_school_id, require_school_admin, require_teacher, get_current_user
+from app.core.dependencies import get_school_id, require_school_admin, require_teacher, require_parent, get_current_user
 from app.models.caderneta import Caderneta
+from app.models.person import ChildGuardian
 from app.schemas.caderneta import CadernetaCreate, CadernetaResponse, CadernetaUpdate
 
 router = APIRouter(prefix="/cadernetas", tags=["Caderneta"])
@@ -70,6 +71,41 @@ async def get_my_cadernetas(
         .where(
             Caderneta.school_id == school_id,
             Caderneta.teacher_id == employee_id,
+        )
+        .order_by(Caderneta.report_date.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/parent", response_model=list[CadernetaResponse])
+async def get_parent_cadernetas(
+    skip: int = 0,
+    limit: int = 50,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    """Returns caderneta entries for all children linked to the logged-in parent/guardian."""
+    guardian_id = getattr(current_user, "guardian_id", None)
+    if guardian_id is None:
+        return []
+    # Find children IDs linked to this guardian
+    links_result = await db.execute(
+        select(ChildGuardian.child_id).where(
+            ChildGuardian.guardian_id == guardian_id,
+            ChildGuardian.school_id == school_id,
+        )
+    )
+    child_ids = [row[0] for row in links_result.all()]
+    if not child_ids:
+        return []
+    result = await db.execute(
+        select(Caderneta)
+        .where(
+            Caderneta.school_id == school_id,
+            Caderneta.child_id.in_(child_ids),
         )
         .order_by(Caderneta.report_date.desc())
         .offset(skip)
