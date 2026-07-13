@@ -188,73 +188,87 @@ class _ChangePasswordDialogState
 }
 
 // ---------------------------------------------------------------------------
-// Nav item definitions per role
+// Nav item definitions per role  (each role owns exactly its list)
 // ---------------------------------------------------------------------------
 
+// School Admin — full access
 const _adminItems = [
-  SidebarItem(path: '/admin', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/admin/children', label: 'Crianças', icon: Icons.child_care_outlined, selectedIcon: Icons.child_care),
-  SidebarItem(path: '/admin/guardians', label: 'Encarregados', icon: Icons.people_outline, selectedIcon: Icons.people),
-  SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
-  SidebarItem(path: '/admin/finance', label: 'Financeiro', icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
-  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/admin/employees', label: 'Funcionários', icon: Icons.badge_outlined, selectedIcon: Icons.badge),
-  SidebarItem(path: '/admin/absences', label: 'Faltas', icon: Icons.event_busy_outlined, selectedIcon: Icons.event_busy),
-  SidebarItem(path: '/admin/academic/turmas', label: 'Turmas', icon: Icons.class_outlined, selectedIcon: Icons.class_),
-  SidebarItem(path: '/admin/academic/schedules', label: 'Horários', icon: Icons.schedule_outlined, selectedIcon: Icons.schedule),
-  SidebarItem(path: '/admin/academic/enrollments', label: 'Matrículas', icon: Icons.how_to_reg_outlined, selectedIcon: Icons.how_to_reg),
-  SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
-  SidebarItem(path: '/events', label: 'Calendário', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
-  SidebarItem(path: '/incidents', label: 'Ocorrências', icon: Icons.report_outlined, selectedIcon: Icons.report),
-  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
-  SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
-  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
-  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/admin/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
-  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/meal-orders', label: 'Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin',                        label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/children',               label: 'Crianças',      icon: Icons.child_care_outlined,                  selectedIcon: Icons.child_care),
+  SidebarItem(path: '/admin/guardians',              label: 'Encarregados',  icon: Icons.people_outline,                       selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/employees',              label: 'Funcionários',  icon: Icons.badge_outlined,                       selectedIcon: Icons.badge),
+  SidebarItem(path: '/teacher/attendance',           label: 'Presenças',     icon: Icons.fact_check_outlined,                  selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/admin/absences',               label: 'Faltas',        icon: Icons.event_busy_outlined,                  selectedIcon: Icons.event_busy),
+  SidebarItem(path: '/admin/academic/turmas',        label: 'Turmas',        icon: Icons.class_outlined,                       selectedIcon: Icons.class_),
+  SidebarItem(path: '/admin/academic/schedules',     label: 'Horários',      icon: Icons.schedule_outlined,                    selectedIcon: Icons.schedule),
+  SidebarItem(path: '/admin/academic/enrollments',   label: 'Matrículas',    icon: Icons.how_to_reg_outlined,                  selectedIcon: Icons.how_to_reg),
+  SidebarItem(path: '/teacher/caderneta',            label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/admin/finance',                label: 'Financeiro',    icon: Icons.account_balance_wallet_outlined,      selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/health/immunizations',         label: 'Vacinas',       icon: Icons.vaccines_outlined,                    selectedIcon: Icons.vaccines),
+  SidebarItem(path: '/incidents',                    label: 'Ocorrências',   icon: Icons.report_outlined,                      selectedIcon: Icons.report),
+  SidebarItem(path: '/evaluations',                  label: 'Avaliações',    icon: Icons.school_outlined,                      selectedIcon: Icons.school),
+  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/photos',                       label: 'Galeria',       icon: Icons.photo_library_outlined,               selectedIcon: Icons.photo_library),
+  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/documents',                    label: 'Documentos',    icon: Icons.folder_outlined,                      selectedIcon: Icons.folder),
+  SidebarItem(path: '/trip-authorizations',          label: 'Autorizações',  icon: Icons.assignment_outlined,                  selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations',        label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined,   selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders',                  label: 'Refeições',     icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
+  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
+  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin/school-settings',        label: 'Configurações', icon: Icons.settings_outlined,                    selectedIcon: Icons.settings),
 ];
 
+// Teacher — attendance, caderneta, health, incidents, evaluations + shared
 const _teacherItems = [
-  SidebarItem(path: '/teacher', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/teacher/attendance', label: 'Presenças', icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check),
-  SidebarItem(path: '/teacher/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
-  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
-  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/teacher/health/immunizations', label: 'Vacinas', icon: Icons.vaccines_outlined, selectedIcon: Icons.vaccines),
-  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/meal-orders', label: 'Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined, selectedIcon: Icons.notifications),
+  SidebarItem(path: '/teacher',                      label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/teacher/attendance',           label: 'Presenças',     icon: Icons.fact_check_outlined,                  selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/teacher/caderneta',            label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/health/immunizations',         label: 'Vacinas',       icon: Icons.vaccines_outlined,                    selectedIcon: Icons.vaccines),
+  SidebarItem(path: '/incidents',                    label: 'Ocorrências',   icon: Icons.report_outlined,                      selectedIcon: Icons.report),
+  SidebarItem(path: '/evaluations',                  label: 'Avaliações',    icon: Icons.school_outlined,                      selectedIcon: Icons.school),
+  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/photos',                       label: 'Galeria',       icon: Icons.photo_library_outlined,               selectedIcon: Icons.photo_library),
+  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/trip-authorizations',          label: 'Autorizações',  icon: Icons.assignment_outlined,                  selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations',        label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined,   selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders',                  label: 'Refeições',     icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
+  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
+  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
 ];
 
+// Staff — limited: announcements, messages, calendar, appointments, notifications
+const _staffItems = [
+  SidebarItem(path: '/teacher',                      label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
+  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
+];
+
+// Parent — 10 sections per spec section 21
 const _parentItems = [
-  SidebarItem(path: '/parent', label: 'Início', icon: Icons.home_outlined, selectedIcon: Icons.home),
-  SidebarItem(path: '/messages', label: 'Mensagens', icon: Icons.chat_bubble_outline, selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/photos', label: 'Galeria', icon: Icons.photo_library_outlined, selectedIcon: Icons.photo_library),
-  SidebarItem(path: '/parent/caderneta', label: 'Caderneta', icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/parent/menu', label: 'Ementa', icon: Icons.restaurant_outlined, selectedIcon: Icons.restaurant),
-  SidebarItem(path: '/announcements', label: 'Comunicados', icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
-  SidebarItem(path: '/documents', label: 'Documentos', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
-  SidebarItem(path: '/appointments', label: 'Marcações', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/health', label: 'Saúde', icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/evaluations', label: 'Avaliações', icon: Icons.school_outlined, selectedIcon: Icons.school),
-  SidebarItem(path: '/trip-authorizations', label: 'Autorizações', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/meal-orders', label: 'Pré-Refeições', icon: Icons.restaurant_menu_outlined, selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/parent/invoices', label: 'Faturas', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long),
+  SidebarItem(path: '/parent',                       label: 'Início',        icon: Icons.home_outlined,                        selectedIcon: Icons.home),
+  SidebarItem(path: '/parent/caderneta',             label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/parent/invoices',              label: 'Finanças',      icon: Icons.receipt_long_outlined,                selectedIcon: Icons.receipt_long),
+  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/documents',                    label: 'Documentos',    icon: Icons.folder_outlined,                      selectedIcon: Icons.folder),
+  SidebarItem(path: '/announcements',                label: 'Avisos',        icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
+  SidebarItem(path: '/parent/menu',                  label: 'Cardápio',      icon: Icons.restaurant_outlined,                  selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
 ];
 
+// Platform Admin
 const _platformItems = [
-  SidebarItem(path: '/platform', label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/platform/schools', label: 'Escolas', icon: Icons.school_outlined, selectedIcon: Icons.school),
+  SidebarItem(path: '/platform',                     label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/platform/schools',             label: 'Escolas',       icon: Icons.school_outlined,                      selectedIcon: Icons.school),
 ];
 
 // ---------------------------------------------------------------------------
@@ -262,7 +276,6 @@ const _platformItems = [
 // ---------------------------------------------------------------------------
 
 String _titleForPath(String path, List<SidebarItem> items) {
-  // Find the most specific matching item
   SidebarItem? best;
   for (final item in items) {
     if (path.startsWith(item.path)) {
@@ -275,124 +288,49 @@ String _titleForPath(String path, List<SidebarItem> items) {
 }
 
 // ---------------------------------------------------------------------------
-// Shell Widgets
+// Role home routes (used by redirect logic)
 // ---------------------------------------------------------------------------
 
-class PlatformShell extends ConsumerWidget {
+String _roleHome(UserRole? role) => switch (role) {
+  UserRole.platformAdmin => '/platform',
+  UserRole.schoolAdmin   => '/admin',
+  UserRole.teacher       => '/teacher',
+  UserRole.staff         => '/teacher',
+  UserRole.parent        => '/parent',
+  null                   => '/login',
+};
+
+// ---------------------------------------------------------------------------
+// Unified Shell — single widget, selects nav items by role
+// ---------------------------------------------------------------------------
+
+class _UnifiedShell extends ConsumerWidget {
   final Widget child;
-  const PlatformShell({super.key, required this.child});
+  const _UnifiedShell({required this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentPath = GoRouterState.of(context).uri.path;
-    return SidebarLayout(
-      child: child,
-      items: _platformItems,
-      currentPath: currentPath,
-      title: _titleForPath(currentPath, _platformItems),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.lock_outline),
-          tooltip: 'Alterar palavra-passe',
-          onPressed: () => showDialog(
-            context: context,
-            builder: (_) => const _ChangePasswordDialog(),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          tooltip: 'Sair',
-          onPressed: () => ref.read(authProvider.notifier).logout(),
-        ),
-      ],
-    );
-  }
-}
-
-class AdminShell extends ConsumerWidget {
-  final Widget child;
-  const AdminShell({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
     final currentPath = GoRouterState.of(context).uri.path;
     final school = ref.watch(schoolInfoProvider).valueOrNull;
+
+    final items = switch (auth.role) {
+      UserRole.platformAdmin => _platformItems,
+      UserRole.schoolAdmin   => _adminItems,
+      UserRole.teacher       => _teacherItems,
+      UserRole.staff         => _staffItems,
+      UserRole.parent        => _parentItems,
+      null                   => const <SidebarItem>[],
+    };
+
     return SidebarLayout(
       child: child,
-      items: _adminItems,
+      items: items,
       currentPath: currentPath,
-      title: _titleForPath(currentPath, _adminItems),
-      schoolName: school?.name,
-      schoolLogoUrl: school?.logoUrl,
-      onSchoolTap: () => context.go('/admin/school-profile'),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.lock_outline),
-          tooltip: 'Alterar palavra-passe',
-          onPressed: () => showDialog(
-            context: context,
-            builder: (_) => const _ChangePasswordDialog(),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          tooltip: 'Sair',
-          onPressed: () => ref.read(authProvider.notifier).logout(),
-        ),
-      ],
-    );
-  }
-}
-
-class TeacherShell extends ConsumerWidget {
-  final Widget child;
-  const TeacherShell({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentPath = GoRouterState.of(context).uri.path;
-    final school = ref.watch(schoolInfoProvider).valueOrNull;
-    return SidebarLayout(
-      child: child,
-      items: _teacherItems,
-      currentPath: currentPath,
-      title: _titleForPath(currentPath, _teacherItems),
-      schoolName: school?.name,
-      schoolLogoUrl: school?.logoUrl,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.lock_outline),
-          tooltip: 'Alterar palavra-passe',
-          onPressed: () => showDialog(
-            context: context,
-            builder: (_) => const _ChangePasswordDialog(),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          tooltip: 'Sair',
-          onPressed: () => ref.read(authProvider.notifier).logout(),
-        ),
-      ],
-    );
-  }
-}
-
-class ParentShell extends ConsumerWidget {
-  final Widget child;
-  const ParentShell({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentPath = GoRouterState.of(context).uri.path;
-    final school = ref.watch(schoolInfoProvider).valueOrNull;
-    return SidebarLayout(
-      child: child,
-      items: _parentItems,
-      currentPath: currentPath,
-      title: _titleForPath(currentPath, _parentItems),
-      schoolName: school?.name,
-      schoolLogoUrl: school?.logoUrl,
+      title: _titleForPath(currentPath, items),
+      schoolName: auth.role != UserRole.platformAdmin ? school?.name : null,
+      schoolLogoUrl: auth.role != UserRole.platformAdmin ? school?.logoUrl : null,
+      onSchoolTap: auth.isAdmin ? () => context.go('/admin/school-profile') : null,
       actions: [
         IconButton(
           icon: const Icon(Icons.lock_outline),
@@ -424,21 +362,50 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;
       final isLoading = authState.isLoading;
-      final isLoginPage = state.matchedLocation == '/login';
+      final path = state.matchedLocation;
+      final isLoginPage = path == '/login';
 
-      // While checking session, stay put
       if (isLoading) return null;
 
+      // Not authenticated → login
       if (!isAuthenticated && !isLoginPage) return '/login';
-      if (isAuthenticated && isLoginPage) {
-        return switch (authState.role) {
-          UserRole.platformAdmin => '/platform',
-          UserRole.schoolAdmin => '/admin',
-          UserRole.teacher || UserRole.staff => '/teacher',
-          UserRole.parent => '/parent',
-          null => '/login',
-        };
+
+      // Authenticated on login page → home
+      if (isAuthenticated && isLoginPage) return _roleHome(authState.role);
+
+      // ── Role-based route guards ──────────────────────────────────────────
+      final role = authState.role;
+
+      // Platform routes: only platform admin
+      if (path.startsWith('/platform') && role != UserRole.platformAdmin) {
+        return _roleHome(role);
       }
+
+      // Admin-only routes
+      if ((path.startsWith('/admin') || path.startsWith('/admin/')) &&
+          role != UserRole.schoolAdmin) {
+        return _roleHome(role);
+      }
+
+      // Teacher/staff routes: no parent access
+      if (path.startsWith('/teacher') && role == UserRole.parent) {
+        return '/parent';
+      }
+
+      // Parent-only routes: no other role access
+      if (path.startsWith('/parent') &&
+          role != UserRole.parent) {
+        return _roleHome(role);
+      }
+
+      // Finance routes: admin only (not parent — parent uses /parent/invoices)
+      if ((path.startsWith('/admin/finance') ||
+              path == '/health/immunizations' ||
+              path.startsWith('/admin/absences')) &&
+          role == UserRole.parent) {
+        return '/parent';
+      }
+
       return null;
     },
     routes: [
@@ -447,361 +414,74 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const LoginScreen(),
       ),
 
-      // Platform admin shell
+      // ── Single unified shell — all authenticated routes ──────────────────
       ShellRoute(
-        builder: (context, state, child) => PlatformShell(child: child),
+        builder: (context, state, child) => _UnifiedShell(child: child),
         routes: [
-          GoRoute(
-            path: '/platform',
-            builder: (_, __) => const PlatformDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/platform/schools',
-            builder: (_, __) => const SchoolsScreen(),
-          ),
-        ],
-      ),
 
-      // School admin shell
-      ShellRoute(
-        builder: (context, state, child) => AdminShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/admin',
-            builder: (_, __) => const AdminDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/admin/children',
-            builder: (_, __) => const ChildrenListScreen(),
-          ),
-          GoRoute(
-            path: '/admin/children/new',
-            builder: (_, __) => const ChildFormScreen(),
-          ),
-          GoRoute(
-            path: '/admin/children/:id',
-            builder: (_, s) =>
-                ChildDetailScreen(id: s.pathParameters['id']!),
-          ),
-          GoRoute(
-            path: '/admin/children/:id/edit',
-            builder: (_, s) =>
-                ChildFormScreen(childId: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/admin/guardians',
-            builder: (_, __) => const GuardiansListScreen(),
-          ),
-          GoRoute(
-            path: '/admin/guardians/new',
-            builder: (_, __) => const GuardianFormScreen(),
-          ),
-          GoRoute(
-            path: '/admin/guardians/:id/edit',
-            builder: (_, s) =>
-                GuardianFormScreen(guardianId: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/admin/employees',
-            builder: (_, __) => const EmployeesListScreen(),
-          ),
-          GoRoute(
-            path: '/admin/employees/new',
-            builder: (_, __) => const EmployeeFormScreen(),
-          ),
-          GoRoute(
-            path: '/admin/employees/:id/edit',
-            builder: (_, s) =>
-                EmployeeFormScreen(employeeId: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/admin/finance',
-            builder: (_, __) => const FinanceDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/invoices',
-            builder: (_, __) => const InvoicesScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/expenses',
-            builder: (_, __) => const ExpensesScreen(),
-          ),
-          GoRoute(
-            path: '/admin/academic/turmas',
-            builder: (_, __) => const TurmasScreen(),
-          ),
-          GoRoute(
-            path: '/admin/academic/schedules',
-            builder: (_, __) => const SchedulesScreen(),
-          ),
-          GoRoute(
-            path: '/admin/academic/enrollments',
-            builder: (_, __) => const EnrollmentsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/absences',
-            builder: (_, __) => const AbsencesScreen(),
-          ),
-          GoRoute(
-            path: '/admin/school-settings',
-            builder: (_, __) => const SchoolSettingsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/school-profile',
-            builder: (_, __) => const SchoolProfileScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/contracts',
-            builder: (_, __) => const ContractsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/receipts',
-            builder: (_, __) => const ReceiptsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/credit-notes',
-            builder: (_, __) => const CreditNotesScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/saft',
-            builder: (_, __) => const SaftScreen(),
-          ),
-          GoRoute(
-            path: '/admin/finance/delinquent',
-            builder: (_, __) => const DelinquentScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/attendance',
-            builder: (_, __) => const AttendanceScreen(),
-          ),
-          GoRoute(
-            path: '/announcements',
-            builder: (_, __) => const AnnouncementsScreen(),
-          ),
-          GoRoute(
-            path: '/documents',
-            builder: (_, __) => const DocumentsScreen(),
-          ),
-          GoRoute(
-            path: '/appointments',
-            builder: (_, __) => const AppointmentsScreen(),
-          ),
-          GoRoute(
-            path: '/trip-authorizations',
-            builder: (_, __) => const TripAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/pickup-authorizations',
-            builder: (_, __) => const PickupAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/meal-orders',
-            builder: (_, __) => const MealOrdersScreen(),
-          ),
-          GoRoute(
-            path: '/evaluations',
-            builder: (_, __) => const EvaluationsScreen(),
-          ),
-          GoRoute(
-            path: '/health',
-            builder: (_, __) => const HealthEventsScreen(),
-          ),
-          GoRoute(
-            path: '/admin/health/immunizations',
-            builder: (_, __) => const ImmunizationsScreen(),
-          ),
-          GoRoute(
-            path: '/messages',
-            builder: (_, __) => const MessagesScreen(),
-          ),
-          GoRoute(
-            path: '/messages/thread/:threadId',
-            builder: (_, s) => ThreadScreen(
-              threadId: s.pathParameters['threadId']!,
-              subject: s.uri.queryParameters['subject'],
-            ),
-          ),
-          GoRoute(
-            path: '/photos',
-            builder: (_, __) => const PhotosScreen(),
-          ),
-          GoRoute(
-            path: '/incidents',
-            builder: (_, __) => const IncidentsScreen(),
-          ),
-          GoRoute(
-            path: '/events',
-            builder: (_, __) => const EventsScreen(),
-          ),
-          GoRoute(
-            path: '/notifications',
-            builder: (_, __) => const NotificationsScreen(),
-          ),
-        ],
-      ),
+          // ── Platform admin ───────────────────────────────────────────────
+          GoRoute(path: '/platform',         builder: (_, __) => const PlatformDashboardScreen()),
+          GoRoute(path: '/platform/schools', builder: (_, __) => const SchoolsScreen()),
 
-      // Teacher shell
-      ShellRoute(
-        builder: (context, state, child) => TeacherShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/teacher',
-            builder: (_, __) => const TeacherDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/caderneta',
-            builder: (_, __) => const CadernetaListScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/caderneta/new',
-            builder: (_, __) => const CadernetaFormScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/caderneta/:id/edit',
-            builder: (_, s) =>
-                CadernetaFormScreen(cadernetaId: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/teacher/attendance',
-            builder: (_, __) => const AttendanceScreen(),
-          ),
-          GoRoute(
-            path: '/announcements',
-            builder: (_, __) => const AnnouncementsScreen(),
-          ),
-          GoRoute(
-            path: '/evaluations',
-            builder: (_, __) => const EvaluationsScreen(),
-          ),
-          GoRoute(
-            path: '/health',
-            builder: (_, __) => const HealthEventsScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/health/immunizations',
-            builder: (_, __) => const ImmunizationsScreen(),
-          ),
-          GoRoute(
-            path: '/appointments',
-            builder: (_, __) => const AppointmentsScreen(),
-          ),
-          GoRoute(
-            path: '/trip-authorizations',
-            builder: (_, __) => const TripAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/pickup-authorizations',
-            builder: (_, __) => const PickupAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/meal-orders',
-            builder: (_, __) => const MealOrdersScreen(),
-          ),
-          GoRoute(
-            path: '/messages',
-            builder: (_, __) => const MessagesScreen(),
-          ),
-          GoRoute(
-            path: '/messages/thread/:threadId',
-            builder: (_, s) => ThreadScreen(
-              threadId: s.pathParameters['threadId']!,
-              subject: s.uri.queryParameters['subject'],
-            ),
-          ),
-          GoRoute(
-            path: '/photos',
-            builder: (_, __) => const PhotosScreen(),
-          ),
-          GoRoute(
-            path: '/incidents',
-            builder: (_, __) => const IncidentsScreen(),
-          ),
-          GoRoute(
-            path: '/events',
-            builder: (_, __) => const EventsScreen(),
-          ),
-          GoRoute(
-            path: '/notifications',
-            builder: (_, __) => const NotificationsScreen(),
-          ),
-        ],
-      ),
+          // ── School admin ─────────────────────────────────────────────────
+          GoRoute(path: '/admin',                      builder: (_, __) => const AdminDashboardScreen()),
+          GoRoute(path: '/admin/children',             builder: (_, __) => const ChildrenListScreen()),
+          GoRoute(path: '/admin/children/new',         builder: (_, __) => const ChildFormScreen()),
+          GoRoute(path: '/admin/children/:id',         builder: (_, s)  => ChildDetailScreen(id: s.pathParameters['id']!)),
+          GoRoute(path: '/admin/children/:id/edit',    builder: (_, s)  => ChildFormScreen(childId: s.pathParameters['id'])),
+          GoRoute(path: '/admin/guardians',            builder: (_, __) => const GuardiansListScreen()),
+          GoRoute(path: '/admin/guardians/new',        builder: (_, __) => const GuardianFormScreen()),
+          GoRoute(path: '/admin/guardians/:id/edit',   builder: (_, s)  => GuardianFormScreen(guardianId: s.pathParameters['id'])),
+          GoRoute(path: '/admin/employees',            builder: (_, __) => const EmployeesListScreen()),
+          GoRoute(path: '/admin/employees/new',        builder: (_, __) => const EmployeeFormScreen()),
+          GoRoute(path: '/admin/employees/:id/edit',   builder: (_, s)  => EmployeeFormScreen(employeeId: s.pathParameters['id'])),
+          GoRoute(path: '/admin/absences',             builder: (_, __) => const AbsencesScreen()),
+          GoRoute(path: '/admin/academic/turmas',      builder: (_, __) => const TurmasScreen()),
+          GoRoute(path: '/admin/academic/schedules',   builder: (_, __) => const SchedulesScreen()),
+          GoRoute(path: '/admin/academic/enrollments', builder: (_, __) => const EnrollmentsScreen()),
+          GoRoute(path: '/admin/school-settings',      builder: (_, __) => const SchoolSettingsScreen()),
+          GoRoute(path: '/admin/school-profile',       builder: (_, __) => const SchoolProfileScreen()),
+          GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
+          GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const InvoicesScreen()),
+          GoRoute(path: '/admin/finance/expenses',     builder: (_, __) => const ExpensesScreen()),
+          GoRoute(path: '/admin/finance/contracts',    builder: (_, __) => const ContractsScreen()),
+          GoRoute(path: '/admin/finance/receipts',     builder: (_, __) => const ReceiptsScreen()),
+          GoRoute(path: '/admin/finance/credit-notes', builder: (_, __) => const CreditNotesScreen()),
+          GoRoute(path: '/admin/finance/saft',         builder: (_, __) => const SaftScreen()),
+          GoRoute(path: '/admin/finance/delinquent',   builder: (_, __) => const DelinquentScreen()),
 
-      // Parent shell
-      ShellRoute(
-        builder: (context, state, child) => ParentShell(child: child),
-        routes: [
-          GoRoute(
-            path: '/parent',
-            builder: (_, __) => const ParentDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/parent/caderneta',
-            builder: (_, __) => const ChildCadernetaScreen(),
-          ),
-          GoRoute(
-            path: '/parent/menu',
-            builder: (_, __) => const FoodMenuScreen(),
-          ),
-          GoRoute(
-            path: '/parent/invoices',
-            builder: (_, __) => const ParentInvoicesScreen(),
-          ),
-          GoRoute(
-            path: '/messages',
-            builder: (_, __) => const MessagesScreen(),
-          ),
-          GoRoute(
-            path: '/messages/thread/:threadId',
-            builder: (_, s) => ThreadScreen(
-              threadId: s.pathParameters['threadId']!,
-              subject: s.uri.queryParameters['subject'],
-            ),
-          ),
-          GoRoute(
-            path: '/photos',
-            builder: (_, __) => const PhotosScreen(),
-          ),
-          GoRoute(
-            path: '/notifications',
-            builder: (_, __) => const NotificationsScreen(),
-          ),
-          GoRoute(
-            path: '/events',
-            builder: (_, __) => const EventsScreen(),
-          ),
-          GoRoute(
-            path: '/announcements',
-            builder: (_, __) => const AnnouncementsScreen(),
-          ),
-          GoRoute(
-            path: '/documents',
-            builder: (_, __) => const DocumentsScreen(),
-          ),
-          GoRoute(
-            path: '/evaluations',
-            builder: (_, __) => const EvaluationsScreen(),
-          ),
-          GoRoute(
-            path: '/appointments',
-            builder: (_, __) => const AppointmentsScreen(),
-          ),
-          GoRoute(
-            path: '/health',
-            builder: (_, __) => const HealthEventsScreen(),
-          ),
-          GoRoute(
-            path: '/trip-authorizations',
-            builder: (_, __) => const TripAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/pickup-authorizations',
-            builder: (_, __) => const PickupAuthorizationsScreen(),
-          ),
-          GoRoute(
-            path: '/meal-orders',
-            builder: (_, __) => const MealOrdersScreen(),
-          ),
+          // ── Teacher / Staff ──────────────────────────────────────────────
+          GoRoute(path: '/teacher',                    builder: (_, __) => const TeacherDashboardScreen()),
+          GoRoute(path: '/teacher/attendance',         builder: (_, __) => const AttendanceScreen()),
+          GoRoute(path: '/teacher/caderneta',          builder: (_, __) => const CadernetaListScreen()),
+          GoRoute(path: '/teacher/caderneta/new',      builder: (_, __) => const CadernetaFormScreen()),
+          GoRoute(path: '/teacher/caderneta/:id/edit', builder: (_, s)  => CadernetaFormScreen(cadernetaId: s.pathParameters['id'])),
+
+          // ── Parent ───────────────────────────────────────────────────────
+          GoRoute(path: '/parent',                     builder: (_, __) => const ParentDashboardScreen()),
+          GoRoute(path: '/parent/caderneta',           builder: (_, __) => const ChildCadernetaScreen()),
+          GoRoute(path: '/parent/invoices',            builder: (_, __) => const ParentInvoicesScreen()),
+          GoRoute(path: '/parent/menu',                builder: (_, __) => const FoodMenuScreen()),
+
+          // ── Shared routes (registered ONCE — shell picks correct nav) ────
+          GoRoute(path: '/announcements',              builder: (_, __) => const AnnouncementsScreen()),
+          GoRoute(path: '/messages',                   builder: (_, __) => const MessagesScreen()),
+          GoRoute(path: '/messages/thread/:threadId',  builder: (_, s)  => ThreadScreen(
+            threadId: s.pathParameters['threadId']!,
+            subject: s.uri.queryParameters['subject'],
+          )),
+          GoRoute(path: '/photos',                     builder: (_, __) => const PhotosScreen()),
+          GoRoute(path: '/documents',                  builder: (_, __) => const DocumentsScreen()),
+          GoRoute(path: '/events',                     builder: (_, __) => const EventsScreen()),
+          GoRoute(path: '/appointments',               builder: (_, __) => const AppointmentsScreen()),
+          GoRoute(path: '/notifications',              builder: (_, __) => const NotificationsScreen()),
+          GoRoute(path: '/health',                     builder: (_, __) => const HealthEventsScreen()),
+          GoRoute(path: '/health/immunizations',       builder: (_, __) => const ImmunizationsScreen()),
+          GoRoute(path: '/evaluations',                builder: (_, __) => const EvaluationsScreen()),
+          GoRoute(path: '/incidents',                  builder: (_, __) => const IncidentsScreen()),
+          GoRoute(path: '/trip-authorizations',        builder: (_, __) => const TripAuthorizationsScreen()),
+          GoRoute(path: '/pickup-authorizations',      builder: (_, __) => const PickupAuthorizationsScreen()),
+          GoRoute(path: '/meal-orders',                builder: (_, __) => const MealOrdersScreen()),
         ],
       ),
     ],
