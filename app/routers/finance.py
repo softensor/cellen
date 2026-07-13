@@ -241,6 +241,12 @@ async def _enrich_invoice(db: AsyncSession, invoice: Invoice) -> InvoiceResponse
     data = InvoiceResponse.model_validate(invoice)
     data.amount_paid = amount_paid
     data.balance = invoice.total_amount - amount_paid
+    # Fetch child name
+    child_result = await db.execute(
+        select(Child.first_name, Child.last_name).where(Child.id == invoice.child_id)
+    )
+    row = child_result.first()
+    data.child_name = f"{row[0]} {row[1]}" if row else None
     return data
 
 

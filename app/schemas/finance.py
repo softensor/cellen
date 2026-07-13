@@ -133,6 +133,7 @@ class InvoiceResponse(InvoiceBase):
     school_id: uuid.UUID
     total_amount: DecimalFloat
     status: str
+    child_name: Optional[str] = None
     amount_paid: DecimalFloat = Decimal("0")
     balance: DecimalFloat = Decimal("0")
     multicaixa_entity: Optional[str] = None
