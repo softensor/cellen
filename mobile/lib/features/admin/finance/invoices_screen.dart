@@ -454,7 +454,7 @@ class _RecordPaymentDialogState
           '${_paymentDate.year.toString().padLeft(4, '0')}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}';
 
       await api.post('/finance/payments', data: {
-        'invoice_id': widget.invoice.id,
+        'invoice_ids': [widget.invoice.id],
         'child_id': widget.invoice.childId,
         'amount': amount,
         'payment_date': dateStr,

@@ -760,7 +760,7 @@ async def create_payment(
         full_document_number=rc_doc_number,
         amount=payment.amount,
         hash_code=rc_hash,
-        issued_by=None,
+        issued_by=body.received_by,
     )
     db.add(receipt)
 
