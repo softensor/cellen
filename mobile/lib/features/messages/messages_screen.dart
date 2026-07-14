@@ -282,8 +282,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     );
   }
 
+  /// Shows a loading indicator, fetches users, then shows the real dialog or an error.
   Future<void> _showNewThreadDialog() async {
-    // Show a loading dialog immediately
+    // 1. Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -299,44 +300,22 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       ),
     );
 
-    // --- Data Fetching ---
-    List<Map<String, dynamic>> users = [];
-    String? error;
-    try {
-      final api = ref.read(apiClientProvider);
-      // Prefer the more comprehensive endpoint
-      final data = await api.get('/schools/users') as List;
-      users = data.cast<Map<String, dynamic>>();
-    } catch (e) {
-      // If the primary endpoint fails, try the fallback for non-admins
-      try {
-        final api = ref.read(apiClientProvider);
-        final empData = await api.get('/employees') as List;
-        for (final item in empData) {
-          final m = item as Map<String, dynamic>;
-          users.add({
-            'id': m['id'],
-            'username': '${m['first_name'] ?? ''} ${m['last_name'] ?? ''}'.trim(),
-            'role': m['employee_type'] ?? 'staff',
-          });
-        }
-      } catch (e2) {
-        error = 'Falha ao carregar a lista de destinatários.\n'
-            'Por favor, tente novamente mais tarde.\n\n'
-            'Detalhes: $e2';
-      }
-    }
+    // 2. Fetch data asynchronously
+    final (:users, :error) = await _fetchUsersForNewThread();
 
+    // 3. Handle result. If screen is gone, do nothing.
     if (!mounted) return;
-    Navigator.pop(context); // Dismiss loading dialog
 
-    // --- Show Error or Main Dialog ---
+    // Dismiss loading dialog
+    Navigator.pop(context);
+
+    // Show error or the actual dialog
     if (error != null) {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Erro'),
-          content: Text(error!),
+          content: Text(error),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -345,9 +324,46 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ],
         ),
       );
-      return;
+    } else {
+      _showUserSelectionDialog(users);
     }
+  }
 
+  /// Fetches the list of users a person can send a message to.
+  Future<({List<Map<String, dynamic>> users, String? error})>
+      _fetchUsersForNewThread() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      // Prefer the more comprehensive endpoint that lists all users (for admins)
+      final data = await api.get('/schools/users') as List;
+      return (users: data.cast<Map<String, dynamic>>(), error: null);
+    } catch (e) {
+      // If the primary endpoint fails (e.g., for non-admins), try falling back
+      // to fetching just employees.
+      try {
+        final api = ref.read(apiClientProvider);
+        final empData = await api.get('/employees') as List;
+        final users = empData.map((item) {
+          final m = item as Map<String, dynamic>;
+          return {
+            'id': m['id'],
+            'username': '${m['first_name'] ?? ''} ${m['last_name'] ?? ''}'.trim(),
+            'role': m['employee_type'] ?? 'staff',
+          };
+        }).toList();
+        return (users: users, error: null);
+      } catch (e2) {
+        return (
+          users: [],
+          error: 'Falha ao carregar a lista de destinatários.\n'
+              'Por favor, tente novamente mais tarde.'
+        );
+      }
+    }
+  }
+
+  /// The actual UI for selecting users and composing a new message.
+  void _showUserSelectionDialog(List<Map<String, dynamic>> users) {
     final subjectCtrl = TextEditingController();
     final messageCtrl = TextEditingController();
     final searchCtrl = TextEditingController();
@@ -390,7 +406,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                         labelText: 'Pesquisar destinatário *',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.search),
-                        hintText: 'Nome do utilizador...',
+                        hintText: 'Nome do utilizador...', 
                       ),
                       onChanged: (v) =>
                           setDialogState(() => searchQuery = v),
