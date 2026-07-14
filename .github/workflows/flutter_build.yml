@@ -148,3 +148,4 @@ jobs:
         uses: actions/deploy-pages@v4
         # Only deploy on push to main/master, not on PRs
         if: github.event_name != 'pull_request'
+        continue-on-error: true
