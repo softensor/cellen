@@ -50,7 +50,7 @@ jobs:
 
       - name: Set compileSdk to 36
         working-directory: mobile
-        run: sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle
+        run: sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts
 
       - name: Flutter pub get
         working-directory: mobile
