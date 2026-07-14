@@ -138,7 +138,7 @@ class Photo(Base):
         UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
     )
     uploaded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     turma_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("turmas.id", ondelete="SET NULL"), nullable=True
@@ -395,7 +395,7 @@ class DocumentLibrary(Base):
         UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
     )
     uploaded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

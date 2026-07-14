@@ -21,7 +21,7 @@ class TripAuthorization(Base):
         UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     child_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("children.id", ondelete="SET NULL"), nullable=True

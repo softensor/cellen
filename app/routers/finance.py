@@ -751,12 +751,6 @@ async def create_payment(
 ):
     from app.schemas.finance import PaymentAllocation as _PA
 
-    if not body.receipt_proof_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Comprovativo de pagamento obrigatório. Anexe o recibo antes de confirmar.",
-        )
-
     # Explicit invoice_ids targeting (bypasses oldest-first)
     if body.invoice_ids:
         # Validate all invoices belong to the specified child
