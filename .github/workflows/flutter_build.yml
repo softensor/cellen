@@ -48,6 +48,10 @@ jobs:
         working-directory: mobile
         run: flutter create . --project-name cellen --org com.cellen --platforms android
 
+      - name: Set compileSdk to 36
+        working-directory: mobile
+        run: sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle
+
       - name: Flutter pub get
         working-directory: mobile
         run: flutter pub get
