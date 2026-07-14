@@ -48,9 +48,22 @@ jobs:
         working-directory: mobile
         run: flutter create . --project-name cellen --org com.cellen --platforms android
 
-      - name: Set compileSdk to 36
+      - name: Set compileSdk to 36 for all subprojects
         working-directory: mobile
-        run: sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts
+        run: |
+          sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts
+          cat >> android/build.gradle.kts <<'PATCH'
+
+          subprojects {
+              afterEvaluate {
+                  if (extensions.findByName("android") != null) {
+                      extensions.configure<com.android.build.gradle.BaseExtension> {
+                          compileSdkVersion(36)
+                      }
+                  }
+              }
+          }
+          PATCH
 
       - name: Flutter pub get
         working-directory: mobile
