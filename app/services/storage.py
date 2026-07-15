@@ -16,16 +16,20 @@ ALLOWED_CONTENT_TYPES = {
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
-async def save_upload(file: UploadFile, entity_type: str, entity_id: uuid.UUID) -> str:
+async def save_upload(
+    file: UploadFile, entity_type: str, entity_id: uuid.UUID,
+    content_type_override: str | None = None,
+) -> str:
     """
     Save file to MEDIA_DIR/{entity_type}/{entity_id}/{filename}
     Returns relative URL path.
     Validates: max 5MB, allowed types: image/jpeg, image/png, application/pdf
     """
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
+    effective_content_type = content_type_override or file.content_type
+    if effective_content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"File type '{file.content_type}' not allowed. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
+            detail=f"File type '{effective_content_type}' not allowed. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}",
         )
 
     content = await file.read()
