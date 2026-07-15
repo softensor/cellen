@@ -26,6 +26,8 @@ class _WebsiteDashboardScreenState
     _load();
   }
 
+  bool _seeded = false;
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -34,10 +36,27 @@ class _WebsiteDashboardScreenState
     try {
       final api = ref.read(apiClientProvider);
       final data = await api.get('/website/admin/pages');
+      final pages = (data as List)
+          .map((e) => WebsitePage.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      // Auto-seed from static website content on first empty load
+      if (pages.isEmpty && !_seeded) {
+        _seeded = true;
+        await api.post('/website/admin/seed');
+        // Reload after seeding
+        final newData = await api.get('/website/admin/pages');
+        setState(() {
+          _pages = (newData as List)
+              .map((e) => WebsitePage.fromJson(e as Map<String, dynamic>))
+              .toList();
+          _loading = false;
+        });
+        return;
+      }
+
       setState(() {
-        _pages = (data as List)
-            .map((e) => WebsitePage.fromJson(e as Map<String, dynamic>))
-            .toList();
+        _pages = pages;
         _loading = false;
       });
     } on ApiException catch (e) {
