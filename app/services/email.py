@@ -1,10 +1,13 @@
 """Transactional email delivery for the public website."""
 
 import asyncio
+import logging
 import smtplib
 from email.message import EmailMessage
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class EmailDeliveryError(Exception):
@@ -58,4 +61,5 @@ def _send_contact_submission_email(
             smtp.login(username, password)
             smtp.send_message(msg)
     except (OSError, smtplib.SMTPException) as exc:
+        logger.warning("Website contact email delivery failed: %s", exc)
         raise EmailDeliveryError("Unable to deliver email") from exc
