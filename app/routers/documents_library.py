@@ -90,15 +90,13 @@ async def upload_document(
 
     # Validate file type for documents
     content_type = file.content_type or ""
-    if content_type not in ALLOWED_DOCUMENT_TYPES and content_type != "application/octet-stream":
+    if content_type not in ALLOWED_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=415,
             detail=f"File type '{content_type}' not allowed for documents. Use PDF, Word, or image files.",
         )
-    # Pass content type override for storage validation if it's octet-stream
-    ct_override = "application/pdf" if content_type == "application/octet-stream" else None
 
-    file_url = await save_upload(file, "documents", school_id, content_type_override=ct_override)
+    file_url = await save_upload(file, "documents", school_id)
 
     doc = DocumentLibrary(
         school_id=school_id,
