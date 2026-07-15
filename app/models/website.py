@@ -86,3 +86,28 @@ class WebsiteMedia(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class WebsiteContactSubmission(Base):
+    """A contact-form submission, kept private from the public CMS API."""
+
+    __tablename__ = "website_contact_submissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    school: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    delivery_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

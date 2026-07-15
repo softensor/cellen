@@ -32,7 +32,8 @@ from app.models.finance import (  # noqa: F401
     ExpenseCategory, Expense, Invoice, Payment, PaymentInvoice
 )
 from app.models.website import (  # noqa: F401
-    WebsiteSetting, WebsitePage, WebsiteSection, WebsiteMedia
+    WebsiteSetting, WebsitePage, WebsiteSection, WebsiteMedia,
+    WebsiteContactSubmission,
 )
 
 target_metadata = Base.metadata

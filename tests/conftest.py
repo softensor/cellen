@@ -58,6 +58,7 @@ import app.models.pickup_auth  # noqa: F401
 import app.models.school  # noqa: F401
 import app.models.trip_authorization  # noqa: F401
 import app.models.user  # noqa: F401
+import app.models.website  # noqa: F401
 
 from app.core.config import settings
 from app.core.database import get_db

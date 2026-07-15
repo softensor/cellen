@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,11 +110,11 @@ class PageWithSections(PageResponse):
 
 
 class ContactSubmission(BaseModel):
-    name: str
-    email: str
-    phone: Optional[str] = None
-    message: str
-    school: Optional[str] = None
+    name: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=3, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=50)
+    message: str = Field(min_length=1, max_length=10_000)
+    school: Optional[str] = Field(default=None, max_length=200)
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ async def public_list_pages(db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(
         select(WebsitePage)
-        .where(WebsitePage.is_published == True)
+        .where(WebsitePage.is_published.is_(True))
         .order_by(WebsitePage.sort_order)
     )
     return result.scalars().all()
@@ -165,7 +165,7 @@ async def public_get_page(slug: str, db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(
         select(WebsitePage).where(
-            WebsitePage.slug == slug, WebsitePage.is_published == True
+            WebsitePage.slug == slug, WebsitePage.is_published.is_(True)
         )
     )
     page = result.scalar_one_or_none()
@@ -176,7 +176,7 @@ async def public_get_page(slug: str, db: AsyncSession = Depends(get_db)):
         select(WebsiteSection)
         .where(
             WebsiteSection.page_id == page.id,
-            WebsiteSection.is_visible == True,
+            WebsiteSection.is_visible.is_(True),
         )
         .order_by(WebsiteSection.sort_order)
     )
@@ -190,14 +190,27 @@ async def public_submit_contact(
     body: ContactSubmission,
     db: AsyncSession = Depends(get_db),
 ):
-    """Receive a contact-form submission from the public website."""
-    from app.models.website import WebsiteSetting
+    """Store and email a contact-form submission from the public website."""
+    from app.models.website import WebsiteContactSubmission
+    from app.services.email import EmailDeliveryError, send_contact_submission_email
 
-    contact_log = WebsiteSetting(
-        key=f"contact_{datetime.utcnow().isoformat()}",
-        value=body.model_dump(),
-    )
-    db.add(contact_log)
+    submission = WebsiteContactSubmission(**body.model_dump())
+    db.add(submission)
+    await db.commit()
+
+    try:
+        await send_contact_submission_email(**body.model_dump())
+    except EmailDeliveryError:
+        submission.delivery_status = "failed"
+        submission.delivery_error = "Email delivery failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível enviar a mensagem. Tente novamente mais tarde.",
+        )
+
+    submission.delivery_status = "sent"
+    submission.delivered_at = datetime.now(timezone.utc)
     await db.commit()
     return {"success": True, "message": "Mensagem enviada. Entraremos em contacto em breve."}
 
