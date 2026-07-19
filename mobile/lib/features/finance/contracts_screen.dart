@@ -16,7 +16,7 @@ class Contract {
   final String? childName;
   final String? guardianId;
   final String serviceName;
-  final double amount;
+  final double unitPrice;
   final double ivaRate;
   final String billingCycle;
   final int dayOfMonth;
@@ -32,7 +32,7 @@ class Contract {
     this.childName,
     this.guardianId,
     required this.serviceName,
-    required this.amount,
+    required this.unitPrice,
     required this.ivaRate,
     required this.billingCycle,
     required this.dayOfMonth,
@@ -50,7 +50,7 @@ class Contract {
       childName: json['child_name'] as String?,
       guardianId: json['guardian_id']?.toString(),
       serviceName: json['service_name'] as String? ?? '',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       ivaRate: (json['iva_rate'] as num?)?.toDouble() ?? 0.0,
       billingCycle: json['billing_cycle'] as String? ?? 'monthly',
       dayOfMonth: (json['day_of_month'] as num?)?.toInt() ?? 1,
@@ -258,7 +258,7 @@ class _ContractCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  currency.format(contract.amount),
+                  currency.format(contract.unitPrice),
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 16),
                 ),
@@ -356,7 +356,7 @@ class _CreateContractDialogState extends ConsumerState<_CreateContractDialog> {
       await api.post('/finance/contracts', data: {
         'child_id': _selectedChildId,
         'service_name': _serviceNameCtrl.text.trim(),
-        'amount': double.tryParse(_amountCtrl.text) ?? 0.0,
+        'unit_price': double.tryParse(_amountCtrl.text) ?? 0.0,
         'iva_rate': _ivaRate,
         'billing_cycle': _billingCycle,
         'day_of_month': _dayOfMonth,

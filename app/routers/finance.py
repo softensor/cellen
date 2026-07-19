@@ -315,6 +315,99 @@ async def get_contract(
     return {**contract.__dict__, "child_name": None}
 
 
+@router.post("/contracts/{contract_id}/generate-invoice", status_code=201)
+async def generate_contract_invoice(
+    contract_id: uuid.UUID,
+    body: dict = None,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_finance_access),
+):
+    """Generate a single invoice for a specific contract for the current month."""
+    if body is None:
+        body = {}
+    result = await db.execute(
+        select(Contract).where(Contract.id == contract_id, Contract.school_id == school_id)
+    )
+    contract = result.scalar_one_or_none()
+    if contract is None:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    if not contract.is_active:
+        raise HTTPException(status_code=422, detail="Contract is not active")
+
+    today = today_luanda()
+    ref_month_str = body.get("reference_month")
+    ref_month = date.fromisoformat(ref_month_str) if ref_month_str else date(today.year, today.month, 1)
+    due_date_str = body.get("due_date")
+    due_date_val = date.fromisoformat(due_date_str) if due_date_str else None
+    school_year_id_str = body.get("school_year_id")
+    school_year_id_val = uuid.UUID(school_year_id_str) if school_year_id_str else None
+
+    # Resolve guardian
+    from app.models.person import ChildGuardian
+    guardian_id = contract.guardian_id
+    if not guardian_id:
+        cg_result = await db.execute(
+            select(ChildGuardian.guardian_id).where(
+                ChildGuardian.child_id == contract.child_id,
+                ChildGuardian.is_primary_contact == True,
+            )
+        )
+        guardian_id = cg_result.scalar_one_or_none()
+    if not guardian_id:
+        raise HTTPException(status_code=422, detail="No billing guardian found for this contract")
+
+    # Resolve price
+    if contract.billing_item_id:
+        unit_price = await resolve_unit_price(
+            db, school_id, contract.billing_item_id, school_year_id_val, contract.unit_price,
+        )
+    else:
+        unit_price = contract.unit_price or Decimal("0")
+
+    # Get guardian details
+    g_result = await db.execute(select(Guardian).where(Guardian.id == guardian_id))
+    guardian = g_result.scalar_one_or_none()
+    customer_nif = guardian.nif if guardian else None
+    customer_name = f"{guardian.first_name} {guardian.last_name}" if guardian else None
+    is_final_consumer = not customer_nif
+
+    bi_name = contract.service_name or "Mensalidade"
+    lines_data = [{
+        "billing_item_id": str(contract.billing_item_id) if contract.billing_item_id else None,
+        "description": bi_name,
+        "quantity": 1,
+        "unit_price": float(unit_price),
+        "discount_percent": float(contract.discount_percent),
+        "discount_amount": float(contract.discount_amount),
+        "iva_rate": float(contract.iva_rate),
+    }]
+
+    emission = DocumentEmissionService(db, school_id)
+    try:
+        invoice = await emission.emit_invoice(
+            document_type="FT",
+            invoice_date=today,
+            billing_guardian_id=guardian_id,
+            customer_nif=customer_nif,
+            customer_name=customer_name,
+            lines=lines_data,
+            child_id=contract.child_id,
+            due_date=due_date_val,
+            issued_by=getattr(current_user, "employee_id", None),
+            school_year_id=school_year_id_val,
+            reference_month=ref_month,
+            description=body.get("description") or bi_name,
+            is_final_consumer=is_final_consumer,
+        )
+        contract.last_invoiced_month = ref_month
+        await db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"invoice_id": str(invoice.id), "full_document_number": invoice.full_document_number}
+
+
 @router.patch("/contracts/{contract_id}", response_model=ContractResponse)
 async def update_contract(
     contract_id: uuid.UUID,
@@ -687,6 +780,43 @@ async def bulk_create_invoices(
 # ═══════════════════════════════════════════════════════════════════════════════
 # CREDIT NOTES (NC)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/invoices/{invoice_id}/void")
+async def void_invoice(
+    invoice_id: uuid.UUID,
+    body: dict,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_school_admin),
+):
+    """Full-void an invoice by emitting a credit note for the entire amount."""
+    reason = (body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required to void an invoice")
+
+    emission = DocumentEmissionService(db, school_id)
+    try:
+        cn = await emission.emit_credit_note(
+            invoice_id=invoice_id,
+            reason=reason,
+            lines=[],  # empty = full void
+            issued_by=getattr(current_user, "employee_id", None),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    audit = FinanceAuditEntry(
+        school_id=school_id,
+        actor_id=getattr(current_user, "id", uuid.uuid4()),
+        entity_type="invoice",
+        entity_id=invoice_id,
+        action="void",
+        reason=reason,
+    )
+    db.add(audit)
+    await db.commit()
+    return {"message": "Invoice voided", "credit_note_id": str(cn.id)}
+
 
 @router.post("/credit-notes", response_model=CreditNoteResponse, status_code=201)
 async def create_credit_note(

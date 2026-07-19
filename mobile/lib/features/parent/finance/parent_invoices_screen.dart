@@ -45,7 +45,8 @@ class ParentInvoice {
       referenceMonth: json['reference_month'] != null
           ? DateTime.tryParse(json['reference_month'] as String) ?? DateTime.now()
           : DateTime.now(),
-      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (json['gross_total'] as num?)?.toDouble() ??
+          (json['total_amount'] as num?)?.toDouble() ?? 0.0,
       status: json['status'] as String? ?? 'pending',
       dueDate: json['due_date'] != null
           ? DateTime.tryParse(json['due_date'] as String)

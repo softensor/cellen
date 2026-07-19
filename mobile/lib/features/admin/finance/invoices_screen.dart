@@ -8,6 +8,7 @@ import '../../../core/auth/auth_provider.dart';
 import '../../../core/models/child.dart';
 import '../../../core/models/invoice.dart';
 import '../../../core/providers/currency_provider.dart';
+import '../../finance/credit_notes_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -320,51 +321,16 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   }
 
   // -------------------------------------------------------------------------
-  // Task 5: Void invoice confirmation
+  // Task 5: Void invoice — opens VoidInvoiceDialog which collects a reason
   // -------------------------------------------------------------------------
   void _showVoidConfirmation(BuildContext context, Invoice inv) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Anular Factura'),
-        content: const Text(
-            'Tem a certeza que deseja anular esta factura? Esta acção não pode ser desfeita.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _voidInvoice(inv);
-            },
-            child: const Text('Anular'),
-          ),
-        ],
+      builder: (_) => VoidInvoiceDialog(
+        invoiceId: inv.id,
+        onVoided: () => ref.invalidate(invoicesProvider),
       ),
     );
-  }
-
-  Future<void> _voidInvoice(Invoice inv) async {
-    try {
-      final api = ref.read(apiClientProvider);
-      await api.post('/finance/invoices/${inv.id}/void');
-      ref.invalidate(invoicesProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Factura anulada com sucesso')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao anular factura: $e')),
-        );
-      }
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -474,9 +440,17 @@ class _RecordPaymentDialogState
       final dateStr =
           '${_paymentDate.year.toString().padLeft(4, '0')}-${_paymentDate.month.toString().padLeft(2, '0')}-${_paymentDate.day.toString().padLeft(2, '0')}';
 
+      if (widget.invoice.billingGuardianId == null) {
+        setState(() {
+          _error = 'Esta factura não tem encarregado de educação associado';
+          _isLoading = false;
+        });
+        return;
+      }
+
       await api.post('/finance/payments', data: {
-        'invoice_ids': [widget.invoice.id],
-        'child_id': widget.invoice.childId,
+        'billing_guardian_id': widget.invoice.billingGuardianId,
+        'target_invoice_ids': [widget.invoice.id],
         'amount': amount,
         'payment_date': dateStr,
         'payment_method': _paymentMethod,
@@ -683,8 +657,6 @@ class _BulkGenerateDialog extends ConsumerStatefulWidget {
 class _BulkGenerateDialogState
     extends ConsumerState<_BulkGenerateDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _tuitionCtrl = TextEditingController();
-  final _otherFeesCtrl = TextEditingController(text: '0');
   DateTime _referenceMonth = DateTime.now();
   DateTime? _dueDate;
   String? _selectedSchoolYearId;
@@ -697,13 +669,6 @@ class _BulkGenerateDialogState
   void initState() {
     super.initState();
     _loadSchoolYears();
-  }
-
-  @override
-  void dispose() {
-    _tuitionCtrl.dispose();
-    _otherFeesCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _loadSchoolYears() async {
@@ -756,13 +721,6 @@ class _BulkGenerateDialogState
       return;
     }
 
-    final employeeId = ref.read(authProvider).employeeId;
-    if (employeeId == null) {
-      setState(() =>
-          _error = 'Funcionário não associado a esta conta');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _error = null;
@@ -770,18 +728,12 @@ class _BulkGenerateDialogState
 
     try {
       final api = ref.read(apiClientProvider);
-      final tuition = double.tryParse(_tuitionCtrl.text) ?? 0.0;
-      final otherFees =
-          double.tryParse(_otherFeesCtrl.text) ?? 0.0;
       final refMonthStr =
           '${_referenceMonth.year.toString().padLeft(4, '0')}-${_referenceMonth.month.toString().padLeft(2, '0')}-01';
 
       final body = <String, dynamic>{
         'school_year_id': _selectedSchoolYearId,
-        'issued_by': employeeId,
         'reference_month': refMonthStr,
-        'tuition_amount': tuition,
-        'other_fees': otherFees,
       };
       if (_dueDate != null) {
         body['due_date'] =
@@ -789,12 +741,10 @@ class _BulkGenerateDialogState
       }
 
       final response =
-          await api.post('/finance/invoices/bulk-generate', data: body);
+          await api.post('/finance/invoices/bulk', data: body);
 
       final count = (response is Map)
-          ? (response['count'] as int? ??
-              (response['invoices'] as List?)?.length ??
-              0)
+          ? (response['created'] as int? ?? 0)
           : 0;
 
       if (mounted) Navigator.pop(context);
@@ -809,7 +759,6 @@ class _BulkGenerateDialogState
 
   @override
   Widget build(BuildContext context) {
-    final currency = ref.watch(currencyFormatProvider);
     return AlertDialog(
       title: const Text('Gerar Facturas em Massa'),
       content: SizedBox(
@@ -858,36 +807,6 @@ class _BulkGenerateDialogState
                         ),
                       ),
                       const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _tuitionCtrl,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Mensalidade (${currency.currencySymbol}) *',
-                          prefixIcon: const Icon(Icons.monetization_on_outlined),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty)
-                            return 'Campo obrigatório';
-                          if (double.tryParse(v) == null)
-                            return 'Valor inválido';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _otherFeesCtrl,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                                decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Outras taxas (${currency.currencySymbol})',
-                          prefixIcon:
-                              const Icon(Icons.add_circle_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       InkWell(
                         onTap: _pickDueDate,
                         child: InputDecorator(
@@ -900,6 +819,14 @@ class _BulkGenerateDialogState
                               ? 'Não definida'
                               : DateFormat('dd/MM/yyyy')
                                   .format(_dueDate!)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Os preços são obtidos automaticamente dos contratos activos.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       if (_error != null) ...[
@@ -991,14 +918,28 @@ class _CreateInvoiceSheetState
         });
         return;
       }
+      final lines = <Map<String, dynamic>>[
+        {
+          'description': 'Mensalidade',
+          'quantity': 1,
+          'unit_price': tuition,
+          'iva_rate': 0,
+        },
+        if (otherFees > 0)
+          {
+            'description': 'Outras taxas',
+            'quantity': 1,
+            'unit_price': otherFees,
+            'iva_rate': 0,
+          },
+      ];
+
       await api.post('/finance/invoices', data: {
+        'document_type': 'FT',
         'child_id': _selectedChildId,
-        'issued_by': employeeId,
         'reference_month':
             '${_referenceMonth.year.toString().padLeft(4, '0')}-${_referenceMonth.month.toString().padLeft(2, '0')}-01',
-        'tuition_amount': tuition,
-        'other_fees': otherFees,
-        'total_amount': tuition + otherFees,
+        'lines': lines,
         if (_descCtrl.text.trim().isNotEmpty)
           'description': _descCtrl.text.trim(),
         if (_dueDate != null)
