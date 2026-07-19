@@ -532,6 +532,7 @@ class CreditRefund(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     method: Mapped[str] = mapped_column(String(50), nullable=False)
     reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     authorised_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
     )
@@ -565,6 +566,7 @@ class CashSession(Base):
     variance: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     variance_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="open")  # open, closed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # ─── Payment Plans (20.15) ───────────────────────────────────────────────────
@@ -642,6 +644,7 @@ class ReminderLog(Base):
     )
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     message_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # ─── Finance Audit Log (20.19) ───────────────────────────────────────────────

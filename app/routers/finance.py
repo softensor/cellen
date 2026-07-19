@@ -36,11 +36,11 @@ from app.models.person import Child, Guardian
 from app.schemas.finance import (
     AccountStatementResponse,
     BillingItemCreate, BillingItemPriceCreate, BillingItemPriceResponse,
-    BillingItemResponse, BillingItemUpdate,
+    BillingItemPriceRollRequest, BillingItemResponse, BillingItemUpdate,
     CashFlowMonth, CashSessionClose, CashSessionOpen, CashSessionResponse,
     ContractCreate, ContractResponse, ContractUpdate,
     CreditApplyRequest, CreditEntryResponse, CreditNoteCreate, CreditNoteResponse,
-    CreditRefundRequest,
+    CreditRefundRequest, GuardianCreditSummary,
     DocumentSeriesResponse,
     ExpenseCategoryCreate, ExpenseCategoryResponse, ExpenseCategoryUpdate,
     ExpenseCreate, ExpenseResponse, ExpenseUpdate,
@@ -52,9 +52,9 @@ from app.schemas.finance import (
 from app.services.finance import (
     DocumentEmissionService, PaymentIntakeService,
     apply_credit_to_invoice, generate_annual_pl, generate_monthly_pl,
-    get_account_statement, get_guardian_credit_balance, get_invoice_amount_paid,
-    get_invoice_balance, get_outstanding_invoices, mark_overdue_invoices,
-    resolve_unit_price, reverse_payment,
+    get_account_statement, get_guardian_credit_balance, get_guardians_with_credit,
+    get_invoice_amount_paid, get_invoice_balance, get_outstanding_invoices,
+    mark_overdue_invoices, resolve_unit_price, reverse_payment,
 )
 from app.services.storage import save_upload
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
@@ -108,6 +108,22 @@ async def create_billing_item(
     db.add(item)
     await db.commit()
     await db.refresh(item)
+    return item
+
+
+@router.get("/billing-items/{item_id}", response_model=BillingItemResponse)
+async def get_billing_item(
+    item_id: uuid.UUID,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    result = await db.execute(
+        select(BillingItem).where(BillingItem.id == item_id, BillingItem.school_id == school_id)
+    )
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Billing item not found")
     return item
 
 
@@ -173,6 +189,53 @@ async def set_item_price(
     await db.commit()
     await db.refresh(price)
     return price
+
+
+@router.post("/billing-items/prices/bulk-roll", status_code=201)
+async def bulk_roll_prices(
+    body: BillingItemPriceRollRequest,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_school_admin),
+):
+    """Copy prices from one school year to another with an optional % increase (UC-BI4)."""
+    source_result = await db.execute(
+        select(BillingItemPrice).where(
+            BillingItemPrice.school_id == school_id,
+            BillingItemPrice.school_year_id == body.from_school_year_id,
+        )
+    )
+    source_prices = source_result.scalars().all()
+    if not source_prices:
+        raise HTTPException(status_code=404, detail="No prices found for source school year")
+
+    created = 0
+    updated = 0
+    multiplier = Decimal("1") + body.increase_percent / Decimal("100")
+
+    for sp in source_prices:
+        new_price = (sp.unit_price * multiplier).quantize(Decimal("0.01"))
+        existing = await db.execute(
+            select(BillingItemPrice).where(
+                BillingItemPrice.billing_item_id == sp.billing_item_id,
+                BillingItemPrice.school_year_id == body.to_school_year_id,
+            )
+        )
+        target = existing.scalar_one_or_none()
+        if target:
+            target.unit_price = new_price
+            updated += 1
+        else:
+            db.add(BillingItemPrice(
+                school_id=school_id,
+                billing_item_id=sp.billing_item_id,
+                school_year_id=body.to_school_year_id,
+                unit_price=new_price,
+            ))
+            created += 1
+
+    await db.commit()
+    return {"created": created, "updated": updated}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -552,12 +615,15 @@ async def bulk_create_invoices(
             continue
 
         # Resolve price
-        unit_price = await resolve_unit_price(
-            db, school_id,
-            contract.billing_item_id or contract.id,  # fallback
-            body.school_year_id,
-            contract.unit_price,
-        )
+        if contract.billing_item_id:
+            unit_price = await resolve_unit_price(
+                db, school_id,
+                contract.billing_item_id,
+                body.school_year_id,
+                contract.unit_price,
+            )
+        else:
+            unit_price = contract.unit_price or Decimal("0")
 
         # Get guardian NIF
         g_result = await db.execute(select(Guardian).where(Guardian.id == guardian_id))
@@ -919,6 +985,17 @@ async def cancel_payment_reference(
 # CREDIT BALANCES (20.12)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/credits", response_model=list[GuardianCreditSummary])
+async def list_guardians_with_credit(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """List all guardians with a non-zero credit balance (UC-CB4)."""
+    rows = await get_guardians_with_credit(db, school_id)
+    return rows
+
+
 @router.get("/credits/{guardian_id}")
 async def get_guardian_credits(
     guardian_id: uuid.UUID,
@@ -1103,6 +1180,73 @@ async def close_cash_session(
     session.variance_reason = body.variance_reason
     session.status = "closed"
 
+    if variance != 0:
+        audit = FinanceAuditEntry(
+            school_id=school_id,
+            actor_id=getattr(current_user, "id", uuid.uuid4()),
+            entity_type="cash_session",
+            entity_id=session_id,
+            action="close_with_variance",
+            reason=body.variance_reason,
+            after_snapshot={
+                "variance": float(variance),
+                "counted": body.counted_by_method,
+                "expected": expected,
+            },
+        )
+        db.add(audit)
+
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+@router.post("/cash-sessions/{session_id}/reopen", response_model=CashSessionResponse)
+async def reopen_cash_session(
+    session_id: uuid.UUID,
+    body: dict,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_school_admin),
+):
+    """Reopen a closed cash session (UC-CS5). school_admin only; mandatory reason."""
+    reason = body.get("reason", "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required to reopen a cash session")
+
+    result = await db.execute(
+        select(CashSession).where(CashSession.id == session_id, CashSession.school_id == school_id)
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Cash session not found")
+    if session.status == "open":
+        raise HTTPException(status_code=400, detail="Session is already open")
+
+    # Ensure no other session is currently open
+    other = await db.execute(
+        select(CashSession.id).where(
+            CashSession.school_id == school_id,
+            CashSession.status == "open",
+            CashSession.id != session_id,
+        )
+    )
+    if other.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Another cash session is already open")
+
+    session.status = "open"
+    session.closed_at = None
+    session.closed_by = None
+
+    audit = FinanceAuditEntry(
+        school_id=school_id,
+        actor_id=getattr(current_user, "id", uuid.uuid4()),
+        entity_type="cash_session",
+        entity_id=session_id,
+        action="reopen",
+        reason=reason,
+    )
+    db.add(audit)
     await db.commit()
     await db.refresh(session)
     return session
@@ -1313,6 +1457,24 @@ async def parent_credit_balance(
     }
 
 
+@router.get("/parent/payment-references", response_model=list[PaymentReferenceResponse])
+async def parent_payment_references(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    """Parent views their active payment references (Multicaixa entities/refs)."""
+    guardian_id = getattr(current_user, "guardian_id", None)
+    if guardian_id is None:
+        raise HTTPException(status_code=403, detail="No guardian linked")
+    result = await db.execute(
+        select(PaymentReference).where(
+            PaymentReference.billing_guardian_id == guardian_id,
+            PaymentReference.status == "active",
+        ).order_by(PaymentReference.created_at.desc())
+    )
+    return result.scalars().all()
+
+
 @router.post("/parent/submit-payment", status_code=201)
 async def parent_submit_payment(
     body: dict,
@@ -1422,6 +1584,23 @@ async def finance_dashboard(
         select(CashSession.id).where(CashSession.school_id == school_id, CashSession.status == "open")
     )
 
+    # Invoices generated this month (count and amount)
+    inv_gen_r = await db.execute(
+        select(func.count(Invoice.id), func.coalesce(func.sum(Invoice.gross_total), 0))
+        .where(
+            Invoice.school_id == school_id,
+            Invoice.invoice_date >= month_start,
+            Invoice.is_void == False,
+            Invoice.document_type.in_(["FT", "FR", "ND"]),
+        )
+    )
+    inv_gen_row = inv_gen_r.first()
+    invoices_generated_count = inv_gen_row[0] if inv_gen_row else 0
+    invoices_generated_amount = float(inv_gen_row[1]) if inv_gen_row else 0.0
+    collection_rate = round(
+        (total_revenue / invoices_generated_amount * 100) if invoices_generated_amount > 0 else 0.0, 2
+    )
+
     return {
         "total_revenue_month": total_revenue,
         "total_expenses_month": total_expenses,
@@ -1430,6 +1609,9 @@ async def finance_dashboard(
         "total_outstanding": float(outstanding_r.scalar()),
         "total_credit_balance": float(credit_r.scalar()),
         "has_open_cash_session": session_r.scalar_one_or_none() is not None,
+        "invoices_generated_count": invoices_generated_count,
+        "invoices_generated_amount": invoices_generated_amount,
+        "collection_rate": collection_rate,
     }
 
 
@@ -1474,31 +1656,66 @@ async def delinquent_report(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_finance_access),
 ):
-    from app.models.person import ChildGuardian
+    """Delinquency report grouped by guardian with aging buckets (0-30, 31-60, 61-90, 90+ days)."""
     today = today_luanda()
     await mark_overdue_invoices(db, school_id)
 
     result = await db.execute(
         select(Invoice).where(
             Invoice.school_id == school_id,
-            Invoice.status.in_(["overdue"]),
+            Invoice.status.in_(["overdue", "partially_paid"]),
             Invoice.is_void == False,
-        ).order_by(Invoice.due_date.asc())
+            Invoice.due_date < today,
+        ).order_by(Invoice.billing_guardian_id, Invoice.due_date.asc())
     )
     invoices = result.scalars().all()
 
-    output = []
+    # Group by guardian
+    from collections import defaultdict
+    guardian_map: dict = defaultdict(lambda: {
+        "guardian_id": None,
+        "guardian_name": None,
+        "bucket_0_30": Decimal("0"),
+        "bucket_31_60": Decimal("0"),
+        "bucket_61_90": Decimal("0"),
+        "bucket_90_plus": Decimal("0"),
+        "total_overdue": Decimal("0"),
+        "invoice_count": 0,
+    })
+
     for inv in invoices:
-        days_overdue = (today - inv.due_date).days if inv.due_date else 0
-        output.append({
-            "invoice_id": str(inv.id),
-            "document_number": inv.full_document_number,
-            "guardian_name": inv.customer_name,
-            "amount": float(inv.gross_total),
-            "due_date": str(inv.due_date) if inv.due_date else None,
-            "days_overdue": days_overdue,
-            "status": inv.status,
-        })
+        days = (today - inv.due_date).days if inv.due_date else 0
+        balance = await get_invoice_balance(db, inv.id)
+        if balance <= 0:
+            continue
+        gid = str(inv.billing_guardian_id) if inv.billing_guardian_id else inv.customer_nif or "unknown"
+        entry = guardian_map[gid]
+        entry["guardian_id"] = str(inv.billing_guardian_id) if inv.billing_guardian_id else None
+        entry["guardian_name"] = inv.customer_name
+        entry["invoice_count"] += 1
+        entry["total_overdue"] += balance
+        if days <= 30:
+            entry["bucket_0_30"] += balance
+        elif days <= 60:
+            entry["bucket_31_60"] += balance
+        elif days <= 90:
+            entry["bucket_61_90"] += balance
+        else:
+            entry["bucket_90_plus"] += balance
+
+    output = sorted(
+        [
+            {**v, "total_overdue": float(v["total_overdue"]),
+             "bucket_0_30": float(v["bucket_0_30"]),
+             "bucket_31_60": float(v["bucket_31_60"]),
+             "bucket_61_90": float(v["bucket_61_90"]),
+             "bucket_90_plus": float(v["bucket_90_plus"])}
+            for v in guardian_map.values()
+            if v["total_overdue"] > 0
+        ],
+        key=lambda x: x["total_overdue"],
+        reverse=True,
+    )
     return output
 
 

@@ -350,6 +350,9 @@ class PaymentIntakeService:
         4. Handle surplus as CreditEntry
         5. Mark PaymentReference paid (if applicable)
         """
+        if amount <= 0:
+            raise ValueError("Payment amount must be greater than zero")
+
         # Idempotency check
         if idempotency_key:
             existing = await self.db.execute(
@@ -923,6 +926,39 @@ async def generate_annual_pl(db: AsyncSession, school_id: UUID, year: int) -> di
 
 
 # ─── Guardian Account Statement (20.13) ──────────────────────────────────────
+
+async def get_guardians_with_credit(db: AsyncSession, school_id: UUID) -> list:
+    """Return all guardians with a non-zero credit balance (UC-CB4)."""
+    from app.models.person import Guardian
+    result = await db.execute(
+        select(
+            CreditEntry.billing_guardian_id,
+            func.sum(CreditEntry.amount_remaining).label("balance"),
+        )
+        .where(
+            CreditEntry.school_id == school_id,
+            CreditEntry.is_reversed == False,
+            CreditEntry.amount_remaining > 0,
+        )
+        .group_by(CreditEntry.billing_guardian_id)
+        .having(func.sum(CreditEntry.amount_remaining) > 0)
+    )
+    rows = result.all()
+
+    output = []
+    for row in rows:
+        g_result = await db.execute(
+            select(Guardian.first_name, Guardian.last_name).where(Guardian.id == row.billing_guardian_id)
+        )
+        g_row = g_result.first()
+        guardian_name = f"{g_row[0]} {g_row[1]}" if g_row else "Unknown"
+        output.append({
+            "guardian_id": row.billing_guardian_id,
+            "guardian_name": guardian_name,
+            "credit_balance": row.balance,
+        })
+    return output
+
 
 async def get_outstanding_balance(db: AsyncSession, school_id: UUID, child_id: UUID) -> Decimal:
     """Sum of outstanding balances for a child's invoices."""

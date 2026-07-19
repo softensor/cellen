@@ -566,3 +566,19 @@ class DocumentSeriesResponse(BaseModel):
     document_type: str
     year: int
     next_number: int
+
+
+# ─── Billing Item Price Roll (UC-BI4) ────────────────────────────────────────
+
+class BillingItemPriceRollRequest(BaseModel):
+    from_school_year_id: uuid.UUID
+    to_school_year_id: uuid.UUID
+    increase_percent: Decimal = Decimal("0")  # 0 = copy as-is
+
+
+# ─── Credit Summary (UC-CB4) ─────────────────────────────────────────────────
+
+class GuardianCreditSummary(BaseModel):
+    guardian_id: uuid.UUID
+    guardian_name: str
+    credit_balance: DecimalFloat
