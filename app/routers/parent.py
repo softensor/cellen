@@ -155,6 +155,6 @@ async def parent_get_invoices(
         amount_paid = await get_invoice_amount_paid(db, invoice.id)
         data = InvoiceResponse.model_validate(invoice)
         data.amount_paid = amount_paid
-        data.balance = invoice.total_amount - amount_paid
+        data.balance = invoice.gross_total - amount_paid
         output.append(data)
     return output

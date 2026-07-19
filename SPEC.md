@@ -1,5 +1,5 @@
 # Cellen — Product Specification
-
+    
 **Version 1.2 | Childcare Management SaaS (Angola)**
 
 ---
@@ -690,315 +690,1346 @@ A `school_admin` cannot reset their own password via the admin panel — they mu
 
 ---
 
-## 20. Finance
+## 20. Finance Module - Software Requirements Specification
 
-The finance module must comply with Angola's AGT (Autoridade Geral Tributária) requirements for electronic invoicing.
+> **Regulatory baseline:** Decreto Presidencial n.o 71/25 de 20 de Marco (Regime Juridico das Facturas) and Decreto Executivo n.o 683/25 de 22 de Agosto (technical specifications). This module targets the certified-software model: local RSA-SHA1 signing + SAF-T (AO) export. Real-time AGT transmission (later phase) is architecturally reserved (see 20.14).
 
-### 20.1 Configuration
+---
 
-**Document series:** Each document type (FT = Factura, NC = Nota de Crédito, RC = Recibo) requires a series per year. The series is created on first use.
+### 20.1 Finance Domain Overview
 
-**Digital signature chain (AGT requirement):**
-AGT certification requires an **RSA-SHA1 asymmetric digital signature**, not a plain SHA-1 hash. The two are fundamentally different:
+The finance module manages the complete lifecycle of school receivables: from defining what is billable, through issuing legally compliant fiscal documents, collecting payments, managing credit balances, and producing regulatory exports.
 
-- A simple SHA-1 hash can be reproduced by anyone — it provides no tamper evidence.
-- An RSA-SHA1 signature can only be produced by the holder of the private key, and can be verified by any holder of the public key. This is what AGT audits.
+**Core domain concepts:**
 
-**Implementation requirements:**
-1. Generate a 1024-bit RSA key pair (minimum; 2048-bit preferred).
+| Concept | Description |
+|---------|-------------|
+| Guardian Account | The billing entity. All financial activity is per-guardian, not per-child. |
+| Fiscal Document | An AGT-compliant signed document (FT, FR, NC, ND, RC) forming an immutable chain. |
+| Payment | Money received from any source, allocated to one or more invoices. |
+| Credit Balance | A guardian-level ledger of surplus funds available for future settlement. |
+| Cash Session | A daily register discipline for physical cash/check handling. |
+| Payment Reference | A Multicaixa (entidade, referencia) pair enabling bank/ATM/mobile payment. |
+| Payment Plan | A commercial arrangement restructuring overdue debt into installments. |
+
+**Architectural principles:**
+
+1. **Single document emission point** - All fiscal documents flow through `DocumentEmissionService`. No code path creates a signed document directly.
+2. **Single payment convergence point** - All payment processing flows through `PaymentIntakeService`. Whether from admin UI, parent submission, webhook, or credit application.
+3. **Immutability** - Financial records are never deleted. Corrections use compensating entries (NC for invoices, reversal for payments).
+4. **Guardian-centric billing** - The billing account is the guardian. A child may appear on an invoice line, but the receivable belongs to the guardian.
+5. **Fiscal chain integrity** - The RSA-SHA1 signature chain per document series is the audit backbone. Breaking it invalidates all subsequent documents.
+
+---
+
+### 20.2 Domain Model
+
+#### 20.2.1 Aggregate Roots
+
+```
+[Guardian Account]
+  |-- Invoices (FT, FR, ND)
+  |-- Credit Notes (NC, always references an Invoice)
+  |-- Payments (allocated to Invoices)
+  |-- Receipts (RC, always references a Payment)
+  |-- Credit Entries (ledger)
+  |-- Credit Refunds
+  |-- Payment References
+  |-- Payment Plans
+  |-- Reminder Logs
+
+[Document Series]
+  |-- Per school, per document type, per year
+  |-- Controls numbering and hash chain
+
+[Service Catalog]
+  |-- Billing Items (the things a school charges for)
+  |-- Billing Item Prices (per school year)
+  |-- Contracts (recurring billing agreements per child)
+
+[Cash Session]
+  |-- Opening/closing register per day
+
+[Expense Tracking]
+  |-- Expense Categories
+  |-- Expenses (outflows, separate from receivables)
+```
+
+#### 20.2.2 Fiscal Document Types
+
+| Type | Name            | Purpose                           | Creates Receivable | Settles Receivable |
+|------|-----------------|-----------------------------------|:------------------:|:------------------:|
+| `FT` | Factura         | Invoice                           |        Yes         |         No         |
+| `FR` | Factura-Recibo  | Invoice + receipt combined        |        Yes         |     Yes (self)     |
+| `NC` | Nota de Credito | Credit note (correction downward) |         No         |    Partial/full    |
+| `ND` | Nota de Debito  | Debit note (correction upward)    |        Yes         |         No         |
+| `RC` | Recibo          | Receipt                           |         No         |        Yes         |
+
+Each type maintains its own series and signature chain per year.
+
+#### 20.2.3 Invoice State Machine
+
+```
+                    +-----------+
+         emit FT   |  pending  |
+         --------> |           |
+                    +-----+-----+
+                          |
+            +-------------+-------------+
+            |             |             |
+    partial payment   full payment   past due_date
+            |             |             |
+            v             v             v
+    +-------+---+   +----+----+   +----+-----+
+    | partially |   |  paid   |   |  overdue  |
+    |   _paid   |   |         |   |           |
+    +-------+---+   +---------+   +-----+-----+
+            |                           |
+            +------ full payment -------+
+            |             |
+            v             v
+      +---------+   +---------+
+      |  paid   |   |  paid   |
+      +---------+   +---------+
+
+    Full NC on any non-paid state -> cancelled
+    is_void = true
+```
+
+Valid statuses: `pending`, `partially_paid`, `paid`, `overdue`, `cancelled`.
+
+Transitions:
+- `pending` -> `partially_paid` (partial payment received)
+- `pending` -> `paid` (full payment received)
+- `pending` -> `overdue` (due_date passed, daily job)
+- `partially_paid` -> `paid` (remaining balance settled)
+- `partially_paid` -> `overdue` (due_date passed)
+- `overdue` -> `partially_paid` (partial payment)
+- `overdue` -> `paid` (full payment)
+- Any non-paid -> `cancelled` (full NC issued, is_void=true)
+
+FR documents are created in `paid` status immediately (they are self-settling).
+
+---
+
+### 20.3 AGT Digital Signature Chain
+
+#### 20.3.1 RSA-SHA1 Requirement
+
+AGT certification requires an **RSA-SHA1 asymmetric digital signature**, not a plain hash:
+
+- A SHA-1 hash can be reproduced by anyone; it provides no tamper evidence.
+- An RSA-SHA1 signature can only be produced by the private key holder and verified by the public key holder.
+
+#### 20.3.2 Implementation
+
+1. Generate an RSA key pair (2048-bit preferred, 1024-bit minimum).
 2. Register the public key with AGT during software certification.
-3. Store the private key server-side, never exposed to clients.
-4. For each document (FT, NC, RC), sign the following string using the private key:
-   ```
-   {InvoiceDate}\n{SystemEntryDate}\n{DocumentNumber}\n{GrossTotal}\n{PreviousHash}
-   ```
-   where:
-   - `InvoiceDate` = `YYYY-MM-DD` (the document date)
-   - `SystemEntryDate` = `YYYY-MM-DDThh:mm:ss` (full ISO 8601 timestamp of record creation — **always a full datetime, never a DATE-only value**)
-   - `DocumentNumber` = full document number, e.g. `FT 2025/1`
-   - `GrossTotal` = total amount as a decimal string with 2 decimal places, e.g. `12500.00`
-   - `PreviousHash` = the `hash_code` of the previous document in the series; `"0"` for the first document
-5. The resulting signature (Base64-encoded) is stored in `hash_code`.
-6. The `previous_hash` of each document stores the `hash_code` of its predecessor, forming a verifiable chain.
+3. Store the private key server-side (environment variable or secrets manager), never in the database, never exposed to clients.
+4. For every fiscal document (`FT`, `FR`, `NC`, `ND`, `RC`), sign the canonical string:
 
-**Key management:**
-- The private key is stored encrypted on the server (environment variable or secrets manager), never in the database.
-- If the key is compromised or lost, the school must re-certify with AGT and restart their hash chain — this is a critical operational risk.
+```
+{InvoiceDate};{SystemEntryDate};{DocumentNumber};{GrossTotal};{PreviousHash}
+```
+
+Where:
+- `InvoiceDate` = `YYYY-MM-DD`
+- `SystemEntryDate` = `YYYY-MM-DDThh:mm:ss` (full ISO 8601, Africa/Luanda timezone)
+- `DocumentNumber` = e.g. `FT 2026/1`
+- `GrossTotal` = e.g. `12500.00` (exact format below)
+- `PreviousHash` = `hash_code` of the previous document in the same series; `"0"` for the first
+
+5. The Base64-encoded signature is stored as `hash_code`. The predecessor's `hash_code` is stored as `previous_hash`.
+
+#### 20.3.3 Chain Integrity Invariants
+
+These are **enforced at the database/service level**, not assumed:
+
+| Invariant | Enforcement |
+|-----------|-------------|
+| `SystemEntryDate` monotonically non-decreasing within a series | Checked against `last_system_entry_date` on series row |
+| `InvoiceDate` >= previous document's `InvoiceDate` in same series | Checked against `last_invoice_date` on series row |
+| Sequential gapless numbering | `next_number` on series row, incremented atomically |
+| No concurrent emission within a series | `SELECT ... FOR UPDATE` on the series row |
+| Signed fields immutable after emission | No UPDATE endpoint exists for these fields |
+
+**Critical operational constraint:** If two processes emit to the same series concurrently without the per-series lock, the chain forks and all subsequent documents are invalid. The lock is mandatory.
+
+#### 20.3.4 Canonical Formatting Rules
+
+A single deviation invalidates every subsequent signature in the chain.
+
+- `GrossTotal`: decimal string, exactly 2 decimal places, `.` as separator, no thousands separator, no currency symbol. Example: `12500.00`
+- Rounding: each `line_total` is rounded half-up to 2 decimal places. The document total is the sum of rounded line totals (never round the sum of unrounded values).
+- Currency: AOA (Angolan Kwanza). Multi-currency out of scope.
+- Timezone: `Africa/Luanda` (WAT, UTC+1, no DST). All `SystemEntryDate` values are generated, stored, and signed in this timezone.
+- Server clock discipline (NTP) is an operational requirement. A clock jump backward violates monotonicity.
+
+#### 20.3.5 Key Management
+
+- Private key stored encrypted (env var `AGT_PRIVATE_KEY` or secrets manager), never in database.
+- Development: auto-generated ephemeral key at `/tmp/cellen_dev_agt_key.pem`.
+- Key compromise or loss requires AGT re-certification and chain restart.
 - Key rotation requires AGT re-certification.
+- All key operations (generation, rotation, export) write an audit entry (20.12).
+- Key material included in encrypted backup routine, stored separately from DB backups.
 
-### 20.2 Service Catalog (BillingItem)
+#### 20.3.6 Signature Excerpt
 
-AGT SAF-T validation requires every invoice line item to reference a product or service code defined in the system's `MasterFiles/Product` section. Free-text descriptions alone are not sufficient — each line must map to a catalogued item with a stable code, description, and fiscal attributes.
-
-**Use cases:**
-- UC-FSC1: Admin creates a billing item (e.g. monthly tuition for a given level)
-- UC-FSC2: Admin lists all billing items
-- UC-FSC3: Admin updates a billing item (name, default price, IVA attributes)
-- UC-FSC4: Admin deactivates a billing item (cannot delete if referenced by invoices)
-
-**Data per BillingItem:**
-- `code` — unique within the school, short and stable (e.g. `MENS-BERC`, `MENS-CRECHE`, `MENS-JARDIN`, `EXTRAS`, `MATRICULA`)
-- `name` — human-readable name (e.g. "Mensalidade Berçário", "Matrícula")
-- `description` — optional extended description
-- `unit_price` — default price (can be overridden per invoice line)
-- `iva_rate` — default IVA rate (0.00 for education services)
-- `iva_exemption_reason` — default exemption code (e.g. `M10`)
-- `is_active` — soft delete flag
-
-**Seeded defaults on school creation:**
-
-| Code | Name | IVA | Exemption |
-|------|------|-----|-----------|
-| `MENS-BERC` | Mensalidade Berçário | 0% | M10 |
-| `MENS-CRECHE` | Mensalidade Creche | 0% | M10 |
-| `MENS-JARDIN` | Mensalidade Jardim de Infância | 0% | M10 |
-| `MATRICULA` | Matrícula / Inscrição | 0% | M10 |
-| `EXTRAS` | Serviços Extra-Curriculares | 0% | M10 |
-| `TRANSP` | Transporte Escolar | 0% | M10 |
-| `ALIM` | Alimentação | 0% | M10 |
-
-**SAF-T MasterFiles output:** When exporting SAF-T, the system compiles every `BillingItem` referenced by documents in the export period into the `<MasterFiles><Product>` section, using `code` as `<ProductCode>`, `name` as `<ProductDescription>`, and the IVA attributes for the product group.
-
-**Business rules:**
-- A `BillingItem` can be deactivated but never deleted if it is referenced by any invoice line, contract, or SAF-T export.
-- The `code` is immutable once created — it is the stable identifier in SAF-T exports across multiple periods.
-- Schools can create custom items beyond the seeded defaults.
+Every printed document displays a 4-character signature excerpt (characters at positions 1, 11, 21, 31 of the Base64 string). This is the visual anti-tampering indicator per the AGT certification spec. Confirm exact AO positions against DE 683/25.
 
 ---
 
-### 20.3 Expense Categories
+### 20.4 Service Catalog (Billing Items)
 
-**Use cases:**
-- UC-FEC1: Admin creates expense categories (e.g. Salários, Alimentação, Manutenção)
-- UC-FEC2: Admin lists categories
-- UC-FEC3: Admin updates a category
+#### 20.4.1 Entity: `BillingItem`
 
-**Business rules:**
-- Default categories on school creation: `salary`, `utilities`, `food`, `supplies`, `maintenance`, `other`.
-- Categories are school-specific.
+The catalog of things a school charges for. Immutable `code` for SAF-T product identification.
 
-### 20.4 Expenses
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `code` | String(20) | Unique per school, immutable after creation |
+| `name` | String(100) | Display name |
+| `description` | Text | Optional |
+| `unit_price` | Numeric(10,2) | Default price (fallback in resolution chain) |
+| `iva_rate` | Numeric(5,2) | Default IVA rate |
+| `iva_exemption_reason` | String(10) | AGT exemption code (e.g. `M10`) |
+| `iva_exemption_legend` | Text | Full legal text for the exemption (printed on documents) |
+| `category` | String(50) | For grouping: `tuition`, `meals`, `transport`, `materials`, `activities`, `other` |
+| `is_active` | Boolean | Soft-disable (inactive items excluded from new contracts/invoices) |
+| `created_at`, `updated_at` | DateTime | |
 
-**Use cases:**
-- UC-FE1: Admin records an expense
-- UC-FE2: Admin lists expenses (filterable by category, date range, school year)
-- UC-FE3: Admin views expense detail
-- UC-FE4: Admin updates an expense (only while status is `active`)
-- UC-FE5: Admin voids an expense recorded in error (sets `is_voided = true`, records `void_reason`)
-- UC-FE6: Admin uploads a receipt for an expense
-
-**Data per expense:** description, amount, date, category, payment method, reference, receipt_url, notes, registered_by, school_year
-
-**Payment methods:** `cash`, `transfer`, `multicaixa`, `check`, `other`
-
-**Business rules:**
-- Only `school_admin` can manage expenses.
-- Receipts are optional attachments (image or PDF, max 5 MB).
-
-### 20.5 Invoices
-
-**Use cases:**
-- UC-FI1: Admin creates a single invoice for a guardian (specifying which child the service is for)
-- UC-FI2: Admin bulk-creates invoices for all active enrollments in a reference month
-- UC-FI3: Admin views invoice list (filterable by guardian, child, status, month, year)
-- UC-FI4: Admin views invoice detail with balance (total − payments)
-- UC-FI5: Admin cancels an unpaid invoice
-- UC-FI6: Admin voids a paid invoice (creates credit note)
-- UC-FI7: Admin generates Multicaixa payment reference for an invoice
-- UC-FI8: Parent views their own invoices with payment status
-
-**Invoice statuses:** `pending`, `partially_paid`, `paid`, `cancelled`, `overdue`
-
-**Invoicing entity — legal requirement:**
-
-Under AGT regulations, a tax document (Factura) must be issued to a legally responsible person or entity — not a minor. The SAF-T `MasterFiles/Customer` section requires each customer to have a `Name`, `BillingAddress`, and `TaxRegistrationNumber` (NIF). A child has none of these.
-
-**The Invoice belongs to a Guardian (or corporate sponsor), not the Child.**
-
-- `billing_guardian_id` (FK → Guardian) — the legally responsible party receiving the invoice. This is the primary billing contact. The guardian's name, NIF, and address populate the SAF-T `Customer` record.
-- `child_id` — retained as **metadata only**, used to populate the line item description (e.g. "Mensalidade Outubro 2025 — Ana Silva") and for filtering invoices by child in the UI. It carries no fiscal weight.
-- Both fields are required on every invoice.
-
-**Data per invoice (header):**
-- `billing_guardian_id` — FK to Guardian (the invoice recipient, legally)
-- `child_id` — FK to Child (metadata for line item description)
-- `issued_by` — employee who created the invoice
-- `school_year_id`
-- `invoice_date` — `DATE`
-- `reference_month` — e.g. `2025-10` (YYYY-MM)
-- `due_date` — `DATE`
-- `status` — `pending` | `partially_paid` | `paid` | `cancelled` | `overdue`
-- `document_type` — `FT`
-- `series_year`, `series_number`, `full_document_number` — e.g. `FT 2025/42`
-- `hash_code`, `previous_hash` — RSA-SHA1 signature chain (see 20.1)
-- `cancellation_reason`, `cancelled_at` — set when status becomes `cancelled`
-- `multicaixa_entity`, `multicaixa_ref` — optional payment reference
-- `notes`
-
-**Data per invoice line item (`InvoiceLine`):**
-- `invoice_id`
-- `billing_item_id` — FK to BillingItem (see 20.2). This drives the SAF-T `<ProductCode>`.
-- `description` — human-readable line description, auto-populated from BillingItem name + child name (e.g. "Mensalidade Outubro 2025 — Ana Silva"), editable by admin
-- `quantity` — typically `1`
-- `unit_price` — amount for this line (copied from BillingItem default, editable)
-- `iva_rate` — copied from BillingItem, editable
-- `iva_exemption_reason` — required when `iva_rate = 0%`; copied from BillingItem
-- `iva_amount` — computed: `unit_price × quantity × iva_rate`
-- `line_total` — computed: `unit_price × quantity + iva_amount`
-
-**Invoice total** = sum of all `line_total` values across all lines.
-
-**Workflow — Monthly billing (bulk):**
-1. Admin selects reference month and triggers `POST /finance/invoices/bulk`.
-2. System iterates all active enrollments for the school year.
-3. For each enrollment: identifies the child's primary-contact guardian (`is_primary_contact = true`). If none exists, that child is **skipped** and reported in a warning list — bulk generation cannot proceed without a billing guardian.
-4. System fetches active contracts for the child. Each contract maps to a `BillingItem` and contributes one `InvoiceLine`.
-5. If no contract exists, the system uses the school's default tuition item for the child's turma level (e.g. `MENS-BERC` for Berçário).
-6. Invoice header is created under the guardian. Lines are created per service.
-7. Hash chain signature is computed and stored.
-8. Admin reviews the generated invoices and any warnings (children skipped due to missing guardian).
-9. Admin sends payment references to parents.
-
-**Workflow — Voiding a paid invoice:**
-1. Admin requests void with a reason.
-2. System creates a credit note (NC) mirroring all lines with negative amounts.
-3. Invoice status changes to `void`. The original document remains in the hash chain.
-4. Credit note is linked to the original invoice and signed into the NC hash chain.
+**Seeded defaults** (created when a school is provisioned):
+- `MENSALIDADE` (Tuition), `INSCRICAO` (Enrollment fee), `ALIMENTACAO` (Meals), `TRANSPORTE` (Transport), `MATERIAL` (Materials)
 
 **Business rules:**
-- Invoice numbers are sequential per series per year, never reused.
-- Once an invoice is `paid`, it can only be voided (not cancelled).
-- `cancelled` status (AGT status `A` — *Anulado*) is for invoices that were never paid.
-- **A cancelled invoice is never deleted.** It stays in the hash chain and is exported to SAF-T with status `A`. Gaps in the chain break AGT validation.
-- Bulk creation skips children who already have an invoice for the reference month (idempotent).
-- IVA on Angola education services is 0% (exempt under CIVA). Every line must carry `iva_rate = 0.00` and a valid `iva_exemption_reason` — both fields are required, not optional.
+- `code` cannot be changed after creation (SAF-T references it).
+- Price changes are prospective only; existing invoices retain their issued amounts.
+- IVA exemption legend example: `M10` -> "Isento nos termos do artigo 12.o do CIVA" (confirm against current AGT code table during certification).
 
-### 20.6 Payments
+#### 20.4.2 Entity: `BillingItemPrice`
 
-**Use cases:**
-- UC-FP1: Admin records a payment received from a guardian
-- UC-FP2a: System auto-allocates payment to oldest outstanding invoices (default behaviour)
-- UC-FP2b: Admin or parent explicitly targets specific invoices when recording payment
-- UC-FP3: Admin views payment list (by guardian, child, date range)
-- UC-FP4: Admin views payment detail with the invoices it settled
-- UC-FP5: Admin reverses a payment (voids payment and reverses all allocations)
+Per-school-year pricing. Allows tuition to change annually without editing contracts.
 
-**Data per payment:** `billing_guardian_id`, `child_id` (for filtering), date, amount, payment method, receipt number, notes, received by, `target_invoice_ids` (optional, at creation time only)
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `billing_item_id` | UUID | FK billing_items |
+| `school_year_id` | UUID | FK school_years |
+| `unit_price` | Numeric(10,2) | Price for this item in this school year |
+| `created_at` | DateTime | |
 
-**Payment methods:** `cash`, `transfer`, `multicaixa`, `check`, `other`
+**Price resolution order** (single rule, used everywhere a line is generated):
 
-**Allocation modes:**
+```
+contract.unit_price (explicit override)
+  -> BillingItemPrice for the invoice's school_year
+    -> BillingItem.unit_price (catalog default)
+```
 
-**Default — oldest-first auto-allocation:**
-The system allocates the payment amount to the guardian's outstanding invoices sorted by `invoice_date` ascending (oldest unpaid first). Any surplus after settling one invoice rolls over to the next.
+#### 20.4.3 Use Cases
 
-**Explicit targeting (optional):**
-The `POST /finance/payments` payload accepts an optional `invoice_ids: [uuid]` array. When provided:
-1. The system allocates funds **only** to the listed invoices, in the order they are listed.
-2. If the payment amount is less than the total of the targeted invoices, the first listed invoice is partially settled, then the next, and so on.
-3. If the payment amount exceeds the total of the targeted invoices, the surplus is recorded as a **credit balance** on the guardian's account (not auto-applied to other invoices).
-4. Non-targeted invoices are untouched, regardless of their age.
-
-This mode exists to handle common school scenarios: a parent who disputes one invoice and explicitly pays a different one; Multicaixa references that correspond to specific invoices; batch payments from a sponsor covering a defined set of documents.
-
-**Workflow — Recording a payment (admin):**
-1. Admin opens payment form, selects guardian and enters amount, method, and date.
-2. Admin optionally selects specific invoices to target. If none selected, oldest-first applies.
-3. System runs allocation (default or targeted) and updates invoice statuses.
-4. A receipt document (RC) is generated and signed into the RC hash chain.
-
-**Workflow — Reversing a payment:**
-1. Admin selects payment and requests reversal with reason.
-2. System marks payment as `reversed` (not deleted — financial immutability).
-3. All `PaymentInvoice` allocation records for this payment are reversed: invoices revert to their pre-payment status (`pending` or `partially_paid`).
-4. The RC document for this payment is annotated as reversed; a compensating entry is recorded.
-
-**Business rules:**
-- Payment amount must be > 0.
-- Payments are issued under a `billing_guardian_id`. The `child_id` field is optional metadata used for UI filtering; the legal relationship is guardian → invoice.
-- A payment can settle multiple invoices in one transaction (both modes).
-- A reversed payment is never deleted — it is permanently marked `reversed` with a reason and timestamp.
-- `invoice_ids` must all belong to the same school and the same guardian; mixing guardians in one payment is not permitted.
-
-### 20.7 Contracts
-
-**Use cases:**
-- UC-FC1: Admin creates a recurring service contract for a child
-- UC-FC2: Admin lists active contracts
-- UC-FC3: Admin updates a contract (unit price, dates, billing cycle)
-- UC-FC4: Admin deactivates a contract
-- UC-FC5: Admin manually generates an invoice from a contract
-- UC-FC6: System auto-generates invoices for all active contracts on schedule
-
-**Data per contract:** `child_id`, `billing_item_id` (FK → BillingItem — defines what service is being billed), `unit_price` (override of BillingItem default, nullable — if null, uses BillingItem's `unit_price`), billing cycle (`monthly`), `day_of_month` for billing, `start_date`, `end_date`, `auto_invoice` flag, `last_invoiced_month`
-
-When a contract is used to generate an invoice line:
-- `InvoiceLine.billing_item_id` = the contract's `billing_item_id`
-- `InvoiceLine.unit_price` = the contract's `unit_price` (or BillingItem default)
-- `InvoiceLine.iva_rate`, `iva_exemption_reason` = copied from the BillingItem
-
-**Business rules:**
-- A child can have multiple contracts (e.g. tuition + transport + extra-curricular), each linked to a different `BillingItem`.
-- Bulk auto-generate checks `last_invoiced_month` to avoid generating duplicate invoices in the same month.
-- Contracts with `auto_invoice = false` must be triggered manually.
-- Deactivating a contract (`is_active = false`) stops future auto-generation but does not affect existing invoices.
-
-### 20.8 Receipts and Credit Notes
-
-**Use cases:**
-- UC-FR1: Admin views all receipts
-- UC-FR2: System auto-generates receipt when payment is recorded
-- UC-FR3: Admin views all credit notes
-- UC-FR4: System auto-generates credit note when invoice is voided
-
-**Business rules:**
-- Receipts and credit notes are read-only once generated.
-- Each has a sequential document number in their series (RC and NC respectively).
-- The RSA-SHA1 hash chain applies to both receipts (RC) and credit notes (NC), using the same signing algorithm defined in 20.1.
-
-**Receipt line items (AGT requirement):**
-A receipt (RC) must not be a lump-sum document. The RC must contain explicit line items, one per settled invoice, each referencing:
-- `full_document_number` of the invoice being settled (e.g. `FT 2025/42`)
-- `amount_applied` — the amount from this payment allocated to that invoice
-
-This is mandatory for the SAF-T `<SourceDocuments><Payments>` section to pass AGT validation. A receipt that references no invoice documents will be rejected. The `PaymentInvoice` allocation records (linking `payment_id` → `invoice_id` → `amount_applied`) are the source of truth for these line items — the RC generation reads directly from them.
-
-### 20.9 Finance Reports
-
-**Use cases:**
-- UC-FRP1: Admin views Profit & Loss (by month or full year)
-- UC-FRP2: Admin views Outstanding Invoices with aging buckets
-- UC-FRP3: Admin views Cash Flow (monthly income vs. expenses)
-- UC-FRP4: Admin views Revenue by Level (Berçário / Creche / Jardim)
-- UC-FRP5: Admin views Delinquency Report (overdue > 30 days, with guardian contacts)
-- UC-FRP6: Admin exports SAF-T XML for submission to AGT
-
-**P&L components:**
-- Revenue: sum of paid invoices in period
-- Expenses: sum of expenses in period
-- Net: revenue − expenses
-
-**Aging buckets:** 0–30 days, 31–60 days, 61–90 days, 90+ days
-
-**SAF-T export:** Must include, for the selected period:
-- `MasterFiles/Customer` — one entry per unique `billing_guardian_id` referenced by documents in the period (name, NIF, billing address)
-- `MasterFiles/Product` — one entry per unique `BillingItem` referenced by invoice lines in the period (code, name, IVA group)
-- `SourceDocuments/SalesInvoices` — all FT documents (including cancelled, status `A`)
-- `SourceDocuments/Payments` — all RC documents (including reversed)
-- `SourceDocuments/SalesInvoices` (credit notes) — all NC documents
-
-### 20.10 Finance Dashboard
-
-**KPIs shown:**
-- Current month revenue (paid invoices)
-- Current month expenses
-- Net margin for current month
-- Total outstanding balance (all unpaid invoices)
-- Count of overdue invoices
-- Count of pending invoices
-- Recent payment activity (last 5 payments)
+- **UC-BI1:** Admin creates a billing item with code, name, default price, IVA rate.
+- **UC-BI2:** Admin updates a billing item (name, price, IVA rate, active status). Code is immutable.
+- **UC-BI3:** Admin defines prices per school year (create `BillingItemPrice` entries).
+- **UC-BI4:** Admin bulk-rolls prices to new school year: copy previous year + global % increase, then edit per item.
+- **UC-BI5:** Admin views price history per item across school years.
 
 ---
+
+### 20.5 Contracts
+
+#### 20.5.1 Entity: `Contract`
+
+A recurring billing agreement for one child with one guardian. Drives the bulk invoice generation.
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `child_id` | UUID | FK children |
+| `billing_guardian_id` | UUID | FK guardians |
+| `billing_item_id` | UUID | FK billing_items |
+| `school_year_id` | UUID | FK school_years (nullable) |
+| `unit_price` | Numeric(10,2) | Override price (nullable = use resolution chain) |
+| `quantity` | Numeric(8,2) | Default 1 |
+| `discount_percent` | Numeric(5,2) | 0-100, default 0 |
+| `discount_amount` | Numeric(10,2) | Absolute discount, default 0 |
+| `start_date` | Date | |
+| `end_date` | Date | Nullable (open-ended) |
+| `status` | String | `active`, `suspended`, `terminated` |
+| `notes` | Text | |
+| `created_at`, `updated_at` | DateTime | |
+
+**Business rules:**
+- At most one of `discount_percent` or `discount_amount` may be non-zero per contract.
+- Contracts without a `unit_price` override automatically follow the school-year price table.
+- Only `active` contracts with `start_date <= invoice_month <= end_date` are included in bulk generation.
+- Suspending a contract excludes it from future bulk generation but does not affect already-issued invoices.
+
+#### 20.5.2 Use Cases
+
+- **UC-CO1:** Admin creates a contract for a child (select guardian, billing item, optional price override, optional discount).
+- **UC-CO2:** Admin lists contracts filterable by child, guardian, status, school year.
+- **UC-CO3:** Admin updates a contract (price, discount, dates, status).
+- **UC-CO4:** Admin terminates a contract (sets end_date and status=terminated).
+- **UC-CO5:** Admin views all contracts for a guardian (used in account review).
+
+---
+
+### 20.6 Invoices
+
+#### 20.6.1 Entity: `Invoice`
+
+Holds FT, FR, and ND documents. All share the same table and signature chain structure.
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `document_type` | String(5) | `FT`, `FR`, `ND` |
+| `series_year` | Integer | Year of the document series |
+| `series_number` | Integer | Sequential number within series |
+| `full_document_number` | String(30) | e.g. `FT 2026/42`. Unique per school. |
+| `invoice_date` | Date | The document date (business day) |
+| `system_entry_date` | DateTime | Exact timestamp of creation (used in signature) |
+| `due_date` | Date | Payment deadline (nullable for FR) |
+| `billing_guardian_id` | UUID | FK guardians (nullable for Consumidor Final) |
+| `child_id` | UUID | FK children (nullable, informational) |
+| `customer_nif` | String(20) | Guardian's NIF or generic final-consumer NIF |
+| `customer_name` | String(200) | |
+| `is_final_consumer` | Boolean | True if issued to Consumidor Final |
+| `gross_total` | Numeric(12,2) | Sum of rounded line totals |
+| `net_total` | Numeric(12,2) | Sum of line nets |
+| `iva_total` | Numeric(12,2) | Sum of line IVA amounts |
+| `hash_code` | Text | RSA-SHA1 signature (Base64) |
+| `previous_hash` | Text | Hash of previous document in same series |
+| `status` | String(20) | See state machine (20.2.3) |
+| `is_void` | Boolean | True when fully credited by NC |
+| `void_reason` | Text | Reason for voiding |
+| `description` | Text | Header description |
+| `reference_month` | Date | The month this invoice covers (for grouping) |
+| `notes` | Text | Internal notes |
+| `corrected_invoice_id` | UUID | FK invoices (for ND: which FT it corrects) |
+| `correction_reason` | Text | Why the correction was issued |
+| `issued_by` | UUID | FK users |
+| `school_year_id` | UUID | FK school_years |
+| `transmission_status` | String(20) | `not_required`, `pending`, `transmitted`, `rejected` |
+| `transmission_response` | JSONB | AGT response when transmitted |
+| `created_at`, `updated_at` | DateTime | |
+
+#### 20.6.2 Entity: `InvoiceLine`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `invoice_id` | UUID | FK invoices |
+| `line_number` | Integer | Sequential within invoice |
+| `billing_item_id` | UUID | FK billing_items (nullable for ad-hoc lines) |
+| `description` | String(200) | Line description |
+| `quantity` | Numeric(8,2) | |
+| `unit_price` | Numeric(10,2) | |
+| `discount_percent` | Numeric(5,2) | 0-100 |
+| `discount_amount` | Numeric(10,2) | Absolute |
+| `iva_rate` | Numeric(5,2) | |
+| `iva_exemption_reason` | String(10) | AGT code |
+| `iva_exemption_legend` | Text | Full legal text |
+| `line_net` | Numeric(10,2) | `unit_price * quantity - discount` |
+| `iva_amount` | Numeric(10,2) | `line_net * iva_rate / 100` |
+| `line_total` | Numeric(10,2) | `line_net + iva_amount` (rounded half-up) |
+| `credited_amount` | Numeric(10,2) | Cumulative amount credited by NC(s) |
+
+**Line computation:**
+```
+discount = max(discount_percent/100 * unit_price * quantity, discount_amount)
+line_net = (unit_price * quantity) - discount
+iva_amount = line_net * (iva_rate / 100)
+line_total = round(line_net + iva_amount, 2, ROUND_HALF_UP)
+```
+
+At most one of `discount_percent` or `discount_amount` may be non-zero.
+
+#### 20.6.3 Consumidor Final
+
+- System maintains one built-in "Consumidor Final" customer per school with generic NIF (`999999999` - confirm AO value in DE 683/25).
+- School-level setting: `allow_final_consumer_invoicing` (default off for bulk, on for counter FR).
+  - **Off:** bulk generation skips children whose billing guardian has no NIF (reported in warning list).
+  - **On:** document issued against Consumidor Final; guardian remains linked internally for account statement purposes.
+- Parent-facing app prompts guardians with missing NIF to provide it.
+- NC against a Consumidor Final invoice requires attaching a real NIF first (AGT constraint - verify during certification).
+
+#### 20.6.4 Use Cases
+
+- **UC-FI1:** Admin creates a single invoice (FT) for a guardian with ad-hoc lines.
+- **UC-FI2:** Admin runs bulk invoice generation for a month:
+  1. Select school year and reference month.
+  2. System resolves all active contracts for that period.
+  3. For each child: resolve price (contract override -> year table -> item default), apply contract discount, create invoice lines.
+  4. Skip children without a billing guardian or (if policy off) without guardian NIF. Report in warning list.
+  5. Sign and emit all invoices (per-series locking ensures chain integrity even in bulk).
+  6. Return summary: count generated, total amount, warnings.
+- **UC-FI3:** Admin views invoice list filterable by status, guardian, child, date range, document type.
+- **UC-FI4:** Admin views a single invoice with lines, payment history, and associated NC/RC.
+- **UC-FI5:** Admin downloads/prints invoice PDF (see 20.4 rendering requirements).
+- **UC-FI6:** Admin voids an invoice (full NC, all lines credited - see Credit Notes).
+- **UC-FI7:** Admin generates/registers a payment reference for an invoice (delegates to 20.9).
+- **UC-FI8:** System marks overdue invoices daily (scheduled job).
+- **UC-FI9:** Admin issues a **Factura-Recibo (FR)** for immediate payment:
+  - Creates FR document (its own series and chain).
+  - Creates Payment record with chosen method.
+  - Creates allocation.
+  - **No separate RC is generated** (FR is self-settling).
+  - FR status is `paid` from creation.
+- **UC-FI10:** Admin issues a **partial credit note** (see Credit Notes section).
+- **UC-FI11:** Admin issues a **Nota de Debito (ND)**:
+  - References an FT (e.g. late fee, correction of under-billing).
+  - Increases the guardian's balance.
+  - Enters the ND series hash chain.
+  - ND participates in balance, aging, and delinquency exactly like FT.
+
+#### 20.6.5 Business Rules
+
+- Invoices are immutable once signed. No field that participates in the signature may be modified.
+- An invoice cannot be deleted. It can only be voided via NC (status -> cancelled, is_void=true).
+- `reference_month` groups invoices for reporting but does not affect fiscal validity.
+- FR documents appear in SAF-T as invoices with an embedded settlement.
+- `billing_guardian_id` is the accounting link; `child_id` is informational metadata.
+
+---
+
+### 20.7 Credit Notes (NC)
+
+#### 20.7.1 Entity: `CreditNote`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `invoice_id` | UUID | FK invoices (the corrected document) |
+| `series_year` | Integer | |
+| `series_number` | Integer | |
+| `full_document_number` | String(30) | e.g. `NC 2026/5` |
+| `invoice_date` | Date | NC issuance date |
+| `system_entry_date` | DateTime | |
+| `customer_nif` | String(20) | Copied from original invoice |
+| `customer_name` | String(200) | |
+| `net_total` | Numeric(12,2) | |
+| `iva_total` | Numeric(12,2) | |
+| `gross_total` | Numeric(12,2) | |
+| `reason` | Text | Mandatory correction reason |
+| `lines` | JSONB | Detail of credited lines [{line_id, description, amount}] |
+| `hash_code` | Text | RSA-SHA1 signature |
+| `previous_hash` | Text | |
+| `issued_by` | UUID | FK users |
+| `transmission_status` | String(20) | |
+| `transmission_response` | JSONB | |
+| `created_at` | DateTime | |
+
+#### 20.7.2 Use Cases
+
+- **UC-NC1:** Admin issues a **full void** (all lines, full amounts):
+  - All line `credited_amount` set to `line_total`.
+  - Original invoice: `is_void=true`, `status=cancelled`.
+  - NC `gross_total` = original invoice's remaining uncredited amount.
+- **UC-NC2:** Admin issues a **partial credit note**:
+  - Selects specific lines and amounts to credit.
+  - Constraint: `credited_amount + new_credit <= line_total` per line.
+  - Original invoice remains valid for the uncredited remainder.
+  - Invoice balance and status are recomputed.
+
+#### 20.7.3 Business Rules
+
+- NC always references exactly one invoice.
+- NC `gross_total` = sum of credited amounts (which may be less than original invoice total for partial NC).
+- Cumulative credited amount per line cannot exceed original line total.
+- NC is signed in the NC series chain (separate from FT chain).
+- NC against Consumidor Final invoice requires a real NIF first.
+- NC prints reference to corrected document (e.g. "Rectifica FT 2026/42") and reason.
+- NC reduces the guardian's receivable balance by `gross_total`.
+
+---
+
+### 20.8 Payments
+
+#### 20.8.1 Entity: `Payment`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `billing_guardian_id` | UUID | FK guardians |
+| `received_by` | UUID | FK users (who recorded it) |
+| `payment_date` | Date | When the money was received |
+| `amount` | Numeric(12,2) | Total amount received |
+| `payment_method` | String(30) | See below |
+| `notes` | Text | |
+| `receipt_proof_url` | String(500) | Uploaded proof (scan/photo) |
+| `idempotency_key` | String(100) | Unique per school (nullable) |
+| `payment_reference_id` | UUID | FK payment_references (nullable) |
+| `cash_session_id` | UUID | FK cash_sessions (nullable) |
+| `status` | String(20) | `normal`, `reversed` |
+| `reverse_reason` | Text | |
+| `reversed_at` | DateTime | |
+| `created_at` | DateTime | |
+
+**Payment methods:**
+- `cash` - Physical cash (requires open cash session)
+- `check` - Bank check (requires open cash session)
+- `bank_transfer` - Wire transfer / TPA
+- `multicaixa_ref` - Paid via Multicaixa reference
+- `multicaixa_express` - Paid via MCX Express (future)
+- `credit` - Credit balance application (internal, never user-selectable for real money)
+- `other` - Catch-all
+
+#### 20.8.2 Entity: `PaymentAllocation`
+
+Links a payment to the invoices it settles.
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `payment_id` | UUID | FK payments |
+| `invoice_id` | UUID | FK invoices |
+| `amount_applied` | Numeric(12,2) | How much of this payment goes to this invoice |
+| `created_at` | DateTime | |
+
+#### 20.8.3 Allocation Logic
+
+Two modes:
+
+1. **Explicit targeting** - Payment specifies target invoice(s). Allocates to each in order until exhausted.
+2. **Oldest-first** - No target specified. System finds all open FT/ND invoices for the guardian, ordered by `invoice_date ASC`, and allocates sequentially.
+
+In both modes, if the payment amount exceeds all open balances, the surplus creates a `CreditEntry` (see 20.10).
+
+#### 20.8.4 Idempotency
+
+- `idempotency_key` unique per school. A retry with the same key returns the original payment without creating a duplicate.
+- `payment_reference_id` unique on Payment table. One payment per reference, ever.
+- These guards are mandatory in v1 - they protect against admin double-clicks and future webhook retries.
+
+#### 20.8.5 Use Cases
+
+- **UC-PA1:** Admin records a payment for a guardian (manual entry: amount, method, date, optional target invoice).
+- **UC-PA2:** Payment arrives via PaymentReference mark-paid (manual) or webhook (API mode).
+- **UC-PA3:** Credit balance is applied to an invoice (creates a `credit` method payment).
+- **UC-PA4:** Admin views payment list filterable by guardian, method, date range, status.
+- **UC-PA5:** Admin reverses a payment (see reversal rules below).
+- **UC-PA6:** Admin uploads payment proof (receipt scan/photo).
+
+#### 20.8.6 Payment Reversal
+
+Workflow:
+1. Validate payment exists and is not already reversed.
+2. Check if any CreditEntry from this payment's surplus has been partially/fully applied. If yes, **block reversal** until credit application is reversed first (ordered unwinding, no cascading changes).
+3. Mark payment `status=reversed`, record reason and timestamp.
+4. Mark associated RC as `status=A` (Anulado) with reversal date and reason.
+5. If payment was reference-originated: return PaymentReference to `active` (if not expired) or `cancelled` (if expired).
+6. Recalculate affected invoice statuses.
+7. Write audit entry.
+
+**SAF-T mapping:** Reversed RC exported with status `A` (Anulado).
+
+---
+
+### 20.9 Receipts (RC)
+
+#### 20.9.1 Entity: `Receipt`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `payment_id` | UUID | FK payments |
+| `series_year` | Integer | |
+| `series_number` | Integer | |
+| `full_document_number` | String(30) | e.g. `RC 2026/15` |
+| `invoice_date` | Date | Receipt date |
+| `system_entry_date` | DateTime | |
+| `customer_nif` | String(20) | |
+| `customer_name` | String(200) | |
+| `gross_total` | Numeric(12,2) | = payment amount |
+| `settled_documents` | JSONB | [{invoice_id, document_number, amount_applied}] |
+| `hash_code` | Text | RSA-SHA1 signature |
+| `previous_hash` | Text | |
+| `status` | String(5) | `N` (normal) or `A` (Anulado) |
+| `reversal_date` | Date | When reversed |
+| `reversal_reason` | Text | |
+| `issued_by` | UUID | FK users |
+| `transmission_status` | String(20) | |
+| `transmission_response` | JSONB | |
+| `created_at` | DateTime | |
+
+#### 20.9.2 Business Rules
+
+- One RC is generated per payment (via `PaymentIntakeService`).
+- FR documents do NOT generate a separate RC (they embed the settlement).
+- RC is signed in the RC series chain.
+- A reversed RC retains its position in the chain with status `A`.
+- RC `gross_total` = the payment amount (not necessarily the sum of settled documents if there's surplus).
+
+---
+
+### 20.10 Payment References (Multicaixa)
+
+#### 20.10.1 Overview
+
+Angola's Multicaixa ecosystem provides two payment rails:
+
+1. **Pagamento por Referencia** - An (entidade, referencia) pair payable at ATMs, internet banking, or Multicaixa Express. Obtained from EMIS via a licensed gateway or manually from the school's bank portal.
+2. **Multicaixa Express direct** - App-push payment. Out of scope for v1; architecture reserved.
+
+v1 operates in **manual mode**: admin obtains references from their bank portal and registers them in the system.
+
+#### 20.10.2 Entity: `PaymentReference`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `invoice_id` | UUID | FK invoices (nullable for guardian-level open-amount) |
+| `billing_guardian_id` | UUID | FK guardians (always set) |
+| `entity` | String(10) | Multicaixa entity number (5 digits) |
+| `reference` | String(20) | 9-digit reference |
+| `amount` | Numeric(12,2) | Locked amount (nullable = open amount) |
+| `status` | String(20) | `active`, `paid`, `expired`, `cancelled` |
+| `expires_at` | DateTime | |
+| `provider` | String(20) | `manual`, `proxypay`, `appypay`, `emis_gpo` |
+| `external_id` | String(100) | Provider-side identifier (null for manual) |
+| `created_by` | UUID | FK users |
+| `paid_at` | DateTime | When marked paid |
+| `created_at` | DateTime | |
+
+#### 20.10.3 Provider Abstraction (Protected Variations)
+
+```
+PaymentReferenceProvider (interface)
+  create_reference(guardian, invoice?, amount?, expires_at) -> {entity, reference, external_id}
+  cancel_reference(reference) -> void
+
+  +-- ManualProvider       # v1: admin supplies entity/reference from bank portal
+  +-- ProxyPayProvider     # v2: API + webhook
+  +-- AppyPayProvider      # v2: API + webhook
+  +-- EmisGpoProvider      # v2: API + webhook / token
+```
+
+Provider is a school-level configuration. Switching provider affects only how references are created and how paid-notifications arrive. Nothing downstream changes.
+
+#### 20.10.4 Use Cases
+
+- **UC-MR1:** Admin generates (API mode) or registers (manual mode) a payment reference for an invoice.
+- **UC-MR2:** Admin marks a reference as paid (date, amount, optional proof). This is manual-mode intake - calls the same `PaymentIntakeService.intake()` that a future webhook will call.
+- **UC-MR3:** Webhook endpoint receives a provider paid-notification (API mode). Signature verification per provider; unverifiable callbacks stored quarantined, never processed.
+- **UC-MR4:** Admin cancels a reference. System auto-expires references past `expires_at` (daily job).
+- **UC-MR5:** Admin runs reconciliation: compares bank/EMIS settlement report against system state. Identifies discrepancies (paid at bank but not in system, marked paid but absent from settlement, amount mismatches). Each resolved explicitly and audit-logged.
+- **UC-MR6:** Admin lists references filterable by status, guardian, invoice, date range.
+
+#### 20.10.5 Business Rules
+
+- At most **one `active` reference per invoice**.
+- Amount-locked reference must equal the invoice balance at creation time. If balance changes (partial payment, NC), the active reference is automatically cancelled and flagged for regeneration.
+- Amount mismatch on payment: shortfall -> invoice `partially_paid`; surplus -> `CreditEntry`.
+- References are never deleted. Cancelled/expired retained for reconciliation.
+- Late payments to cancelled/expired references are still ingested (money is real) with a warning raised for review.
+- Unique constraint on (`provider`, `external_id`) prevents duplicate webhook processing.
+
+---
+
+### 20.11 Credit Balances
+
+#### 20.11.1 Entity: `CreditEntry`
+
+A ledger of guardian credit. Balance = sum of `amount_remaining` on non-reversed entries.
+
+| Field                 | Type          | Rules                                                     |
+|-----------------------|---------------|-----------------------------------------------------------|
+| `id`                  | UUID          | PK                                                        |
+| `school_id`           | UUID          | FK schools                                                |
+| `billing_guardian_id` | UUID          | FK guardians                                              |
+| `source`              | String(30)    | `payment_surplus`, `refund_reversal`, `manual_adjustment` |
+| `source_payment_id`   | UUID          | FK payments (nullable)                                    |
+| `amount`              | Numeric(12,2) | Original entry amount                                     |
+| `amount_remaining`    | Numeric(12,2) | Unconsumed balance                                        |
+| `is_reversed`         | Boolean       |                                                           |
+| `notes`               | Text          | Mandatory for manual_adjustment                           |
+| `created_at`          | DateTime      |                                                           |
+
+#### 20.11.2 Entity: `CreditRefund`
+
+| Field                 | Type          | Rules                        |
+|-----------------------|---------------|------------------------------|
+| `id`                  | UUID          | PK                           |
+| `school_id`           | UUID          | FK schools                   |
+| `billing_guardian_id` | UUID          | FK guardians                 |
+| `amount`              | Numeric(12,2) |                              |
+| `refund_method`       | String(30)    | How the refund was disbursed |
+| `reference`           | String(100)   | External reference           |
+| `authorized_by`       | UUID          | FK users                     |
+| `notes`               | Text          |                              |
+| `created_at`          | DateTime      |                              |
+
+#### 20.11.3 Mechanics
+
+**Applying credit (UC-CB2):**
+1. Validate requested amount <= guardian's current credit balance.
+2. Consume credit entries FIFO (decrement `amount_remaining`).
+3. Create a Payment with method `credit` targeting the chosen invoice.
+4. Standard allocation and RC generation via `PaymentIntakeService`.
+5. Credit applications are fiscally visible (they generate an RC like any other settlement).
+
+**Refunding credit (UC-CB3):**
+1. Validate amount <= current balance.
+2. Record `CreditRefund` with authorization.
+3. Decrement entries FIFO.
+4. No RC generated (nothing is being settled).
+5. Appears on account statement as informational line.
+6. Write audit entry.
+
+**Reversal ordering:**
+- Credit applications must be reversed before the payment that created the credit can be reversed.
+- This prevents silent cascading balance changes.
+
+#### 20.11.4 Use Cases
+
+- **UC-CB1:** Admin views a guardian's credit balance and movement history.
+- **UC-CB2:** Admin applies credit to an outstanding invoice.
+- **UC-CB3:** Admin refunds credit to the guardian (money out). Requires `school_admin` role.
+- **UC-CB4:** Admin views all guardians with non-zero credit balances.
+- **UC-CB5:** Parent views their own credit balance in the app.
+
+#### 20.11.5 Business Rules
+
+- Balance can never go negative. Applications and refunds are capped at current balance.
+- Manual adjustments require `school_admin` role and mandatory reason.
+- Credit entries are never deleted; corrections use compensating entries.
+- Manual adjustment source = `manual_adjustment` (distinguished from system-generated entries).
+
+---
+
+### 20.12 Finance Audit Log
+
+#### 20.12.1 Entity: `FinanceAuditEntry`
+
+Immutable, append-only log.
+
+| Field             | Type       | Rules                   |
+|-------------------|------------|-------------------------|
+| `id`              | UUID       | PK                      |
+| `school_id`       | UUID       | FK schools              |
+| `actor_id`        | UUID       | FK users                |
+| `timestamp`       | DateTime   |                         |
+| `entity_type`     | String(50) | What was affected       |
+| `entity_id`       | UUID       |                         |
+| `action`          | String(50) | What happened           |
+| `before_snapshot` | JSONB      | State before (nullable) |
+| `after_snapshot`  | JSONB      | State after (nullable)  |
+| `reason`          | Text       |                         |
+
+#### 20.12.2 Mandatory Triggers
+
+| Action                              | entity_type             | action value               |
+|-------------------------------------|-------------------------|----------------------------|
+| Invoice voided (full NC)            | invoice                 | void                       |
+| NC issued (partial or full)         | credit_note             | issue                      |
+| ND issued                           | invoice                 | issue_nd                   |
+| Payment reversal                    | payment                 | reverse                    |
+| Credit application                  | credit_entry            | apply_credit               |
+| Credit refund                       | credit_entry            | refund                     |
+| Manual credit adjustment            | credit_entry            | manual_adjustment          |
+| Price change (item/table/contract)  | billing_item / contract | price_change               |
+| Cash session close (variance > 0)   | cash_session            | close_variance             |
+| Cash session reopen                 | cash_session            | reopen                     |
+| Reference reconciliation resolution | payment_reference       | reconcile                  |
+| SAF-T export                        | saft_export             | export                     |
+| AGT key operation                   | agt_key                 | generate / rotate / export |
+| Role grant/revoke                   | user                    | role_change                |
+
+#### 20.12.3 Rules
+
+- Entries are never edited or deleted.
+- Retention follows DP 71/25 conservation rules (minimum 10 years for fiscal documents).
+- UC-AL1: Admin views/filters the audit log by entity, actor, action, date range.
+
+---
+
+### 20.13 Cash Sessions (Fecho de Caixa)
+
+#### 20.13.1 Entity: `CashSession`
+
+| Field                | Type          | Rules                           |
+|----------------------|---------------|---------------------------------|
+| `id`                 | UUID          | PK                              |
+| `school_id`          | UUID          | FK schools                      |
+| `opened_by`          | UUID          | FK users                        |
+| `opened_at`          | DateTime      |                                 |
+| `opening_float`      | Numeric(12,2) | Cash in drawer at start         |
+| `closed_by`          | UUID          | FK users (nullable)             |
+| `closed_at`          | DateTime      | (nullable)                      |
+| `expected_by_method` | JSONB         | System-computed expected totals |
+| `counted_by_method`  | JSONB         | Officer-entered counted amounts |
+| `variance`           | Numeric(12,2) | counted - expected (nullable)   |
+| `variance_reason`    | Text          | Required if variance != 0       |
+| `status`             | String(10)    | `open`, `closed`                |
+| `created_at`         | DateTime      |                                 |
+
+#### 20.13.2 Use Cases
+
+- **UC-CS1:** Finance officer opens a session (records opening float).
+- **UC-CS2:** Cash/check payments during the day attach to the open session automatically.
+- **UC-CS3:** Officer closes session: system shows expected totals per method; officer enters counted amounts; variance computed; justification required if non-zero.
+- **UC-CS4:** Admin views session history and variance report.
+- **UC-CS5:** Admin reopens a closed session (exceptional; mandatory reason; audit-logged).
+
+#### 20.13.3 Business Rules
+
+- At most one open session per school at a time (v1; multi-register is a future variation).
+- `cash` and `check` payments **require** an open session. The system auto-attaches them.
+- Other payment methods (transfer, multicaixa) do not require a session.
+- Payments cannot be added to a closed session. Late entries go to the next session with a note.
+- Closing computes: `expected_by_method` = sum of payments in this session grouped by method.
+
+---
+
+### 20.14 AGT Electronic Transmission Layer (Reserved)
+
+DP 71/25 mandates real-time electronic invoicing in phases. This architecture ensures it's a plug-in, not a rewrite:
+
+1. All document emission flows through `DocumentEmissionService`. No code path creates a signed document directly.
+2. `TransmissionProvider` interface:
+   - v1: `none` (documents emitted locally, reported via SAF-T only)
+   - Future: `agt_einvoice` implementation per DE 683/25
+3. Each document carries `transmission_status` and `transmission_response`.
+4. A retry queue handles AGT unavailability (emission is never blocked by transmission - the a-posteriori validation model permits this).
+5. Phase-in dates tracked per school. Provider switch is configuration-only.
+
+---
+
+### 20.15 Payment Plans (Acordo de Pagamento)
+
+#### 20.15.1 Entity: `PaymentPlan`
+
+| Field                 | Type          | Rules                                          |
+|-----------------------|---------------|------------------------------------------------|
+| `id`                  | UUID          | PK                                             |
+| `school_id`           | UUID          | FK schools                                     |
+| `billing_guardian_id` | UUID          | FK guardians                                   |
+| `covered_invoice_ids` | JSONB         | List of invoice UUIDs covered                  |
+| `status`              | String(20)    | `active`, `completed`, `breached`, `cancelled` |
+| `total_amount`        | Numeric(12,2) | Sum of covered invoice balances at creation    |
+| `created_by`          | UUID          | FK users                                       |
+| `notes`               | Text          |                                                |
+| `created_at`          | DateTime      |                                                |
+
+#### 20.15.2 Entity: `PaymentPlanInstallment`
+
+| Field                | Type          | Rules                      |
+|----------------------|---------------|----------------------------|
+| `id`                 | UUID          | PK                         |
+| `plan_id`            | UUID          | FK payment_plans           |
+| `installment_number` | Integer       |                            |
+| `due_date`           | Date          |                            |
+| `amount`             | Numeric(12,2) |                            |
+| `status`             | String(10)    | `pending`, `met`, `missed` |
+| `paid_at`            | Date          | When marked met            |
+| `created_at`         | DateTime      |                            |
+
+#### 20.15.3 Use Cases
+
+- **UC-PP1:** Admin creates a payment plan: selects guardian, overdue invoices, defines N installments with dates and amounts.
+- **UC-PP2:** Admin lists plans filterable by status, guardian.
+- **UC-PP3:** System matches incoming guardian payments against plan installments (marks them `met`).
+- **UC-PP4:** Daily job: flags plans `breached` when an installment passes its due date unmet. Admin may cancel or renegotiate.
+
+#### 20.15.4 Business Rules
+
+- Installment totals must equal the covered invoices' combined balance at plan creation.
+- **Delinquency interaction:** invoices covered by an `active` plan report against installment schedule, not original due dates. On breach, they revert to original aging immediately.
+- A plan is a commercial arrangement. It creates no fiscal documents and never modifies invoices.
+- Only `school_admin` can create/modify plans.
+
+---
+
+### 20.16 Dunning (Payment Reminders)
+
+#### 20.16.1 Entity: `ReminderLog`
+
+| Field                 | Type       | Rules                                          |
+|-----------------------|------------|------------------------------------------------|
+| `id`                  | UUID       | PK                                             |
+| `school_id`           | UUID       | FK schools                                     |
+| `billing_guardian_id` | UUID       | FK guardians                                   |
+| `invoice_ids`         | JSONB      | Referenced invoices                            |
+| `level`               | Integer    | 1, 2, 3 (escalation)                           |
+| `channel`             | String(20) | `whatsapp`, `email`, `sms`, `letter`, `verbal` |
+| `sent_by`             | UUID       | FK users                                       |
+| `sent_at`             | DateTime   |                                                |
+| `message_snapshot`    | Text       | The actual message text sent                   |
+| `created_at`          | DateTime   |                                                |
+
+#### 20.16.2 Use Cases
+
+- **UC-DN1:** Admin generates reminder messages from templates with merge fields (guardian name, children, open documents, total, payment reference). Templates in Portuguese.
+- **UC-DN2:** Admin marks reminders as sent, recording channel. v1 sending is manual (copy/print); the log is the system of record.
+- **UC-DN3:** Admin views reminder history per guardian and effectiveness report (reminders sent vs. subsequent payment).
+
+#### 20.16.3 Business Rules
+
+- Escalation order enforced: level 2 only after level 1, etc.
+- Minimum interval between levels is configurable (school setting).
+- Guardians with an `active` payment plan are excluded from dunning for covered invoices.
+- Reminder levels: 1 = friendly reminder, 2 = formal notice, 3 = final notice / pre-legal.
+
+---
+
+### 20.17 Guardian Account Statement (Extrato de Conta)
+
+The single most-requested artifact: one chronological view of everything a guardian owes and has paid, with a running balance.
+
+#### 20.17.1 Content
+
+Chronological movements with running balance:
+
+| Movement | Debit (increases balance) | Credit (decreases balance) |
+|----------|:---:|:---:|
+| FT issued | gross_total | - |
+| ND issued | gross_total | - |
+| FR issued | gross_total | gross_total (net 0) |
+| NC issued | - | gross_total |
+| Payment / RC | - | amount |
+| Credit application | - | amount |
+| Payment reversal | original amount | - |
+| Credit refund | - | - (informational only) |
+
+**Header:** total invoiced, total settled, current balance, current credit balance, oldest open document.
+
+#### 20.17.2 Use Cases
+
+- **UC-AS1:** Admin views/prints a guardian's account statement for a period or school year.
+- **UC-AS2:** Parent views their own statement in the app.
+- **UC-AS3:** Admin filters by child (metadata filter - the account is per guardian).
+
+#### 20.17.3 Rules
+
+- PDF export follows school branding. It is NOT a fiscal document (no signature, clearly labelled "Extrato de Conta").
+- Statement period defaults to current school year if not specified.
+- Running balance starts at 0 for the selected period (or shows carry-forward from prior period).
+
+---
+
+### 20.18 Document Rendering Requirements
+
+Stored data alone is not sufficient. The rendered document (PDF/print) has mandatory content per AGT:
+
+1. **Issuer identification:** school legal name, NIF, address, IVA regime.
+2. **Customer identification:** guardian name, NIF, billing address. Or Consumidor Final convention when applicable.
+3. **Document header:** full document number, `InvoiceDate`, due date (FT), payment method (FR/RC).
+4. **Line items:** description, quantity, unit price, discount, IVA rate, line total.
+5. **Totals:** net total, IVA total, gross total.
+6. **IVA exemption legend** in full text per line or in footer (per AGT layout rules).
+7. **Certification mention:** "Processado por programa validado n.o ___/AGT" + 4-char signature excerpt.
+8. **Reprints** marked as "2.a via".
+9. **NC/ND** must print reference to corrected document and correction reason.
+10. **RC** must list settled documents with amounts.
+
+---
+
+### 20.19 Finance Reports
+
+#### 20.19.1 Dashboard KPIs
+
+- Total outstanding (open receivables)
+- Total collected this month
+- Total overdue
+- Number of overdue guardians
+- Revenue vs. expenses (month)
+- Credit balances total
+- Open cash session indicator
+- Invoices generated this month (count + amount)
+- Collection rate (% of invoiced amount collected)
+
+#### 20.19.2 Report Types
+
+| Report | Description |
+|--------|-------------|
+| P&L Monthly | Income (payments received) vs. expenses by category |
+| P&L Annual | Monthly breakdown for a year |
+| Outstanding Invoices | All unpaid/overdue with guardian, days overdue, balance |
+| Delinquent Guardians | Grouped by guardian with total owed, aging buckets |
+| Cash Flow | Monthly receipts vs. disbursements over period |
+| Account Statement | Per guardian (see 20.17) |
+| SAF-T Export | Full regulatory export (see 20.19.3) |
+
+#### 20.19.3 SAF-T (AO) Export
+
+Complete XML export conforming to the SAF-T (AO) schema:
+
+**Structure:**
+```xml
+<AuditFile>
+  <Header>
+    <AuditFileVersion>1.01_01</AuditFileVersion>
+    <CompanyID>{school_nif}</CompanyID>
+    <TaxRegistrationNumber>{school_nif}</TaxRegistrationNumber>
+    ...fiscal year, periods, company info...
+  </Header>
+  <MasterFiles>
+    <Customer> ...one per guardian + Consumidor Final if used... </Customer>
+    <Product> ...one per BillingItem... </Product>
+  </MasterFiles>
+  <SourceDocuments>
+    <SalesInvoices>
+      ...all FT, FR, ND documents in period...
+      ...NC as CreditNotes...
+    </SalesInvoices>
+    <Payments>
+      ...all RC documents in period...
+      ...reversed RCs with status A...
+    </Payments>
+  </SourceDocuments>
+</AuditFile>
+```
+
+**Business rules for SAF-T:**
+- Export period: fiscal year or date range.
+- Include Consumidor Final customer when referenced by documents in period.
+- ND documents in `SalesInvoices` with appropriate type code.
+- FR documents as invoices with embedded settlement data.
+- Reversed RCs with status `A`, carrying reversal date and reason.
+- Each document includes the `hash_code` and key version.
+- Product codes map to BillingItem `code` (immutable for this reason).
+- File checksum recorded in audit log.
+
+---
+
+### 20.20 Expenses
+
+#### 20.20.1 Entity: `ExpenseCategory`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `name` | String(100) | |
+| `description` | Text | |
+| `is_active` | Boolean | |
+| `created_at` | DateTime | |
+
+#### 20.20.2 Entity: `Expense`
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `category_id` | UUID | FK expense_categories |
+| `amount` | Numeric(12,2) | |
+| `expense_date` | Date | |
+| `description` | Text | |
+| `vendor` | String(200) | |
+| `reference_number` | String(100) | External receipt/invoice number |
+| `receipt_url` | String(500) | Uploaded scan |
+| `payment_method` | String(30) | |
+| `is_voided` | Boolean | |
+| `void_reason` | Text | |
+| `created_by` | UUID | FK users |
+| `created_at`, `updated_at` | DateTime | |
+
+#### 20.20.3 Business Rules
+
+- Expenses are **never hard-deleted** (see Cross-Cutting Rules 22.2).
+- Voided expenses are excluded from totals but retained permanently.
+- Expenses do not generate fiscal documents (they are internal cost tracking).
+- `school_admin` only for create/void.
+
+#### 20.20.4 Use Cases
+
+- **UC-EX1:** Admin creates an expense (amount, date, category, vendor, description, optional receipt upload).
+- **UC-EX2:** Admin lists expenses filterable by category, date range, voided status.
+- **UC-EX3:** Admin voids an expense (mandatory reason).
+- **UC-EX4:** Admin uploads receipt scan for an expense.
+- **UC-EX5:** Admin manages expense categories.
+
+---
+
+### 20.21 Finance Roles & Permissions
+
+`school_admin` alone is too coarse for finance operations. The `finance_officer` role provides day-to-day operational access without destructive capabilities.
+
+| Action | finance_officer | school_admin | platform_admin |
+|--------|:---:|:---:|:---:|
+| Record payments, issue RC/FR | Yes | Yes | Yes |
+| Create invoices (single + bulk) | Yes | Yes | Yes |
+| Manage cash sessions (open/close) | Yes | Yes | Yes |
+| Generate/register payment references | Yes | Yes | Yes |
+| View reports (dashboard, P&L, outstanding) | Yes | Yes | Yes |
+| Cancel invoice / issue NC/ND | - | Yes | Yes |
+| Reverse payments | - | Yes | Yes |
+| Reopen cash sessions | - | Yes | Yes |
+| Manage BillingItems, price tables | - | Yes | Yes |
+| Manage contracts | - | Yes | Yes |
+| Credit refunds / manual adjustments | - | Yes | Yes |
+| Manage expenses | - | Yes | Yes |
+| SAF-T export | - | Yes | Yes |
+| Key management, provider config | - | Yes | Yes |
+| Payment plans (create/modify) | - | Yes | Yes |
+| View audit log | - | Yes | Yes |
+| Parent: own invoices, statement, credit | (parent role) | | |
+
+---
+
+### 20.22 `DocumentEmissionService` - Architecture
+
+All fiscal document creation flows through this service. Responsibilities:
+
+```
+DocumentEmissionService(db, school_id)
+  |
+  +-- emit_invoice(document_type, invoice_date, lines, guardian, ...)
+  |     1. Compute line totals (apply discount, IVA, round)
+  |     2. Sum to document totals
+  |     3. Acquire series lock (SELECT FOR UPDATE on DocumentSeries)
+  |     4. Validate monotonicity (dates >= previous)
+  |     5. Assign next_number, increment series
+  |     6. Format sign string, sign with RSA-SHA1
+  |     7. Create Invoice + InvoiceLine records
+  |     8. Set transmission_status (v1: not_required)
+  |     9. Return signed Invoice
+  |
+  +-- emit_credit_note(invoice_id, reason, lines)
+  |     1. Load and validate original invoice
+  |     2. Validate credit amounts per line
+  |     3. Update line credited_amounts
+  |     4. Compute NC totals
+  |     5. Sign in NC series
+  |     6. Create CreditNote record
+  |     7. If full void: mark invoice cancelled
+  |     8. Else: recalculate invoice status
+  |
+  +-- emit_receipt(payment, allocations)
+        1. Resolve customer info from guardian
+        2. Sign in RC series
+        3. Create Receipt record with settled_documents
+```
+
+---
+
+### 20.23 `PaymentIntakeService` - Architecture
+
+Single convergence point for all payment processing:
+
+```
+PaymentIntakeService(db, school_id)
+  |
+  +-- intake(guardian_id, amount, method, date, ...)
+        1. Idempotency check (return existing if key matches)
+        2. Validate cash session requirement (cash/check methods)
+        3. Create Payment record
+        4. Resolve target invoices:
+           a. Reference-originated -> always target reference's invoice
+           b. Explicit target_invoice_ids -> use those
+           c. Neither -> oldest-first allocation for guardian
+        5. Allocate: for each target invoice, apply min(balance, remaining)
+        6. Create PaymentAllocation records
+        7. Update invoice statuses (recalculate each)
+        8. Surplus -> create CreditEntry (source=payment_surplus)
+        9. Generate RC via DocumentEmissionService (unless FR or skip_receipt)
+       10. Mark PaymentReference paid (if applicable)
+       11. Return Payment
+```
+
+**Who calls intake:**
+- Admin UI (manual payment recording)
+- Mark-reference-paid endpoint (manual mode)
+- Webhook endpoint (API mode, future)
+- Credit application (with method=credit, skip_receipt=false)
+
+---
+
+### 20.24 `DocumentSeries` Entity
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `school_id` | UUID | FK schools |
+| `document_type` | String(5) | FT, FR, NC, ND, RC |
+| `year` | Integer | Series year |
+| `next_number` | Integer | Next sequential number to assign |
+| `last_hash` | Text | Hash of last document in chain |
+| `last_invoice_date` | Date | For monotonicity check |
+| `last_system_entry_date` | DateTime | For monotonicity check |
+| `created_at` | DateTime | |
+
+**Unique constraint:** (school_id, document_type, year).
+
+Series are created lazily on first document emission for that type+year.
+
+---
+
+### 20.25 Concurrency & Performance
+
+#### 20.25.1 Per-Series Locking
+
+- `SELECT ... FOR UPDATE` on the `DocumentSeries` row during emission.
+- This serializes all document creation within a series.
+- Different series (e.g. FT and NC) can emit concurrently.
+- Bulk generation holds the lock for the duration of the batch within one transaction.
+
+#### 20.25.2 Performance Considerations
+
+- Bulk invoice generation: batch within a single transaction per series to minimize lock contention.
+- Account statement: indexed by (school_id, billing_guardian_id, invoice_date).
+- Outstanding report: indexed by (school_id, status, document_type).
+- SAF-T export: may be slow for large schools; consider background job with download link.
+- Credit balance: sum query on (school_id, billing_guardian_id, is_reversed=false).
+
+#### 20.25.3 Idempotency Requirements
+
+| Guard | Scope | Mechanism |
+|-------|-------|-----------|
+| `idempotency_key` | Per school | Unique constraint, checked before create |
+| `payment_reference_id` | Global | Unique on Payment table |
+| (`provider`, `external_id`) | Global | Unique constraint on PaymentReference |
+| Series number | Per series | Atomic increment under row lock |
+
+---
+
+### 20.26 Parent Finance Portal
+
+Parents see a simplified view of their financial relationship with the school:
+
+#### 20.26.1 Endpoints
+
+- **View invoices:** All invoices for their linked children, with status and balance.
+- **View statement:** Their guardian account statement (read-only).
+- **View credit balance:** Current credit balance.
+- **Submit payment proof:** Upload receipt/proof for admin verification (does NOT auto-create payment; admin reviews and records).
+- **View payment references:** Active references for their invoices (entity, reference, amount, expiry).
+
+#### 20.26.2 Business Rules
+
+- Parent can only see data for their linked guardian account.
+- Parent cannot create payments directly (only submit proof for review).
+- Parent sees NIF prompt if their NIF is missing.
+- Parent sees payment reference details to enable self-service ATM/bank payment.
+
+---
+
+### 20.27 Scheduled Jobs
+
+| Job | Frequency | Action |
+|-----|-----------|--------|
+| Mark overdue invoices | Daily | Set `status=overdue` where due_date < today and status in (pending, partially_paid) |
+| Expire payment references | Daily | Set `status=expired` where expires_at < now and status=active |
+| Breach payment plans | Daily | Set plan `status=breached` where installment due_date < today and status=pending |
+| Dunning check | Daily (optional) | Flag guardians eligible for next reminder level |
+
+---
+
+### 20.28 Error Handling & Edge Cases
+
+| Scenario | Handling |
+|----------|----------|
+| Bulk generation with no active contracts | Return empty result with warning |
+| Payment for guardian with no open invoices | Entire amount becomes CreditEntry |
+| NC for more than available line balance | Reject with specific error per line |
+| Reversal of payment with applied credit | Block; require credit reversal first |
+| Cash payment without open session | Reject; require session to be opened first |
+| Duplicate webhook (same external_id) | Return existing payment (idempotent) |
+| Duplicate admin submission (same idempotency_key) | Return existing payment |
+| Clock skew violates SystemEntryDate monotonicity | Reject emission; alert for ops investigation |
+| FR where payment method = credit | Valid; FR can be settled by credit balance |
+| ND referencing a cancelled/voided invoice | Reject; ND only references active FT |
+| Guardian with multiple children, partial payment | Allocates oldest-first across all children's invoices |
+| SAF-T export for empty period | Generate valid XML with empty document sections |
+| Payment amount = 0 | Reject; minimum payment is 0.01 |
+| Invoice with all lines at 0.00 | Technically valid but flagged as warning |
+
+---
+
+### 20.29 REST API Summary
+
+All endpoints under `/api/v1/finance/`.
+
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| GET | `/billing-items` | finance_officer+ | List billing items |
+| POST | `/billing-items` | school_admin | Create billing item |
+| PATCH | `/billing-items/{id}` | school_admin | Update billing item |
+| GET | `/billing-items/{id}/prices` | finance_officer+ | Price history |
+| POST | `/billing-items/prices` | school_admin | Set price for school year |
+| GET | `/contracts` | finance_officer+ | List contracts |
+| POST | `/contracts` | school_admin | Create contract |
+| GET | `/contracts/{id}` | finance_officer+ | Get contract detail |
+| PATCH | `/contracts/{id}` | school_admin | Update contract |
+| DELETE | `/contracts/{id}` | school_admin | Terminate contract |
+| GET | `/invoices` | finance_officer+ | List invoices (filterable) |
+| POST | `/invoices` | finance_officer+ | Create single invoice |
+| POST | `/invoices/bulk` | finance_officer+ | Bulk generate for month |
+| GET | `/invoices/{id}` | finance_officer+ | Invoice detail with lines |
+| POST | `/credit-notes` | school_admin | Issue NC (full or partial) |
+| GET | `/credit-notes` | finance_officer+ | List credit notes |
+| GET | `/credit-notes/{id}` | finance_officer+ | Credit note detail |
+| GET | `/payments` | finance_officer+ | List payments |
+| POST | `/payments` | finance_officer+ | Record payment (intake) |
+| POST | `/payments/{id}/reverse` | school_admin | Reverse payment |
+| GET | `/receipts` | finance_officer+ | List receipts |
+| GET | `/payment-references` | finance_officer+ | List references |
+| POST | `/payment-references` | finance_officer+ | Create/register reference |
+| POST | `/payment-references/{id}/mark-paid` | finance_officer+ | Manual mark-paid (intake) |
+| POST | `/payment-references/{id}/cancel` | finance_officer+ | Cancel reference |
+| GET | `/credits/{guardian_id}` | finance_officer+ | Guardian credit balance + history |
+| POST | `/credits/apply` | school_admin | Apply credit to invoice |
+| GET | `/cash-sessions` | finance_officer+ | List sessions |
+| POST | `/cash-sessions/open` | finance_officer+ | Open session |
+| POST | `/cash-sessions/{id}/close` | finance_officer+ | Close session |
+| GET | `/payment-plans` | finance_officer+ | List plans |
+| POST | `/payment-plans` | school_admin | Create plan |
+| POST | `/reminders` | finance_officer+ | Record reminder sent |
+| GET | `/reminders` | finance_officer+ | Reminder history |
+| GET | `/parent/invoices` | parent | Own invoices |
+| GET | `/parent/statement` | parent | Own statement |
+| POST | `/parent/submit-payment` | parent | Upload payment proof |
+| POST | `/payment-proof` | finance_officer+ | Upload proof for payment |
+| GET | `/dashboard` | finance_officer+ | KPIs |
+| GET | `/summary` | finance_officer+ | Quick summary |
+| GET | `/reports/pl` | finance_officer+ | P&L report |
+| GET | `/reports/outstanding` | finance_officer+ | Outstanding invoices |
+| GET | `/reports/delinquent` | finance_officer+ | Delinquent guardians |
+| GET | `/reports/cash-flow` | finance_officer+ | Cash flow over months |
+| GET | `/reports/statement/{guardian_id}` | finance_officer+ | Guardian statement |
+| GET | `/reports/saft` | school_admin | SAF-T XML export |
+| GET | `/series` | finance_officer+ | Document series list |
+| GET | `/expense-categories` | school_admin | List categories |
+| POST | `/expense-categories` | school_admin | Create category |
+| PATCH | `/expense-categories/{id}` | school_admin | Update category |
+| GET | `/expenses` | school_admin | List expenses |
+| POST | `/expenses` | school_admin | Create expense |
+| PATCH | `/expenses/{id}` | school_admin | Update expense |
+| POST | `/expenses/{id}/void` | school_admin | Void expense |
+| POST | `/expenses/{id}/receipt` | school_admin | Upload receipt |
+| GET | `/audit-log` | school_admin | View audit entries |
+
+---
+
+### 20.30 Future Extensibility (Out of Scope for v1)
+
+Reserved extension points that require no redesign:
+
+1. **Multicaixa Express integration** - Plug into `PaymentReferenceProvider` abstraction.
+2. **AGT real-time transmission** - Plug into `TransmissionProvider` (20.14).
+3. **Multi-register cash sessions** - Add `register_id` to CashSession.
+4. **Recurring billing scheduler** - Cron-triggered bulk generation with configurable day-of-month.
+5. **Write-offs** - New document type or special NC with write-off reason.
+6. **Scholarships/bursaries** - Modeled as contracts with 100% discount or as manual credit adjustments.
+7. **Late fee automation** - Auto-generation of ND after configurable days overdue.
+8. **Multi-currency** - Add currency field to documents; exchange rate at emission time.
+9. **Email/SMS delivery of documents** - Delivery channel on document emission.
+10. **Parent self-service payment** - Direct Multicaixa Express checkout flow.
+
+---
+
+*End of Finance Module SRS.*
 
 ## 21. Parent Portal
 
