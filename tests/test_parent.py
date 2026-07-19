@@ -41,13 +41,14 @@ async def _make_employee(client: AsyncClient, admin_token: str) -> tuple[dict, s
 async def _make_guardian_and_login(
     client: AsyncClient, admin_token: str, slug: str
 ) -> tuple[dict, str]:
-    """Creates a guardian, links nothing, returns (guardian_dict, parent_token)."""
+    """Creates a guardian with NIF, links nothing, returns (guardian_dict, parent_token)."""
     uname = f"grd-{uid()}"
     body = {
         "first_name": "Helena",
         "last_name": "Pires",
         "username": uname,
         "password": "Parent1!",
+        "nif": f"5{uid()[:8]}",
     }
     r = await client.post("/guardians", json=body, headers=auth(admin_token))
     assert r.status_code == 201, r.text
@@ -68,13 +69,14 @@ async def _link_guardian_to_child(
 
 
 async def _make_invoice(
-    client: AsyncClient, admin_token: str, child_id: str, issued_by: str
+    client: AsyncClient, admin_token: str, child_id: str, issued_by: str,
+    guardian_id: str | None = None,
 ) -> dict:
     body = {
+        "billing_guardian_id": guardian_id,
         "child_id": child_id,
-        "issued_by": issued_by,
         "reference_month": "2025-02-01",
-        "tuition_amount": 250.0,
+        "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 250.0}],
     }
     r = await client.post("/finance/invoices", json=body, headers=auth(admin_token))
     assert r.status_code == 201, r.text
@@ -151,14 +153,14 @@ async def test_parent_invoice_fields_are_numbers(client: AsyncClient, make_schoo
     emp, _ = await _make_employee(client, admin_tok)
     guardian, parent_tok = await _make_guardian_and_login(client, admin_tok, slug)
     await _link_guardian_to_child(client, admin_tok, guardian["id"], child["id"])
-    await _make_invoice(client, admin_tok, child["id"], emp["id"])
+    await _make_invoice(client, admin_tok, child["id"], emp["id"], guardian_id=guardian["id"])
 
     r = await client.get("/parent/invoices", headers=auth(parent_tok))
     assert r.status_code == 200
     invoices = r.json()
     assert len(invoices) >= 1
     inv = invoices[0]
-    for field in ("total_amount", "amount_paid", "balance"):
+    for field in ("gross_total", "amount_paid", "balance"):
         assert isinstance(inv[field], (int, float)), (
             f"{field} should be numeric, got {type(inv[field])}: {inv[field]!r}"
         )

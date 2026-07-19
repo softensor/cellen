@@ -29,6 +29,7 @@ class GuardianBase(BaseModel):
     mobile_first: Optional[str] = None
     mobile_second: Optional[str] = None
     email: Optional[str] = None
+    nif: Optional[str] = None
 
 
 class GuardianCreate(GuardianBase):
@@ -60,6 +61,7 @@ class GuardianUpdate(BaseModel):
     mobile_first: Optional[str] = None
     mobile_second: Optional[str] = None
     email: Optional[str] = None
+    nif: Optional[str] = None
 
 
 class GuardianResponse(GuardianBase):
