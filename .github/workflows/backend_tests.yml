@@ -2,7 +2,7 @@ name: Backend Tests
 
 on:
   push:
-    branches: [main, master, deepclaude]
+    branches: [main, master, finance-improve]
     paths:
       - 'app/**'
       - 'tests/**'

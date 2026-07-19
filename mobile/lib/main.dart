@@ -12,7 +12,6 @@ void main() async {
 }
 
 
-
 class CellenApp extends ConsumerWidget {
   const CellenApp({super.key});
 
