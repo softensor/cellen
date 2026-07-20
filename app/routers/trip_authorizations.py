@@ -82,11 +82,28 @@ async def list_trip_authorizations(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await db.execute(
+    role = getattr(current_user, "_role", None)
+    query = (
         select(TripAuthorization)
         .where(TripAuthorization.school_id == school_id)
         .order_by(TripAuthorization.trip_date.desc())
     )
+
+    # Parents only see trips for their own children.
+    if role not in ("school_admin", "platform_admin", "teacher"):
+        from app.models.person import ChildGuardian
+        guardian_id = getattr(current_user, "guardian_id", None)
+        if not guardian_id:
+            return []
+        child_ids_r = await db.execute(
+            select(ChildGuardian.child_id).where(ChildGuardian.guardian_id == guardian_id)
+        )
+        allowed = [r[0] for r in child_ids_r.all()]
+        if not allowed:
+            return []
+        query = query.where(TripAuthorization.child_id.in_(allowed))
+
+    result = await db.execute(query)
     trips = result.scalars().unique().all()
 
     out = []

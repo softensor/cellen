@@ -19,6 +19,14 @@ import '../../features/admin/academic/turmas_screen.dart';
 import '../../features/admin/academic/schedules_screen.dart';
 import '../../features/admin/academic/enrollments_screen.dart';
 import '../../features/admin/absences/absences_screen.dart';
+import '../../features/admin/people/people_hub_screen.dart';
+import '../../features/admin/academic/academic_hub_screen.dart';
+import '../../features/admin/health_hub/health_hub_screen.dart';
+import '../../features/admin/comms/comms_hub_screen.dart';
+import '../../features/admin/activities/activities_hub_screen.dart';
+import '../../features/parent/children_hub/parent_children_hub.dart';
+import '../../features/parent/school_hub/parent_school_hub.dart';
+import '../../features/parent/authorizations_hub/parent_auth_hub.dart';
 import '../../features/platform/dashboard/platform_dashboard_screen.dart';
 import '../../features/platform/schools/schools_screen.dart';
 import '../../features/platform/website/website_dashboard_screen.dart';
@@ -197,35 +205,17 @@ class _ChangePasswordDialogState
 // Nav item definitions per role  (each role owns exactly its list)
 // ---------------------------------------------------------------------------
 
-// School Admin — full access
+// School Admin — hub-based (9 top-level items)
 const _adminItems = [
-  SidebarItem(path: '/admin',                        label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/admin/children',               label: 'Crianças',      icon: Icons.child_care_outlined,                  selectedIcon: Icons.child_care),
-  SidebarItem(path: '/admin/guardians',              label: 'Encarregados',  icon: Icons.people_outline,                       selectedIcon: Icons.people),
-  SidebarItem(path: '/admin/employees',              label: 'Funcionários',  icon: Icons.badge_outlined,                       selectedIcon: Icons.badge),
-  SidebarItem(path: '/teacher/attendance',           label: 'Presenças',     icon: Icons.fact_check_outlined,                  selectedIcon: Icons.fact_check),
-  SidebarItem(path: '/admin/absences',               label: 'Faltas',        icon: Icons.event_busy_outlined,                  selectedIcon: Icons.event_busy),
-  SidebarItem(path: '/admin/academic/turmas',        label: 'Turmas',        icon: Icons.class_outlined,                       selectedIcon: Icons.class_),
-  SidebarItem(path: '/admin/academic/schedules',     label: 'Horários',      icon: Icons.schedule_outlined,                    selectedIcon: Icons.schedule),
-  SidebarItem(path: '/admin/academic/enrollments',   label: 'Matrículas',    icon: Icons.how_to_reg_outlined,                  selectedIcon: Icons.how_to_reg),
-  SidebarItem(path: '/teacher/caderneta',            label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/admin/food',                   label: 'Ementas',       icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/admin/finance',                label: 'Financeiro',    icon: Icons.account_balance_wallet_outlined,      selectedIcon: Icons.account_balance_wallet),
-  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/health/immunizations',         label: 'Vacinas',       icon: Icons.vaccines_outlined,                    selectedIcon: Icons.vaccines),
-  SidebarItem(path: '/incidents',                    label: 'Ocorrências',   icon: Icons.report_outlined,                      selectedIcon: Icons.report),
-  SidebarItem(path: '/evaluations',                  label: 'Avaliações',    icon: Icons.school_outlined,                      selectedIcon: Icons.school),
-  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
-  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/photos',                       label: 'Galeria',       icon: Icons.photo_library_outlined,               selectedIcon: Icons.photo_library),
-  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/documents',                    label: 'Documentos',    icon: Icons.folder_outlined,                      selectedIcon: Icons.folder),
-  SidebarItem(path: '/trip-authorizations',          label: 'Autorizações',  icon: Icons.assignment_outlined,                  selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations',        label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined,   selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/meal-orders',                  label: 'Refeições',     icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
-  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
-  SidebarItem(path: '/admin/school-settings',        label: 'Configurações', icon: Icons.settings_outlined,                    selectedIcon: Icons.settings),
+  SidebarItem(path: '/admin',               label: 'Dashboard',     icon: Icons.dashboard_outlined,              selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/people',        label: 'Pessoas',       icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic',      label: 'Académico',     icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/finance',       label: 'Financeiro',    icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/admin/health-hub',    label: 'Saúde',         icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/comms',         label: 'Comunicação',   icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
+  SidebarItem(path: '/admin/activities',    label: 'Actividades',   icon: Icons.category_outlined,               selectedIcon: Icons.category),
+  SidebarItem(path: '/notifications',       label: 'Notificações',  icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined,             selectedIcon: Icons.settings),
 ];
 
 // Teacher — attendance, caderneta, health, incidents, evaluations + shared
@@ -258,23 +248,15 @@ const _staffItems = [
   SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
 ];
 
-// Parent — comprehensive navigation
+// Parent — hub-based (7 top-level items)
 const _parentItems = [
-  SidebarItem(path: '/parent',                       label: 'Início',        icon: Icons.home_outlined,                        selectedIcon: Icons.home),
-  SidebarItem(path: '/parent/caderneta',             label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/parent/invoices',              label: 'Finanças',      icon: Icons.receipt_long_outlined,                selectedIcon: Icons.receipt_long),
-  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/evaluations',                  label: 'Avaliações',    icon: Icons.school_outlined,                      selectedIcon: Icons.school),
-  SidebarItem(path: '/announcements',                label: 'Avisos',        icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
-  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/photos',                       label: 'Galeria',       icon: Icons.photo_library_outlined,               selectedIcon: Icons.photo_library),
-  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/documents',                    label: 'Documentos',    icon: Icons.folder_outlined,                      selectedIcon: Icons.folder),
-  SidebarItem(path: '/trip-authorizations',          label: 'Autorizações',  icon: Icons.assignment_outlined,                  selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations',        label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined,   selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/parent/menu',                  label: 'Cardápio',      icon: Icons.restaurant_outlined,                  selectedIcon: Icons.restaurant),
-  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
-  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
+  SidebarItem(path: '/parent',                  label: 'Início',        icon: Icons.home_outlined,                   selectedIcon: Icons.home),
+  SidebarItem(path: '/parent/children',         label: 'Os Meus Filhos', icon: Icons.child_care_outlined,            selectedIcon: Icons.child_care),
+  SidebarItem(path: '/parent/invoices',         label: 'Finanças',      icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/parent/school',           label: 'Escola',        icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/messages',                label: 'Mensagens',     icon: Icons.chat_bubble_outline,             selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/parent/authorizations',   label: 'Autorizações',  icon: Icons.assignment_outlined,             selectedIcon: Icons.assignment),
+  SidebarItem(path: '/notifications',           label: 'Notificações',  icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
 ];
 
 // Platform Admin
@@ -447,6 +429,11 @@ final routerProvider = Provider<GoRouter>((ref) {
 
           // ── School admin ─────────────────────────────────────────────────
           GoRoute(path: '/admin',                      builder: (_, __) => const AdminDashboardScreen()),
+          GoRoute(path: '/admin/people',               builder: (_, __) => const PeopleHubScreen()),
+          GoRoute(path: '/admin/academic',             builder: (_, __) => const AcademicHubScreen()),
+          GoRoute(path: '/admin/health-hub',           builder: (_, __) => const HealthHubScreen()),
+          GoRoute(path: '/admin/comms',                builder: (_, __) => const CommsHubScreen()),
+          GoRoute(path: '/admin/activities',           builder: (_, __) => const ActivitiesHubScreen()),
           GoRoute(path: '/admin/children',             builder: (_, __) => const ChildrenListScreen()),
           GoRoute(path: '/admin/children/new',         builder: (_, __) => const ChildFormScreen()),
           GoRoute(path: '/admin/children/:id',         builder: (_, s)  => ChildDetailScreen(id: s.pathParameters['id']!)),
@@ -482,6 +469,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
           // ── Parent ───────────────────────────────────────────────────────
           GoRoute(path: '/parent',                     builder: (_, __) => const ParentDashboardScreen()),
+          GoRoute(path: '/parent/children',            builder: (_, __) => const ParentChildrenHubScreen()),
+          GoRoute(path: '/parent/school',              builder: (_, __) => const ParentSchoolHubScreen()),
+          GoRoute(path: '/parent/authorizations',      builder: (_, __) => const ParentAuthHubScreen()),
           GoRoute(path: '/parent/caderneta',           builder: (_, __) => const ChildCadernetaScreen()),
           GoRoute(path: '/parent/invoices',            builder: (_, __) => const ParentInvoicesScreen()),
           GoRoute(path: '/parent/menu',                builder: (_, __) => const FoodMenuScreen()),

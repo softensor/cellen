@@ -346,11 +346,97 @@ class _NarrowLayout extends StatelessWidget {
     this.schoolName,
   });
 
+  void _showMoreSheet(BuildContext context, List<SidebarItem> overflow) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Mais opções',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 16),
+              GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                children: overflow
+                    .map((item) => InkWell(
+                          onTap: () {
+                            Navigator.pop(context);
+                            context.go(item.path);
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryLight,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(item.icon,
+                                    color: AppTheme.primary, size: 24),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item.label,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final navItems = items.take(5).toList();
-    final currentIndex =
-        navItems.indexWhere((i) => currentPath.startsWith(i.path));
+    // Show first 4 items in bottom nav + "Mais" as the 5th slot (if needed).
+    final navItems = items.take(4).toList();
+    final overflowItems = items.skip(4).toList();
+
+    // Determine which bottom-nav index is "active".
+    // If the current path matches an overflow item, highlight "Mais" (index 4).
+    final inOverflow =
+        overflowItems.any((i) => currentPath.startsWith(i.path));
+    final navIndex = inOverflow
+        ? navItems.length // points to "Mais"
+        : navItems.indexWhere((i) => currentPath.startsWith(i.path));
+
+    final destinations = <NavigationDestination>[
+      ...navItems.map((item) => NavigationDestination(
+            icon: Icon(item.icon, color: AppTheme.textSecondary),
+            selectedIcon: Icon(item.selectedIcon, color: AppTheme.primary),
+            label: item.label,
+          )),
+      if (overflowItems.isNotEmpty)
+        const NavigationDestination(
+          icon: Icon(Icons.more_horiz, color: AppTheme.textSecondary),
+          selectedIcon: Icon(Icons.more_horiz, color: AppTheme.primary),
+          label: 'Mais',
+        ),
+    ];
 
     return Scaffold(
       backgroundColor: AppTheme.surface,
@@ -365,22 +451,21 @@ class _NarrowLayout extends StatelessWidget {
       body: child,
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex < 0 ? 0 : currentIndex,
-        onDestinationSelected: (i) => context.go(navItems[i].path),
+        selectedIndex: navIndex < 0 ? 0 : navIndex,
+        onDestinationSelected: (i) {
+          if (overflowItems.isNotEmpty && i == navItems.length) {
+            _showMoreSheet(context, overflowItems);
+          } else if (i < navItems.length) {
+            context.go(navItems[i].path);
+          }
+        },
         backgroundColor: Colors.white,
         elevation: 0,
         shadowColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         indicatorColor: AppTheme.primaryLight,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: navItems
-            .map((item) => NavigationDestination(
-                  icon: Icon(item.icon, color: AppTheme.textSecondary),
-                  selectedIcon:
-                      Icon(item.selectedIcon, color: AppTheme.primary),
-                  label: item.label,
-                ))
-            .toList(),
+        destinations: destinations,
       ),
     );
   }
