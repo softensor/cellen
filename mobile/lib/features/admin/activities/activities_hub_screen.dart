@@ -10,13 +10,6 @@ class ActivitiesHubScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (
-        icon: Icons.restaurant_menu_outlined,
-        color: Colors.orange,
-        label: 'Ementas',
-        description: 'Gestão de menus semanais por nível de ensino',
-        path: '/admin/food',
-      ),
-      (
         icon: Icons.assignment_outlined,
         color: Colors.blue,
         label: 'Autorizações',
@@ -29,13 +22,6 @@ class ActivitiesHubScreen extends StatelessWidget {
         label: 'Levantamentos',
         description: 'Gestão de autorizações de levantamento de crianças',
         path: '/pickup-authorizations',
-      ),
-      (
-        icon: Icons.lunch_dining_outlined,
-        color: Colors.red,
-        label: 'Refeições',
-        description: 'Contagem e gestão de refeições diárias',
-        path: '/meal-orders',
       ),
       (
         icon: Icons.event_available_outlined,

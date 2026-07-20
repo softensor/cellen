@@ -1,0 +1,18 @@
+- generic [ref=f2e5]:
+  - textbox [active] [ref=f2e18]: rainha-njinga
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - group:
+            - generic [ref=f2e6]: Cellen
+            - generic [ref=f2e7]: Gestão de Creche
+            - generic:
+              - button "Escola" [ref=f2e8]
+              - button "Plataforma" [ref=f2e9]
+              - textbox "Código da Escola" [ref=f2e11]
+              - textbox "Utilizador" [ref=f2e13]
+              - generic [ref=f2e14]:
+                - textbox "Palavra-passe" [ref=f2e15]
+                - button [ref=f2e16]
+              - button "Entrar" [ref=f2e17]

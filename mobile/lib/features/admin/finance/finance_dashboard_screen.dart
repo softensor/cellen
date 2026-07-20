@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_provider.dart';
@@ -172,6 +173,13 @@ final _summaryProvider = FutureProvider.autoDispose<FinanceSummary>((ref) async 
   return FinanceSummary.fromJson(data as Map<String, dynamic>);
 });
 
+// Pending payment proofs submitted by parents awaiting admin review
+final _pendingProofsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final api = ref.read(apiClientProvider);
+  final data = await api.get('/finance/payments', queryParameters: {'status': 'pending_review', 'limit': '50'}) as List;
+  return data.map((e) => e as Map<String, dynamic>).toList();
+});
+
 final _allInvoicesProvider = FutureProvider.autoDispose<List<Invoice>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/finance/invoices', queryParameters: {'limit': '100'}) as List;
@@ -333,6 +341,7 @@ class _OverviewTab extends ConsumerWidget {
       onRefresh: () async {
         ref.invalidate(_summaryProvider);
         ref.invalidate(_allInvoicesProvider);
+        ref.invalidate(_pendingProofsProvider);
       },
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -412,6 +421,58 @@ class _OverviewTab extends ConsumerWidget {
           ),
 
           const SizedBox(height: 24),
+
+          // Pending proofs
+          ref.watch(_pendingProofsProvider).when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (proofs) {
+              if (proofs.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warning.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.hourglass_top_rounded, size: 14, color: AppTheme.warning),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${proofs.length} Comprovativo(s) Pendente(s)',
+                              style: const TextStyle(color: AppTheme.warning, fontWeight: FontWeight.w700, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ...proofs.map((proof) => _PendingProofCard(
+                    proof: proof,
+                    currency: currency,
+                    onApproved: () {
+                      ref.invalidate(_pendingProofsProvider);
+                      ref.invalidate(_allInvoicesProvider);
+                      ref.invalidate(_summaryProvider);
+                    },
+                    onRejected: () {
+                      ref.invalidate(_pendingProofsProvider);
+                      ref.invalidate(_allInvoicesProvider);
+                    },
+                  )),
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
+          ),
 
           // Quick links
           Text('Ferramentas', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: AppTheme.textSecondary, letterSpacing: 0.5)),
@@ -1035,6 +1096,186 @@ class _ExpensesTabState extends ConsumerState<_ExpensesTab> {
         },
       );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pending Proof Card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PendingProofCard extends ConsumerStatefulWidget {
+  final Map<String, dynamic> proof;
+  final NumberFormat currency;
+  final VoidCallback onApproved;
+  final VoidCallback onRejected;
+
+  const _PendingProofCard({
+    required this.proof,
+    required this.currency,
+    required this.onApproved,
+    required this.onRejected,
+  });
+
+  @override
+  ConsumerState<_PendingProofCard> createState() => _PendingProofCardState();
+}
+
+class _PendingProofCardState extends ConsumerState<_PendingProofCard> {
+  bool _loading = false;
+
+  Future<void> _approve() async {
+    setState(() => _loading = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.post('/finance/payments/${widget.proof['id']}/approve', data: {});
+      widget.onApproved();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: AppTheme.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _reject() async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final ctrl = TextEditingController();
+        return AlertDialog(
+          title: const Text('Rejeitar Comprovativo'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: 'Motivo (opcional)'),
+            maxLines: 2,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Rejeitar')),
+          ],
+        );
+      },
+    );
+    if (reason == null) return; // cancelled
+    setState(() => _loading = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.post('/finance/payments/${widget.proof['id']}/reject', data: {'reason': reason});
+      widget.onRejected();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: AppTheme.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.proof;
+    final amount = (p['amount'] as num?)?.toDouble() ?? 0.0;
+    final method = p['payment_method'] as String? ?? '';
+    final dateStr = p['payment_date'] as String? ?? '';
+    final proofUrl = p['receipt_proof_url'] as String?;
+    final notes = p['notes'] as String?;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.warning.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_outlined, color: AppTheme.warning, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.currency.format(amount),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
+                    ),
+                    Text(
+                      '${_methodLabel(method)} · $dateStr',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (proofUrl != null)
+                IconButton(
+                  icon: const Icon(Icons.open_in_new, size: 18, color: AppTheme.primary),
+                  tooltip: 'Ver comprovativo',
+                  onPressed: () async {
+                    final uri = Uri.parse(proofUrl.startsWith('http') ? proofUrl : '$kMediaBase$proofUrl');
+                    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                ),
+            ],
+          ),
+          if (notes != null && notes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(notes, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _reject,
+                  icon: const Icon(Icons.close, size: 16),
+                  label: const Text('Rejeitar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.danger,
+                    side: BorderSide(color: AppTheme.danger.withOpacity(0.5)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _loading ? null : _approve,
+                  icon: _loading
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check, size: 16),
+                  label: const Text('Confirmar'),
+                  style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _methodLabel(String m) => switch (m) {
+        'multicaixa' => 'Multicaixa',
+        'transfer' => 'Transferência',
+        'cash' => 'Numerário',
+        'card' => 'Cartão',
+        'check' => 'Cheque',
+        _ => m,
+      };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

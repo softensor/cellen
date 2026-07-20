@@ -1,0 +1,19 @@
+- generic [ref=f2e5]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - heading "Pessoas" [active] [level=2] [ref=f2e47]
+                - button [ref=f2e48]
+              - generic:
+                - group:
+                  - group "2 Crianças Gerir perfis das crianças matriculadas" [ref=f2e50]:
+                    - button "Nova Criança" [ref=f2e51]
+                  - group "2 Encarregados Responsáveis e contactos de emergência" [ref=f2e52]:
+                    - button "Novo Encarregado" [ref=f2e53]
+                  - group "6 Funcionários Educadores, auxiliares e pessoal administrativo" [ref=f2e54]:
+                    - button "Novo Funcionário" [ref=f2e55]
+                  - button "2 Matrículas Matrículas e transferências de turma" [ref=f2e56]

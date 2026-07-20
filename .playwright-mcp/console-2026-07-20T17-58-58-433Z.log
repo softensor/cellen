@@ -1,0 +1,147 @@
+[     256ms] [INFO] DDC is about to load 1/2 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[    1468ms] [INFO] DDC is about to load 1495/1495 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[   10664ms] [LOG] Starting application from main method in: org-dartlang-app:/web_entrypoint.dart. @ http://localhost:8080/ddc_module_loader.js:1585
+[   10769ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[   13613ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[   13614ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[   37679ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0
+[   37680ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0
+[  729956ms] [ERROR] ══╡ EXCEPTION CAUGHT BY SERVICES LIBRARY ╞══════════════════════════════════════════════════════════
+The following assertion was thrown during a platform message callback:
+Assertion failed: file:///opt/flutter/packages/flutter/lib/src/services/raw_keyboard.dart:863:7
+event is! RawKeyDownEvent || _keysPressed.isNotEmpty
+"Attempted to send a key down event when no keys are in keysPressed. This state can occur if the key
+event being sent doesn't properly set its modifier flags. This was the event:
+RawKeyDownEvent#1222d(logicalKey: LogicalKeyboardKey#4b191(keyId: \"0x200000106\", keyLabel: \"Meta
+Left\", debugName: \"Meta Left\"), physicalKey: PhysicalKeyboardKey#700e3(usbHidUsage:
+\"0x000700e3\", debugName: \"Meta Left\"), repeat: false) and its data:
+RawKeyEventDataWeb#c55f9(code: MetaLeft, key: Meta, location: 1, metaState: 0, keyCode: 224)"
+
+When the exception was thrown, this was the stack:
+dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 223:26      DartError
+dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_
+dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 44:3        assertFailed
+package:flutter/src/services/raw_keyboard.dart 863:49                             handleRawKeyEvent
+package:flutter/src/services/hardware_keyboard.dart 1197:30                       <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+package:flutter/src/services/hardware_keyboard.dart 1169:32                       handleRawKeyMessage
+dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear
+package:flutter/src/services/platform_channel.dart 258:49                         <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+package:flutter/src/services/platform_channel.dart 258:9                          <fn>
+package:flutter/src/services/binding.dart 663:35                                  <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+package:flutter/src/services/binding.dart 662:9                                   <fn>
+lib/_engine/engine/platform_dispatcher.dart 1730:13                               invoke2
+lib/ui/channel_buffers.dart 25:12                                                 invoke
+lib/ui/channel_buffers.dart 70:7                                                  push
+lib/ui/channel_buffers.dart 136:16                                                push
+lib/_engine/engine/platform_dispatcher.dart 419:10                                invokeOnPlatformMessage
+lib/_engine/engine/raw_keyboard.dart 136:30                                       handleHtmlEvent
+lib/_engine/engine/keyboard_binding.dart 101:29                                   <fn>
+lib/_engine/engine/keyboard_binding.dart 142:16                                   loggedHandler
+dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 218:27    _callDartFunctionFast1
+dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 78:15     ret
+lib/_engine/engine/keyboard_binding.dart 149:5                                    handleEvent*[_addEventListener]
+lib/_engine/engine/keyboard_binding.dart 98:5                                     <fn>
+lib/_engine/engine/keyboard_binding.dart 116:35                                   initInstance
+lib/_engine/engine/raw_keyboard.dart 23:21                                        initialize
+lib/_engine/engine/initialization.dart 180:15                                     <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+lib/_engine/engine/initialization.dart 165:14                                     initializeEngineUi
+lib/ui_web/ui_web/initialization.dart 37:13                                       <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+lib/ui_web/ui_web/initialization.dart 39:15                                       <fn>
+lib/_engine/engine/app_bootstrap.dart 59:22                                       <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+lib/_engine/engine/app_bootstrap.dart 60:9                                        <fn>
+lib/_engine/engine/js_interop/js_loader.dart 72:73                                <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 222:26    _callDartFunctionFast1
+dart-sdk/lib/_internal/js_dev_runtime/patch/js_allow_interop_patch.dart 78:15     ret
+flutter_bootstrap.js 1:1662                                                       <fn>
+flutter_bootstrap.js 1:1652                                                       promise callback*a
+flutter_bootstrap.js 1:2311                                                       didCreateEngineInitializer
+lib/ui_web/ui_web/initialization.dart 50:11                                       <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+lib/ui_web/ui_web/initialization.dart 27:14                                       bootstrapEngine
+web_entrypoint.dart 19:16                                                         <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>
+dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:15               _asyncStartSync
+web_entrypoint.dart 18:14                                                         main$
+ddc_module_loader.js 1557:45                                                      runMainAndHandleErrors
+ddc_module_loader.js 1579:9                                                       _runMain
+ddc_module_loader.js 1593:12                                                      runMain
+ddc_module_loader.js 2140:22                                                      runMain
+main_module.bootstrap.js 25:23                                                    <fn>
+main_module.bootstrap.js 33:10                                                    <fn>
+main_module.bootstrap.js 32:32                                                    <fn>
+dwds/src/injected/client.js 10436:10                                              runMain
+dwds/src/injected/client.js 26985:19                                              <fn>
+dwds/src/injected/client.js 3893:17                                               <fn>
+dwds/src/injected/client.js 13631:12                                              call$2
+dwds/src/injected/client.js 3857:20                                               _asyncStartSync
+dwds/src/injected/client.js 27054:16                                              $call$body$main__closure
+dwds/src/injected/client.js 26892:19                                              call$1
+dwds/src/injected/client.js 4391:18                                               _rootRunUnary
+dwds/src/injected/client.js 15254:39                                              runUnary$2$2
+════════════════════════════════════════════════════════════════════════════════════════════════════ @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1462493ms] [INFO] DDC is about to load 1/2 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[ 1463629ms] [INFO] DDC is about to load 1495/1495 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[ 1472514ms] [LOG] Starting application from main method in: org-dartlang-app:/web_entrypoint.dart. @ http://localhost:8080/ddc_module_loader.js:1585
+[ 1472596ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[ 1474108ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[ 1474109ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[ 1475983ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0
+[ 1475984ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0
+[ 1492344ms] [ERROR] ══╡ EXCEPTION CAUGHT BY FLUTTER FRAMEWORK ╞═════════════════════════════════════════════════════════
+The following assertion was thrown:
+ListTile background color or ink splashes may be invisible.
+The ListTile is wrapped in a ColoredBox that has a background color. Because ListTile paints its
+background and ink splashes on the nearest Material ancestor, this ColoredBox will hide those
+effects.
+To fix this, wrap the ListTile in its own Material widget, or remove the background color from the
+intermediate ColoredBox.
+
+ListTile:
+  ListTile(visualDensity: VisualDensity#a0ee8(h: -2.0, v: -2.0)(horizontal: -2.0, vertical: -2.0), shape: RoundedRectangleBorder(BorderSide(width: 0.0, style: none), BorderRadius.circular(8.0)), contentPadding: EdgeInsets(12.0, 0.0, 12.0, 0.0), onTap:
+    Closure: () => void from: () => {
+                                  let $36rec, $36p1, $36result;
+                                  return 0 === dart.global.dartDevEmbedder.hotReloadGeneration ? extensions['GoRouterHelper|go'](context, item.path) : ($36rec = extensions, $36p1 = dart_rti._asString(dart.dload(item, 'path')), $36result = dart.hotReloadCorrectnessChecks($36rec, 'GoRouterHelper|go', [], [context, $36p1], null), $36result == dart.validArgumentsSentinel ? $36rec['GoRouterHelper|go'](context, $36p1) : $36result);
+                                }
+  , selected: true, selectedTileColor: Color(alpha: 1.0000, red: 0.9216, green: 0.9608, blue: 1.0000, colorSpace: ColorSpace.sRGB), minVerticalPadding: 0.0)
+ColoredBox:
+  ColoredBox(color: Color(alpha: 1.0000, red: 1.0000, green: 1.0000, blue: 1.0000, colorSpace: ColorSpace.sRGB))
+════════════════════════════════════════════════════════════════════════════════════════════════════ @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492361ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492392ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492405ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492420ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492433ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492447ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492460ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1492474ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493791ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493803ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493812ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493821ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493829ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493836ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493845ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493857ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1493863ms] [ERROR] Another exception was thrown: ListTile background color or ink splashes may be invisible. @ http://localhost:8080/packages/flutter/src/foundation/_error_dumper_web.dart.lib.js:71
+[ 1494469ms] [ERROR] [JavaScript Error: "Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://167.235.158.77.nip.io/media/schools/65794af5-2831-4709-9b53-437bb5d50515/a429782f-6c8a-493a-9f37-13d46bf9fd51.jpeg. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 200."] @ :0

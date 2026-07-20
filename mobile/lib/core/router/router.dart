@@ -64,6 +64,7 @@ import '../../features/admin/guardians/guardian_form_screen.dart';
 import '../../features/admin/school_settings_screen.dart';
 import '../../features/admin/school_profile_screen.dart';
 import '../../features/admin/food/admin_food_screen.dart';
+import '../../features/admin/food/food_hub_screen.dart';
 import '../../features/trip_authorizations/trip_authorizations_screen.dart';
 import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
@@ -214,6 +215,7 @@ const _adminItems = [
   SidebarItem(path: '/admin/health-hub',    label: 'Saúde',         icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
   SidebarItem(path: '/admin/comms',         label: 'Comunicação',   icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
   SidebarItem(path: '/admin/activities',    label: 'Actividades',   icon: Icons.category_outlined,               selectedIcon: Icons.category),
+  SidebarItem(path: '/admin/food-hub',      label: 'Alimentação',   icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
   SidebarItem(path: '/notifications',       label: 'Notificações',  icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
   SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined,             selectedIcon: Icons.settings),
 ];
@@ -238,15 +240,8 @@ const _teacherItems = [
   SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
 ];
 
-// Staff — limited: announcements, messages, calendar, appointments, notifications
-const _staffItems = [
-  SidebarItem(path: '/teacher',                      label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
-  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
-  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
-];
+// Staff (educational assistant) — same access as teacher; finance is the cutoff
+const _staffItems = _teacherItems;
 
 // Parent — hub-based (7 top-level items)
 const _parentItems = [
@@ -450,6 +445,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/academic/enrollments', builder: (_, __) => const EnrollmentsScreen()),
           GoRoute(path: '/admin/school-settings',      builder: (_, __) => const SchoolSettingsScreen()),
           GoRoute(path: '/admin/school-profile',       builder: (_, __) => const SchoolProfileScreen()),
+          GoRoute(path: '/admin/food-hub',             builder: (_, __) => const FoodHubScreen()),
           GoRoute(path: '/admin/food',                 builder: (_, __) => const AdminFoodScreen()),
           GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
           GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const InvoicesScreen()),

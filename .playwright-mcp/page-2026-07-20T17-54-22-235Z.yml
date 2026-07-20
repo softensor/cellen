@@ -1,0 +1,19 @@
+- generic [ref=e7]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - group:
+            - generic [ref=e8]: Cellen
+            - generic [ref=e9]: Gestão de Creche
+            - generic:
+              - button "Escola" [ref=e10]
+              - button "Plataforma" [ref=e11]
+              - generic [ref=e12]:
+                - textbox "Código da Escola" [active] [invalid] [ref=e23]: rainha-njinga
+                - generic [ref=e28]: Campo obrigatório
+              - textbox "Utilizador" [ref=e24]: admin@cellen.local
+              - generic [ref=e25]:
+                - textbox "Palavra-passe" [ref=e26]: admin2024
+                - button [ref=e27]
+              - button "Entrar" [ref=e19]

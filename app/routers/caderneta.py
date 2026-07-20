@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_school_id, require_school_admin, require_teacher, require_parent
-from app.models.academic import Enrollment, ScheduleTeacher
 from app.models.caderneta import Caderneta
 from app.models.person import Child, ChildGuardian
 from app.schemas.caderneta import CadernetaCreate, CadernetaResponse, CadernetaUpdate
@@ -46,7 +45,7 @@ async def create_caderneta(
     body: CadernetaCreate,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_teacher),
+    _=Depends(require_teacher),
 ):
     # Verify child belongs to this school
     child_result = await db.execute(
@@ -54,23 +53,6 @@ async def create_caderneta(
     )
     if child_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Child not found")
-
-    # Verify teacher is assigned to this child's class (skip for admin roles)
-    if getattr(current_user, "_role", None) == "teacher":
-        employee_id = getattr(current_user, "employee_id", None)
-        if not employee_id:
-            raise HTTPException(status_code=403, detail="No employee record linked")
-        link = await db.execute(
-            select(ScheduleTeacher)
-            .join(Enrollment, Enrollment.schedule_id == ScheduleTeacher.schedule_id)
-            .where(
-                Enrollment.child_id == body.child_id,
-                Enrollment.status == "active",
-                ScheduleTeacher.employee_id == employee_id,
-            )
-        )
-        if link.scalar_one_or_none() is None:
-            raise HTTPException(status_code=403, detail="Child not in your assigned class")
 
     caderneta = Caderneta(school_id=school_id, **body.model_dump())
     db.add(caderneta)

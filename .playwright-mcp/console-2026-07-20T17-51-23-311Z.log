@@ -1,0 +1,9 @@
+[     363ms] [INFO] DDC is about to load 1/2 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[    2089ms] [INFO] DDC is about to load 1495/1495 scripts with pool size = 1000 @ http://localhost:8080/ddc_module_loader.js:1014
+[   12447ms] [WARNING] [JavaScript Warning: "“localhost” has been classified as a bounce tracker. If it does not receive user activation within the next 3,600 seconds it will have its state purged."] @ :0
+[   13215ms] [LOG] Starting application from main method in: org-dartlang-app:/web_entrypoint.dart. @ http://localhost:8080/ddc_module_loader.js:1585
+[   13299ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[   15398ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[   15398ms] [WARNING] [JavaScript Warning: "WEBGL_debug_renderer_info is deprecated in Firefox and will be removed. Please use RENDERER." {file: "https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js" line: 15}] @ https://www.gstatic.com/flutter-canvaskit/83675ed27633283e7fc296c8bca22e841224c096/canvaskit.js:15
+[  151340ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0
+[  151340ms] [WARNING] [JavaScript Warning: "WebGL warning: getParameter: The READ_BUFFER attachment is multisampled."] @ :0

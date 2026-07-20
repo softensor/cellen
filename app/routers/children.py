@@ -85,7 +85,7 @@ async def get_my_children(
         )
         return result.scalars().all()
 
-    elif role == "teacher":
+    elif role in ("teacher", "staff"):
         employee_id = getattr(current_user, "employee_id", None)
         if not employee_id:
             return []

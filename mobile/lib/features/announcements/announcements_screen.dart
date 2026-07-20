@@ -455,8 +455,8 @@ class _CreateAnnouncementDialogState
         if (_attachmentUrlCtrl.text.trim().isNotEmpty)
           'attachment_url': _attachmentUrlCtrl.text.trim(),
       });
-      widget.onCreated();
       if (mounted) Navigator.of(context).pop();
+      widget.onCreated();
     } catch (e) {
       setState(() {
         _error = e.toString();

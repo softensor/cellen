@@ -1,0 +1,27 @@
+- generic [active] [ref=f2e5]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - group:
+                - generic [ref=f2e21]: segunda-feira, 20 de julho 2026
+                - generic [ref=f2e22]: Boa noite, vmc@gmail.com
+                - button "Actualizar" [ref=f2e23]
+                - generic [ref=f2e24]: Resumo do Dia
+                - generic:
+                  - generic:
+                    - button "... Crianças Activas" [ref=f2e25]
+                    - generic [ref=f2e26]: ... Presenças Hoje
+                    - generic [ref=f2e27]: ... Faturas Pendentes
+                    - generic [ref=f2e28]: ... Não Lidas
+                - generic [ref=f2e29]: Acções Rápidas
+                - button "Presenças" [ref=f2e30]
+                - button "Nova Fatura" [ref=f2e31]
+                - button "Ocorrências" [ref=f2e32]
+                - button "Calendário" [ref=f2e33]
+                - button "Crianças" [ref=f2e34]
+                - button "Funcionários" [ref=f2e35]
+                - generic [ref=f2e36]: Actividade Recente
+                - button "Ver todas" [ref=f2e37]

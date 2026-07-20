@@ -3,66 +3,30 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-class AcademicHubScreen extends StatelessWidget {
-  const AcademicHubScreen({super.key});
+class FoodHubScreen extends StatelessWidget {
+  const FoodHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     const items = [
       (
-        icon: Icons.fact_check_outlined,
-        color: Colors.blue,
-        label: 'Presenças',
-        description: 'Registo diário de entradas e saídas das crianças',
-        path: '/teacher/attendance',
-      ),
-      (
-        icon: Icons.event_busy_outlined,
+        icon: Icons.lunch_dining_outlined,
         color: Colors.red,
-        label: 'Faltas',
-        description: 'Faltas e ausências de funcionários',
-        path: '/admin/absences',
+        label: 'Refeições',
+        description: 'Contagem e gestão de refeições diárias',
+        path: '/meal-orders',
       ),
       (
-        icon: Icons.class_outlined,
-        color: Colors.teal,
-        label: 'Turmas',
-        description: 'Gestão das turmas e grupos de crianças',
-        path: '/admin/academic/turmas',
-      ),
-      (
-        icon: Icons.schedule_outlined,
+        icon: Icons.restaurant_menu_outlined,
         color: Colors.orange,
-        label: 'Horários',
-        description: 'Horários semanais por turma e actividade',
-        path: '/admin/academic/schedules',
+        label: 'Ementas',
+        description: 'Gestão de menus semanais por nível de ensino',
+        path: '/admin/food',
       ),
-      (
-        icon: Icons.menu_book_outlined,
-        color: Colors.purple,
-        label: 'Caderneta',
-        description: 'Relatórios diários das crianças pelos educadores',
-        path: '/teacher/caderneta',
-      ),
-      (
-        icon: Icons.how_to_reg_outlined,
-        color: Colors.orange,
-        label: 'Matrículas',
-        description: 'Matrículas e transferências de turma',
-        path: '/admin/academic/enrollments',
-      ),
-      (
-        icon: Icons.school_outlined,
-        color: Colors.purple,
-        label: 'Avaliações',
-        description: 'Avaliações pedagógicas e boletins de desenvolvimento',
-        path: '/evaluations',
-      ),
-
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Académico')),
+      appBar: AppBar(title: const Text('Alimentação')),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(

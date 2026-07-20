@@ -54,7 +54,7 @@ from app.services.finance import (
     apply_credit_to_invoice, generate_annual_pl, generate_monthly_pl,
     get_account_statement, get_guardian_credit_balance, get_guardians_with_credit,
     get_invoice_amount_paid, get_invoice_balance, get_outstanding_invoices,
-    mark_overdue_invoices, resolve_unit_price, reverse_payment,
+    mark_overdue_invoices, recalculate_invoice_status, resolve_unit_price, reverse_payment,
 )
 from app.services.storage import save_upload
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
@@ -899,6 +899,7 @@ async def list_payments(
     billing_guardian_id: Optional[uuid.UUID] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    status: Optional[str] = None,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
     _=Depends(require_finance_access),
@@ -910,6 +911,8 @@ async def list_payments(
         query = query.where(Payment.payment_date >= date_from)
     if date_to:
         query = query.where(Payment.payment_date <= date_to)
+    if status:
+        query = query.where(Payment.status == status)
     result = await db.execute(query.order_by(Payment.created_at.desc()).offset(skip).limit(limit))
     payments = result.scalars().all()
 
@@ -990,6 +993,72 @@ async def create_payment(
         for a in allocs
     ]
     return data
+
+
+@router.post("/payments/{payment_id}/approve", response_model=PaymentResponse)
+async def approve_payment(
+    payment_id: uuid.UUID,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Approve a parent-submitted payment proof: status -> normal, recalculate invoices."""
+    result = await db.execute(
+        select(Payment).where(Payment.id == payment_id, Payment.school_id == school_id)
+    )
+    payment = result.scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    if payment.status != "pending_review":
+        raise HTTPException(status_code=400, detail="Payment is not pending review")
+
+    payment.status = "normal"
+    await db.flush()
+
+    # Recalculate all invoices linked to this payment
+    alloc_result = await db.execute(
+        select(PaymentAllocation).where(PaymentAllocation.payment_id == payment_id)
+    )
+    for alloc in alloc_result.scalars().all():
+        await recalculate_invoice_status(db, alloc.invoice_id)
+
+    await db.commit()
+    await db.refresh(payment)
+    alloc_r = await db.execute(
+        select(PaymentAllocation).where(PaymentAllocation.payment_id == payment.id)
+    )
+    allocs = alloc_r.scalars().all()
+    data = PaymentResponse.model_validate(payment)
+    data.allocated_invoices = [
+        {"invoice_id": str(a.invoice_id), "amount_applied": float(a.amount_applied)}
+        for a in allocs
+    ]
+    return data
+
+
+@router.post("/payments/{payment_id}/reject")
+async def reject_payment(
+    payment_id: uuid.UUID,
+    body: dict = {},
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Reject a parent-submitted payment proof."""
+    result = await db.execute(
+        select(Payment).where(Payment.id == payment_id, Payment.school_id == school_id)
+    )
+    payment = result.scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    if payment.status != "pending_review":
+        raise HTTPException(status_code=400, detail="Payment is not pending review")
+
+    payment.status = "rejected"
+    if body.get("reason"):
+        payment.notes = f"[REJEITADO] {body['reason']}"
+    await db.commit()
+    return {"message": "Comprovativo rejeitado"}
 
 
 @router.post("/payments/{payment_id}/reverse", response_model=PaymentResponse)

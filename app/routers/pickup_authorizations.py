@@ -295,8 +295,24 @@ async def create_meal_order(
     body: MealOrderCreate,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    # Parents can only create meal orders for their own children
+    role = getattr(current_user, "_role", None)
+    if role not in ("school_admin", "platform_admin", "teacher", "staff"):
+        from app.models.person import ChildGuardian
+        guardian_id = getattr(current_user, "guardian_id", None)
+        if not guardian_id:
+            raise HTTPException(status_code=403, detail="No guardian record linked")
+        link_result = await db.execute(
+            select(ChildGuardian).where(
+                ChildGuardian.guardian_id == guardian_id,
+                ChildGuardian.child_id == body.child_id,
+            )
+        )
+        if link_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Not your child")
+
     # Upsert: update if exists, create if not
     existing = await db.execute(
         select(MealOrder).where(

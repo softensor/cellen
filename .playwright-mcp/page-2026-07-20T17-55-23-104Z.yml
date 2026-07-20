@@ -1,0 +1,23 @@
+- generic [ref=e7]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - group:
+            - generic [ref=e29]: Cellen
+            - generic [ref=e30]: Gestão de Creche
+            - generic:
+              - button "Escola" [ref=e31]
+              - button "Plataforma" [ref=e32]
+              - generic [ref=e33]:
+                - textbox "Código da Escola" [invalid] [ref=e34]: rainha-njinga
+                - generic [ref=e35]: Campo obrigatório
+              - generic [ref=e36]:
+                - textbox "Utilizador" [invalid] [ref=e37]: admin@cellen.local
+                - generic [ref=e38]: Campo obrigatório
+              - generic [ref=e39]:
+                - textbox "Palavra-passe" [active] [invalid] [ref=e40]: admin2024
+                - button [ref=e41]
+                - generic [ref=e42]: Campo obrigatório
+              - generic [ref=e43]: "ApiException(401): Invalid credentials"
+              - button "Entrar" [ref=e44]

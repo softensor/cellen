@@ -1,0 +1,31 @@
+- generic [ref=f2e5]:
+  - textbox [active] [ref=f2e143]: QA-AUDIT-001TesteCrianca
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - button "Voltar" [ref=f2e117]
+                - heading "Nova Criança" [level=2] [ref=f2e118]
+              - group:
+                - generic:
+                  - generic [ref=f2e119]: Identificação
+                  - generic [ref=f2e120]:
+                    - textbox "Primeiro Nome *" [invalid] [ref=f2e121]
+                    - generic [ref=f2e137]: Campo obrigatório
+                  - textbox "Nome do Meio" [ref=f2e123]
+                  - generic [ref=f2e124]:
+                    - textbox "Apelido *" [invalid] [ref=f2e125]
+                    - generic [ref=f2e138]: Campo obrigatório
+                  - generic [ref=f2e126]:
+                    - textbox "Cédula / BI *" [invalid] [ref=f2e127]
+                    - generic [ref=f2e139]: Campo obrigatório
+                  - button "Data de Nascimento Seleccionar data" [ref=f2e128]
+                  - button "Sexo" [ref=f2e129]
+                  - generic [ref=f2e130]: Saúde
+                  - textbox "Necessidades Especiais" [ref=f2e132]
+                  - textbox "Prescrição Médica" [ref=f2e134]
+                  - button "Morada" [ref=f2e135]
+                  - button "Criar Criança" [ref=f2e136]

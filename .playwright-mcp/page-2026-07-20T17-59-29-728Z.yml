@@ -1,0 +1,17 @@
+- generic [ref=f1e6]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - group:
+            - generic [ref=f1e7]: Cellen
+            - generic [ref=f1e8]: Gestão de Creche
+            - generic:
+              - button "Escola" [ref=f1e9]
+              - button "Plataforma" [ref=f1e10]
+              - textbox "Código da Escola" [active] [ref=f1e12]: ainha-njinga
+              - textbox "Utilizador" [ref=f1e14]
+              - generic [ref=f1e15]:
+                - textbox "Palavra-passe" [ref=f1e16]
+                - button [ref=f1e17]
+              - button "Entrar" [ref=f1e18]

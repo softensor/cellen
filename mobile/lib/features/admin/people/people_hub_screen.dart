@@ -77,16 +77,6 @@ class PeopleHubScreen extends ConsumerWidget {
           path: '/admin/employees/new',
         ),
       ),
-      _HubItem(
-        icon: Icons.how_to_reg_outlined,
-        selectedIcon: Icons.how_to_reg,
-        color: Colors.orange,
-        label: 'Matrículas',
-        description: 'Matrículas e transferências de turma',
-        countKey: 'enrollments',
-        path: '/admin/academic/enrollments',
-        fab: null,
-      ),
     ];
 
     return Scaffold(
@@ -152,7 +142,7 @@ class _HubGrid extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 340,
-        mainAxisExtent: 180,
+        mainAxisExtent: 210,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
