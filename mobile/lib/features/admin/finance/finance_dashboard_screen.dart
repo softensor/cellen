@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
@@ -1532,7 +1532,7 @@ class _RecordPaymentDialogState extends ConsumerState<_RecordPaymentDialog> {
   final _notesCtrl = TextEditingController();
   DateTime _paymentDate = DateTime.now();
   String _paymentMethod = 'multicaixa_express';
-  XFile? _proofFile;
+  PlatformFile? _proofFile;
   bool _isLoading = false;
   String? _error;
 
@@ -1559,8 +1559,14 @@ class _RecordPaymentDialogState extends ConsumerState<_RecordPaymentDialog> {
   }
 
   Future<void> _pickProof() async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (file != null) setState(() => _proofFile = file);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: true,
+    );
+    if (result != null && result.files.isNotEmpty) {
+      setState(() => _proofFile = result.files.first);
+    }
   }
 
   Future<void> _pickDate() async {
@@ -1592,8 +1598,12 @@ class _RecordPaymentDialogState extends ConsumerState<_RecordPaymentDialog> {
       final api = ref.read(apiClientProvider);
       String? proofUrl;
 
-      if (_proofFile != null) {
-        final result = await api.uploadFile('/finance/payment-proof', _proofFile!, fieldName: 'file') as Map<String, dynamic>;
+      if (_proofFile != null && _proofFile!.bytes != null) {
+        final result = await api.uploadBytes(
+          '/finance/payment-proof',
+          _proofFile!.bytes!,
+          _proofFile!.name,
+        ) as Map<String, dynamic>;
         proofUrl = result['url'] as String?;
       }
 

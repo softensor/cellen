@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -189,6 +191,29 @@ class ApiClient {
         fieldName: MultipartFile.fromBytes(
           bytes,
           filename: file.name,
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+      final response = await _dio.post(path, data: formData);
+      return response.data;
+    } on DioException catch (e) {
+      throw _mapException(e);
+    }
+  }
+
+  /// Upload raw bytes as multipart/form-data (use when you have a PlatformFile or Uint8List).
+  Future<dynamic> uploadBytes(
+    String path,
+    Uint8List bytes,
+    String filename, {
+    String fieldName = 'file',
+  }) async {
+    try {
+      final mimeType = _mimeFromName(filename);
+      final formData = FormData.fromMap({
+        fieldName: MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
           contentType: DioMediaType.parse(mimeType),
         ),
       });
