@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -555,12 +555,25 @@ async def create_invoice(
     if not body.lines:
         raise HTTPException(status_code=422, detail="At least one line item is required")
 
-    # Resolve guardian info
+    # Resolve guardian info.
+    # If billing_guardian_id not supplied but child_id is, auto-resolve from the
+    # child's primary contact so the invoice is always linked to a guardian.
+    resolved_guardian_id = body.billing_guardian_id
+    if not resolved_guardian_id and body.child_id:
+        from app.models.person import ChildGuardian
+        pg_r = await db.execute(
+            select(ChildGuardian.guardian_id).where(
+                ChildGuardian.child_id == body.child_id,
+                ChildGuardian.is_primary_contact == True,
+            )
+        )
+        resolved_guardian_id = pg_r.scalar_one_or_none()
+
     customer_nif = None
     customer_name = None
     is_final_consumer = False
-    if body.billing_guardian_id:
-        g_result = await db.execute(select(Guardian).where(Guardian.id == body.billing_guardian_id))
+    if resolved_guardian_id:
+        g_result = await db.execute(select(Guardian).where(Guardian.id == resolved_guardian_id))
         guardian = g_result.scalar_one_or_none()
         if guardian:
             customer_nif = guardian.nif
@@ -599,7 +612,7 @@ async def create_invoice(
     invoice = await emission.emit_invoice(
         document_type=body.document_type,
         invoice_date=invoice_date,
-        billing_guardian_id=body.billing_guardian_id,
+        billing_guardian_id=resolved_guardian_id,
         customer_nif=customer_nif,
         customer_name=customer_name,
         lines=lines_data,
@@ -617,11 +630,11 @@ async def create_invoice(
 
     # For FR: also create a payment immediately
     if body.document_type == "FR" and body.payment_method:
-        if not body.billing_guardian_id:
-            raise HTTPException(status_code=422, detail="billing_guardian_id required for FR")
+        if not resolved_guardian_id:
+            raise HTTPException(status_code=422, detail="billing_guardian_id (or child with primary contact) required for FR")
         intake = PaymentIntakeService(db, school_id)
         await intake.intake(
-            billing_guardian_id=body.billing_guardian_id,
+            billing_guardian_id=resolved_guardian_id,
             amount=invoice.gross_total,
             payment_method=body.payment_method,
             payment_date=invoice_date,
@@ -1527,15 +1540,26 @@ async def list_parent_invoices(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_parent),
 ):
-    from app.models.person import ChildGuardian
-
     guardian_id = getattr(current_user, "guardian_id", None)
     if guardian_id is None:
         raise HTTPException(status_code=403, detail="No guardian linked")
 
-    # Invoices where this guardian is the billing guardian
+    # Collect all child IDs linked to this guardian so invoices created via
+    # child selection (without explicit billing_guardian_id) are also visible.
+    from app.models.person import ChildGuardian
+    child_ids_r = await db.execute(
+        select(ChildGuardian.child_id).where(ChildGuardian.guardian_id == guardian_id)
+    )
+    linked_child_ids = [row[0] for row in child_ids_r.all()]
+
+    # Invoices where this guardian is the direct billing guardian OR where the
+    # invoice belongs to one of the guardian's children (handles legacy/admin-created invoices).
+    inv_filter = or_(
+        Invoice.billing_guardian_id == guardian_id,
+        Invoice.child_id.in_(linked_child_ids) if linked_child_ids else False,
+    )
     inv_result = await db.execute(
-        select(Invoice).where(Invoice.billing_guardian_id == guardian_id)
+        select(Invoice).where(inv_filter)
         .order_by(Invoice.invoice_date.desc())
     )
     invoices = inv_result.scalars().all()
