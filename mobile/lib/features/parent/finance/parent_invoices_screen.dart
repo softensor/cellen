@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
@@ -446,7 +446,7 @@ class _SubmitPaymentDialog extends ConsumerStatefulWidget {
 class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
   final _amountCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
-  XFile? _proofFile;
+  PlatformFile? _proofFile;
   String _paymentMethod = 'multicaixa';
   bool _isLoading = false;
   String? _error;
@@ -475,13 +475,14 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
   }
 
   Future<void> _pickProof() async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: true,
     );
-    if (file != null) setState(() => _proofFile = file);
+    if (result != null && result.files.isNotEmpty) {
+      setState(() => _proofFile = result.files.first);
+    }
   }
 
   Future<void> _submit() async {
@@ -490,11 +491,6 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
       setState(() => _error = 'Valor inválido');
       return;
     }
-    if (_proofFile == null) {
-      setState(() => _error = 'Comprovativo de pagamento obrigatório');
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _error = null;
@@ -503,19 +499,23 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
     try {
       final api = ref.read(apiClientProvider);
 
-      // 1. Upload proof image
-      final uploadResult = await api.uploadFile(
-        '/finance/payment-proof',
-        _proofFile!,
-      );
-      final proofUrl = uploadResult['url'] as String;
+      // 1. Upload proof if provided (optional)
+      String? proofUrl;
+      if (_proofFile != null && _proofFile!.bytes != null) {
+        final uploadResult = await api.uploadBytes(
+          '/finance/payment-proof',
+          _proofFile!.bytes!,
+          _proofFile!.name,
+        );
+        proofUrl = uploadResult['url'] as String?;
+      }
 
       // 2. Submit payment proof for admin review
       await api.post('/finance/parent/submit-payment', data: {
         'invoice_id': widget.invoice.id,
         'amount': amount,
         'payment_method': _paymentMethod,
-        'receipt_proof_url': proofUrl,
+        if (proofUrl != null) 'receipt_proof_url': proofUrl,
         if (_notesCtrl.text.trim().isNotEmpty)
           'notes': _notesCtrl.text.trim(),
       });
@@ -616,7 +616,7 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
                 ),
                 label: Text(
                   _proofFile == null
-                      ? 'Fotografar / Anexar comprovativo *'
+                      ? 'Anexar comprovativo (opcional) — imagem ou PDF'
                       : _proofFile!.name,
                   style: TextStyle(
                     color: _proofFile == null ? null : Colors.green,
