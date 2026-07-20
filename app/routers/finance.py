@@ -738,11 +738,26 @@ async def bulk_create_invoices(
     warnings = []
 
     for contract in contracts:
-        # Skip if already invoiced
-        if contract.last_invoiced_month and contract.last_invoiced_month >= ref_month:
-            continue
         if contract.end_date and contract.end_date < today:
             continue
+        # Skip if already invoiced this month — but only if an active invoice exists.
+        # If the prior invoice was voided/cancelled, allow re-generation.
+        if contract.last_invoiced_month and contract.last_invoiced_month >= ref_month:
+            active_inv_q = select(Invoice.id).where(
+                Invoice.school_id == school_id,
+                Invoice.child_id == contract.child_id,
+                Invoice.reference_month == ref_month,
+                Invoice.status != "cancelled",
+            )
+            # Narrow to same billing item when possible, to handle multi-contract children
+            if contract.billing_item_id:
+                active_inv_q = active_inv_q.join(
+                    InvoiceLine, InvoiceLine.invoice_id == Invoice.id
+                ).where(InvoiceLine.billing_item_id == contract.billing_item_id)
+            existing_r = await db.execute(active_inv_q)
+            if existing_r.scalar_one_or_none() is not None:
+                continue
+            # Only cancelled invoices exist for this contract this month — re-generate
 
         # Resolve guardian
         guardian_id = contract.guardian_id
