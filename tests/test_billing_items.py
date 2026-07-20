@@ -37,10 +37,11 @@ async def _make_billing_item(client: AsyncClient, token: str, **overrides) -> di
 
 async def test_create_billing_item(client: AsyncClient, make_school):
     _, token, _, _ = await make_school("bi-c")
+    code = f"MENS-{uid()[:6]}"
     r = await client.post(
         "/finance/billing-items",
         json={
-            "code": "MENS-BERC",
+            "code": code,
             "name": "Mensalidade Berçário",
             "unit_price": 45000.00,
             "iva_rate": 0.00,
@@ -50,7 +51,7 @@ async def test_create_billing_item(client: AsyncClient, make_school):
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["code"] == "MENS-BERC"
+    assert body["code"] == code
     assert body["name"] == "Mensalidade Berçário"
     assert body["iva_exemption_reason"] == "M10"
     assert float(body["unit_price"]) == 45000.00

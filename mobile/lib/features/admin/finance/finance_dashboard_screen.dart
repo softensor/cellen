@@ -26,12 +26,16 @@ class FinanceSummary {
   });
 
   factory FinanceSummary.fromJson(Map<String, dynamic> json) {
+    final income = (json['total_revenue_month'] as num?)?.toDouble() ?? 0.0;
+    final expenses = (json['total_expenses_month'] as num?)?.toDouble() ?? 0.0;
+    final pendingCount = (json['pending_invoices_count'] as num?)?.toInt() ?? 0;
+    final overdueCount = (json['overdue_invoices_count'] as num?)?.toInt() ?? 0;
     return FinanceSummary(
-      totalIncome: (json['total_income'] as num?)?.toDouble() ?? 0.0,
-      totalExpenses: (json['total_expenses'] as num?)?.toDouble() ?? 0.0,
-      netPnl: (json['net_pnl'] as num?)?.toDouble() ?? 0.0,
-      outstanding: (json['outstanding_amount'] as num?)?.toDouble() ?? 0.0,
-      outstandingCount: json['outstanding_count'] as int? ?? 0,
+      totalIncome: income,
+      totalExpenses: expenses,
+      netPnl: income - expenses,
+      outstanding: (json['total_outstanding'] as num?)?.toDouble() ?? 0.0,
+      outstandingCount: pendingCount + overdueCount,
     );
   }
 }

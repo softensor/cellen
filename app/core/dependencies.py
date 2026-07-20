@@ -85,6 +85,17 @@ async def require_school_admin(user=Depends(get_current_user)):
     return user
 
 
+async def require_finance_access(user=Depends(get_current_user)):
+    """finance_officer or school_admin can access finance features."""
+    role = getattr(user, "_role", None)
+    if role not in ("school_admin", "finance_officer", "platform_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Finance access required",
+        )
+    return user
+
+
 async def require_teacher(user=Depends(get_current_user)):
     role = getattr(user, "_role", None)
     if role not in ("teacher", "staff", "school_admin", "platform_admin"):

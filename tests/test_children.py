@@ -39,20 +39,6 @@ async def _make_employee(client: AsyncClient, admin_token: str) -> dict:
     return data
 
 
-async def _make_invoice(
-    client: AsyncClient, admin_token: str, child_id: str, issued_by: str
-) -> dict:
-    body = {
-        "child_id": child_id,
-        "issued_by": issued_by,
-        "reference_month": "2025-01-01",
-        "tuition_amount": 300.0,
-    }
-    r = await client.post("/finance/invoices", json=body, headers=auth(admin_token))
-    assert r.status_code == 201, r.text
-    return r.json()
-
-
 async def _make_guardian(client: AsyncClient, admin_token: str) -> tuple[dict, str]:
     """Returns (guardian_dict, username)."""
     uname = f"grd-{uid()}"
@@ -61,10 +47,35 @@ async def _make_guardian(client: AsyncClient, admin_token: str) -> tuple[dict, s
         "last_name": "Costa",
         "username": uname,
         "password": "Parent1!",
+        "nif": f"5{uid()[:8]}",
     }
     r = await client.post("/guardians", json=body, headers=auth(admin_token))
     assert r.status_code == 201, r.text
     return r.json(), uname
+
+
+async def _make_invoice(
+    client: AsyncClient, admin_token: str, child_id: str, issued_by: str,
+    guardian_id: str | None = None,
+) -> dict:
+    if guardian_id is None:
+        # Create a guardian and link to child for billing
+        grd, _ = await _make_guardian(client, admin_token)
+        guardian_id = grd["id"]
+        await client.post(
+            f"/guardians/{guardian_id}/children",
+            json={"child_id": child_id, "relationship_type": "mother", "is_primary_contact": True},
+            headers=auth(admin_token),
+        )
+    body = {
+        "billing_guardian_id": guardian_id,
+        "child_id": child_id,
+        "reference_month": "2025-01-01",
+        "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 300.0}],
+    }
+    r = await client.post("/finance/invoices", json=body, headers=auth(admin_token))
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -156,7 +167,7 @@ async def test_child_invoices_decimal_fields(client: AsyncClient, make_school):
     invoices = r.json()
     assert len(invoices) >= 1
     inv = invoices[0]
-    for field in ("total_amount", "amount_paid", "balance"):
+    for field in ("gross_total", "amount_paid", "balance"):
         assert isinstance(inv[field], (int, float)), (
             f"{field} should be numeric, got {type(inv[field])}: {inv[field]!r}"
         )

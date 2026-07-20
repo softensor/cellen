@@ -42,7 +42,7 @@ final childCadernetasProvider =
 final childInvoicesProvider =
     FutureProvider.autoDispose.family<List<Invoice>, String>((ref, id) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/children/$id/invoices') as List;
+  final data = await api.get('/finance/invoices', queryParameters: {'child_id': id}) as List;
   return data
       .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
       .toList();

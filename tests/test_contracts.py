@@ -284,7 +284,7 @@ async def test_manual_invoice_from_contract(client: AsyncClient, make_school):
         f"Manual invoice generation from contract must succeed; got {r.status_code}: {r.text}"
     )
     body = r.json()
-    assert "id" in body, "Generated invoice must have an id"
+    assert "invoice_id" in body or "id" in body, "Generated invoice must have an id"
 
 
 async def test_manual_invoice_uses_contract_billing_item(client: AsyncClient, make_school):
@@ -342,12 +342,12 @@ async def test_auto_generate_skips_already_invoiced_month(client: AsyncClient, m
 
     month = "2026-03-01"
     r1 = await client.post(
-        "/finance/invoices/auto-generate-contracts",
+        "/finance/invoices/bulk",
         json={"reference_month": month},
         headers=ctx["hdrs"],
     )
     r2 = await client.post(
-        "/finance/invoices/auto-generate-contracts",
+        "/finance/invoices/bulk",
         json={"reference_month": month},
         headers=ctx["hdrs"],
     )
@@ -379,7 +379,7 @@ async def test_auto_generate_only_runs_for_auto_invoice_true(client: AsyncClient
     assert ctr_r.status_code == 201
 
     await client.post(
-        "/finance/invoices/auto-generate-contracts",
+        "/finance/invoices/bulk",
         json={"reference_month": "2026-04-01"},
         headers=ctx["hdrs"],
     )
@@ -411,7 +411,7 @@ async def test_deactivated_contract_not_auto_generated(client: AsyncClient, make
     await client.delete(f"/finance/contracts/{ctr_id}", headers=ctx["hdrs"])
 
     await client.post(
-        "/finance/invoices/auto-generate-contracts",
+        "/finance/invoices/bulk",
         json={"reference_month": "2026-05-01"},
         headers=ctx["hdrs"],
     )

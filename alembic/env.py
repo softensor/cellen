@@ -29,7 +29,10 @@ from app.models.food import Food, FoodMenu, FoodMenuItem  # noqa: F401
 from app.models.absence import Absence  # noqa: F401
 from app.models.immunization import Immunization  # noqa: F401
 from app.models.finance import (  # noqa: F401
-    ExpenseCategory, Expense, Invoice, Payment, PaymentInvoice
+    ExpenseCategory, Expense, Invoice, InvoiceLine, Payment, PaymentAllocation,
+    BillingItem, BillingItemPrice, Contract, CreditNote, Receipt, DocumentSeries,
+    PaymentReference, CreditEntry, CreditRefund, CashSession,
+    PaymentPlan, PaymentPlanInstallment, ReminderLog, FinanceAuditEntry,
 )
 from app.models.website import (  # noqa: F401
     WebsiteSetting, WebsitePage, WebsiteSection, WebsiteMedia,

@@ -67,6 +67,23 @@ async def _setup(client, make_school) -> dict:
     assert child_r.status_code == 201, child_r.text
     child_id = child_r.json()["id"]
 
+    # Guardian with NIF (required for proper invoice billing)
+    grd_r = await client.post(
+        "/guardians",
+        json={"first_name": "Parent", "last_name": "Test",
+              "username": f"grd-{uid()}", "password": "P1234!",
+              "nif": f"5{uid()[:8]}"},
+        headers=hdrs,
+    )
+    assert grd_r.status_code == 201, grd_r.text
+    guardian_id = grd_r.json()["id"]
+
+    await client.post(
+        f"/guardians/{guardian_id}/children",
+        json={"child_id": child_id, "relationship_type": "mother", "is_primary_contact": True},
+        headers=hdrs,
+    )
+
     # Expense category
     cat_r = await client.post(
         "/finance/expense-categories",
@@ -84,6 +101,7 @@ async def _setup(client, make_school) -> dict:
         "slug": slug,
         "emp_id": emp_id,
         "child_id": child_id,
+        "guardian_id": guardian_id,
         "cat_id": cat_id,
     }
 
@@ -134,11 +152,13 @@ async def test_invoice_all_decimal_fields_are_numbers(client, make_school):
     create_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-03-01",
-            "tuition_amount": 500.00,
-            "other_fees": 50.00,
+            "lines": [
+                {"description": "Mensalidade", "quantity": 1, "unit_price": 500.00},
+                {"description": "Outras taxas", "quantity": 1, "unit_price": 50.00},
+            ],
         },
         headers=hdrs,
     )
@@ -149,7 +169,7 @@ async def test_invoice_all_decimal_fields_are_numbers(client, make_school):
     assert r.status_code == 200, r.text
     inv = r.json()
 
-    for field in ("total_amount", "tuition_amount", "other_fees", "amount_paid", "balance"):
+    for field in ("gross_total", "net_total", "iva_total", "amount_paid", "balance"):
         v = inv[field]
         assert _is_numeric(v), (
             f"invoice.{field} is {type(v).__name__!r}: {v!r} — "
@@ -165,11 +185,10 @@ async def test_payment_amount_is_number(client, make_school):
     r = await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 200.00,
             "payment_date": "2026-02-10",
-            "invoice_allocations": [],
         },
         headers=hdrs,
     )
@@ -288,40 +307,41 @@ async def test_create_invoice(client, make_school):
     r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-04-01",
-            "tuition_amount": 400.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 400.00}],
         },
         headers=hdrs,
     )
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "pending"
-    assert _is_numeric(body["total_amount"])
+    assert _is_numeric(body["gross_total"])
 
 
 async def test_total_amount_calculation(client, make_school):
-    """total_amount must equal tuition_amount + other_fees."""
+    """gross_total must equal sum of line unit_prices."""
     ctx = await _setup(client, make_school)
     hdrs = ctx["hdrs"]
 
     r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-05-01",
-            "tuition_amount": 500.00,
-            "other_fees": 100.00,
+            "lines": [
+                {"description": "Mensalidade", "quantity": 1, "unit_price": 500.00},
+                {"description": "Outras taxas", "quantity": 1, "unit_price": 100.00},
+            ],
         },
         headers=hdrs,
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert float(body["total_amount"]) == pytest.approx(600.0), (
-        f"Expected total_amount=600.0, got {body['total_amount']!r}"
+    assert float(body["gross_total"]) == pytest.approx(600.0), (
+        f"Expected gross_total=600.0, got {body['gross_total']!r}"
     )
 
 
@@ -332,11 +352,10 @@ async def test_list_invoices(client, make_school):
     await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-06-01",
-            "tuition_amount": 300.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 300.00}],
         },
         headers=hdrs,
     )
@@ -354,11 +373,10 @@ async def test_full_payment_marks_paid(client, make_school):
     inv_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-07-01",
-            "tuition_amount": 500.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 500.00}],
         },
         headers=hdrs,
     )
@@ -368,11 +386,11 @@ async def test_full_payment_marks_paid(client, make_school):
     pay_r = await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 500.00,
             "payment_date": "2026-07-10",
-            "invoice_allocations": [{"invoice_id": inv_id, "amount_applied": 500.00}],
+            "target_invoice_ids": [inv_id],
         },
         headers=hdrs,
     )
@@ -394,11 +412,10 @@ async def test_partial_payment(client, make_school):
     inv_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-08-01",
-            "tuition_amount": 500.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 500.00}],
         },
         headers=hdrs,
     )
@@ -408,11 +425,11 @@ async def test_partial_payment(client, make_school):
     pay_r = await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 200.00,
             "payment_date": "2026-08-05",
-            "invoice_allocations": [{"invoice_id": inv_id, "amount_applied": 200.00}],
+            "target_invoice_ids": [inv_id],
         },
         headers=hdrs,
     )
@@ -435,11 +452,10 @@ async def test_void_invoice(client, make_school):
     inv_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-09-01",
-            "tuition_amount": 350.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 350.00}],
         },
         headers=hdrs,
     )
@@ -453,13 +469,12 @@ async def test_void_invoice(client, make_school):
     )
     assert void_r.status_code in (200, 201), void_r.text
     cn = void_r.json()
-    assert "id" in cn
-    assert "full_document_number" in cn
+    assert "credit_note_id" in cn, f"Void response must include credit_note_id; got: {cn}"
 
     cn_list_r = await client.get("/finance/credit-notes", headers=void_hdrs)
     assert cn_list_r.status_code == 200
     cn_ids = [c["id"] for c in cn_list_r.json()]
-    assert cn["id"] in cn_ids
+    assert cn["credit_note_id"] in cn_ids
 
 
 async def test_school_invoice_isolation(client, make_school):
@@ -471,11 +486,10 @@ async def test_school_invoice_isolation(client, make_school):
     await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx_b["guardian_id"],
             "child_id": ctx_b["child_id"],
-            "issued_by": ctx_b["emp_id"],
             "reference_month": "2026-10-01",
-            "tuition_amount": 999.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 999.00}],
         },
         headers=ctx_b["hdrs"],
     )
@@ -505,18 +519,17 @@ async def test_create_payment_no_allocation(client, make_school):
     r = await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 100.00,
             "payment_date": "2026-01-05",
-            "invoice_allocations": [],
         },
         headers=hdrs,
     )
     assert r.status_code == 201, r.text
     body = r.json()
     assert "id" in body
-    assert body["settled_invoice_ids"] == []
+    assert body["allocated_invoices"] == []
 
 
 async def test_payment_with_allocation(client, make_school):
@@ -527,11 +540,10 @@ async def test_payment_with_allocation(client, make_school):
     inv_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-11-01",
-            "tuition_amount": 300.00,
-            "other_fees": 0.00,
+            "lines": [{"description": "Mensalidade", "quantity": 1, "unit_price": 300.00}],
         },
         headers=hdrs,
     )
@@ -541,17 +553,18 @@ async def test_payment_with_allocation(client, make_school):
     pay_r = await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 300.00,
             "payment_date": "2026-11-10",
-            "invoice_allocations": [{"invoice_id": inv_id, "amount_applied": 300.00}],
+            "target_invoice_ids": [inv_id],
         },
         headers=hdrs,
     )
     assert pay_r.status_code == 201, pay_r.text
     pay_body = pay_r.json()
-    assert inv_id in [str(x) for x in pay_body["settled_invoice_ids"]]
+    allocated_ids = [a["invoice_id"] for a in pay_body["allocated_invoices"]]
+    assert inv_id in allocated_ids
 
     # Confirm invoice updated
     get_r = await client.get(f"/finance/invoices/{inv_id}", headers=hdrs)
@@ -566,11 +579,10 @@ async def test_list_payments(client, make_school):
     await client.post(
         "/finance/payments",
         json={
-            "child_id": ctx["child_id"],
-            "received_by": ctx["emp_id"],
+            "billing_guardian_id": ctx["guardian_id"],
+            "payment_method": "transfer",
             "amount": 50.00,
             "payment_date": "2026-01-15",
-            "invoice_allocations": [],
         },
         headers=hdrs,
     )
@@ -644,11 +656,13 @@ async def test_get_invoice_by_id(client, make_school):
     create_r = await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-12-01",
-            "tuition_amount": 450.00,
-            "other_fees": 25.00,
+            "lines": [
+                {"description": "Mensalidade", "quantity": 1, "unit_price": 450.00},
+                {"description": "Outras taxas", "quantity": 1, "unit_price": 25.00},
+            ],
         },
         headers=hdrs,
     )
@@ -671,11 +685,13 @@ async def test_invoice_decimal_fields_no_string_on_list(client, make_school):
     await client.post(
         "/finance/invoices",
         json={
+            "billing_guardian_id": ctx["guardian_id"],
             "child_id": ctx["child_id"],
-            "issued_by": ctx["emp_id"],
             "reference_month": "2026-02-01",
-            "tuition_amount": 250.00,
-            "other_fees": 30.00,
+            "lines": [
+                {"description": "Mensalidade", "quantity": 1, "unit_price": 250.00},
+                {"description": "Outras taxas", "quantity": 1, "unit_price": 30.00},
+            ],
         },
         headers=hdrs,
     )
@@ -683,7 +699,7 @@ async def test_invoice_decimal_fields_no_string_on_list(client, make_school):
     r = await client.get("/finance/invoices", headers=hdrs)
     assert r.status_code == 200
     for inv in r.json():
-        for field in ("total_amount", "tuition_amount", "other_fees", "amount_paid", "balance"):
+        for field in ("gross_total", "net_total", "iva_total", "amount_paid", "balance"):
             v = inv[field]
             assert _is_numeric(v), (
                 f"invoice (list).{field} is {type(v).__name__!r}: {v!r} — "

@@ -10,7 +10,7 @@ from app.core.dependencies import get_current_user, get_school_id, require_schoo
 from app.core.security import hash_password
 from app.models.academic import Enrollment, SchoolYear
 from app.models.employee import Employee
-from app.models.finance import Invoice, Payment, PaymentInvoice
+from app.models.finance import Invoice, Payment, PaymentAllocation
 from app.models.person import Child
 from app.models.school import School
 from app.models.user import User
@@ -169,11 +169,11 @@ async def get_school_stats(
     outstanding_total = Decimal("0")
     for invoice in invoices:
         paid_result = await db.execute(
-            select(func.coalesce(func.sum(PaymentInvoice.amount_applied), Decimal("0")))
-            .where(PaymentInvoice.invoice_id == invoice.id)
+            select(func.coalesce(func.sum(PaymentAllocation.amount_applied), Decimal("0")))
+            .where(PaymentAllocation.invoice_id == invoice.id)
         )
         amount_paid = paid_result.scalar_one()
-        outstanding_total += invoice.total_amount - amount_paid
+        outstanding_total += invoice.gross_total - amount_paid
 
     return {
         "children_count": children_count,

@@ -12,7 +12,7 @@ from app.models.person import Child, ChildGuardian
 from app.schemas.caderneta import CadernetaResponse
 from app.schemas.child import ChildResponse
 from app.schemas.finance import InvoiceResponse
-from app.services.finance import get_invoice_amount_paid
+from app.routers.finance import _enrich_invoice
 
 router = APIRouter(prefix="/parent", tags=["Parent"])
 
@@ -152,9 +152,5 @@ async def parent_get_invoices(
     invoices = result.scalars().all()
     output = []
     for invoice in invoices:
-        amount_paid = await get_invoice_amount_paid(db, invoice.id)
-        data = InvoiceResponse.model_validate(invoice)
-        data.amount_paid = amount_paid
-        data.balance = invoice.total_amount - amount_paid
-        output.append(data)
+        output.append(await _enrich_invoice(db, invoice))
     return output

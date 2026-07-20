@@ -2,7 +2,7 @@ name: Flutter Build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, finance-improve]
     paths:
       - 'mobile/**'
   pull_request:

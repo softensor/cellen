@@ -34,9 +34,8 @@ class CreditNote {
       relatedInvoiceNumber: json['related_invoice_number'] as String? ??
           json['invoice_number'] as String?,
       reason: json['reason'] as String? ?? json['void_reason'] as String?,
-      amount: (json['amount'] as num?)?.toDouble() ??
-          (json['total_amount'] as num?)?.toDouble() ?? 0.0,
-      issuedAt: json['issued_at'] as String? ?? json['created_at'] as String? ?? '',
+      amount: (json['gross_total'] as num?)?.toDouble() ?? 0.0,
+      issuedAt: json['system_entry_date'] as String? ?? '',
     );
   }
 }

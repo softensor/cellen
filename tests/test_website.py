@@ -16,7 +16,7 @@ async def test_contact_submission_is_private_and_emailed(client, db, monkeypatch
     )
 
     response = await client.post(
-        "/api/v1/website/public/contact",
+        "/website/public/contact",
         json={
             "name": "Ana Silva",
             "school": "Creche Azul",
