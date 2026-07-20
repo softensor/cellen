@@ -725,13 +725,8 @@ async def bulk_create_invoices(
         customer_name = f"{guardian.first_name} {guardian.last_name}" if guardian else None
         is_final_consumer = not customer_nif
         if is_final_consumer:
-            # Skip if policy says no final consumer bulk invoicing
-            warnings.append({
-                "child_id": str(contract.child_id),
-                "child_name": customer_name or "Unknown",
-                "reason": "Guardian has no NIF",
-            })
-            continue
+            customer_nif = "999999999"
+            customer_name = customer_name or "Consumidor Final"
 
         # Build line
         bi_name = contract.service_name or "Mensalidade"
