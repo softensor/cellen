@@ -128,162 +128,10 @@ class _IncidentsScreenState extends ConsumerState<IncidentsScreen> {
   }
 
   void _showCreateDialog() {
-    final childrenAsync = ref.read(childrenForIncidentProvider);
-    final descCtrl = TextEditingController();
-    final actionCtrl = TextEditingController();
-    String? selectedChildId;
-    String selectedSeverity = 'minor';
-    TimeOfDay? selectedTime;
-    bool isLoading = false;
-
-    final children = childrenAsync.valueOrNull ?? [];
-
-    showDialog(useRootNavigator: false, 
+    showDialog(useRootNavigator: false,
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Nova Ocorrência'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Child selector
-                DropdownButtonFormField<String>(
-                  value: selectedChildId,
-                  decoration: const InputDecoration(
-                    labelText: 'Criança',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: children
-                      .map((c) => DropdownMenuItem(
-                            value: c['id'],
-                            child: Text(c['name'] ?? ''),
-                          ))
-                      .toList(),
-                  onChanged: (v) =>
-                      setDialogState(() => selectedChildId = v),
-                ),
-                const SizedBox(height: 12),
-                // Severity
-                DropdownButtonFormField<String>(
-                  value: selectedSeverity,
-                  decoration: const InputDecoration(
-                    labelText: 'Gravidade',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'minor', child: Text('Ligeira')),
-                    DropdownMenuItem(
-                        value: 'moderate', child: Text('Moderada')),
-                    DropdownMenuItem(
-                        value: 'serious', child: Text('Grave')),
-                  ],
-                  onChanged: (v) => setDialogState(
-                      () => selectedSeverity = v ?? 'minor'),
-                ),
-                const SizedBox(height: 12),
-                // Description
-                TextField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição *',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 12),
-                // Action taken
-                TextField(
-                  controller: actionCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Medidas tomadas',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 12),
-                // Time picker
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.access_time),
-                  label: Text(
-                    selectedTime != null
-                        ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
-                        : 'Hora da ocorrência',
-                  ),
-                  onPressed: () async {
-                    final t = await showTimePicker(
-                      context: ctx,
-                      initialTime: TimeOfDay.now(),
-                    );
-                    if (t != null) {
-                      setDialogState(() => selectedTime = t);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      if (selectedChildId == null ||
-                          descCtrl.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  'Seleccione a criança e preencha a descrição')),
-                        );
-                        return;
-                      }
-                      setDialogState(() => isLoading = true);
-                      try {
-                        final timeStr = selectedTime != null
-                            ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
-                            : null;
-                        await ref.read(apiClientProvider).post(
-                          '/incidents',
-                          data: {
-                            'child_id': selectedChildId,
-                            'severity': selectedSeverity,
-                            'description': descCtrl.text.trim(),
-                            'action_taken': actionCtrl.text.trim().isNotEmpty
-                                ? actionCtrl.text.trim()
-                                : null,
-                            'incident_date': DateFormat('yyyy-MM-dd')
-                                .format(DateTime.now()),
-                            'incident_time': timeStr,
-                          },
-                        );
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        ref.invalidate(incidentsProvider);
-                      } catch (e) {
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('Erro: $e')),
-                          );
-                        }
-                      } finally {
-                        setDialogState(() => isLoading = false);
-                      }
-                    },
-              child: isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Registar'),
-            ),
-          ],
-        ),
+      builder: (ctx) => _CreateIncidentDialog(
+        onCreated: () => ref.invalidate(incidentsProvider),
       ),
     );
   }
@@ -477,6 +325,161 @@ class _IncidentCard extends StatelessWidget {
       default:
         return 'Ligeira';
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Create incident dialog (ConsumerStatefulWidget so it can watch providers)
+// ---------------------------------------------------------------------------
+class _CreateIncidentDialog extends ConsumerStatefulWidget {
+  final VoidCallback onCreated;
+  const _CreateIncidentDialog({required this.onCreated});
+
+  @override
+  ConsumerState<_CreateIncidentDialog> createState() =>
+      _CreateIncidentDialogState();
+}
+
+class _CreateIncidentDialogState extends ConsumerState<_CreateIncidentDialog> {
+  final _descCtrl = TextEditingController();
+  final _actionCtrl = TextEditingController();
+  String? _selectedChildId;
+  String _severity = 'minor';
+  TimeOfDay? _time;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _descCtrl.dispose();
+    _actionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_selectedChildId == null || _descCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Seleccione a criança e preencha a descrição');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final timeStr = _time != null
+          ? '${_time!.hour.toString().padLeft(2, '0')}:${_time!.minute.toString().padLeft(2, '0')}'
+          : null;
+      await ref.read(apiClientProvider).post('/incidents', data: {
+        'child_id': _selectedChildId,
+        'severity': _severity,
+        'description': _descCtrl.text.trim(),
+        if (_actionCtrl.text.trim().isNotEmpty)
+          'action_taken': _actionCtrl.text.trim(),
+        'incident_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        if (timeStr != null) 'incident_time': timeStr,
+      });
+      widget.onCreated();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final childrenAsync = ref.watch(childrenForIncidentProvider);
+
+    return AlertDialog(
+      title: const Text('Nova Ocorrência'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            childrenAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, __) => const Text('Erro ao carregar crianças'),
+              data: (children) => DropdownButtonFormField<String>(
+                value: _selectedChildId,
+                decoration: const InputDecoration(
+                  labelText: 'Criança *',
+                  border: OutlineInputBorder(),
+                ),
+                items: children
+                    .map((c) => DropdownMenuItem(
+                          value: c['id'],
+                          child: Text(c['name'] ?? ''),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedChildId = v),
+                validator: (v) => v == null ? 'Obrigatório' : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _severity,
+              decoration: const InputDecoration(
+                labelText: 'Gravidade',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'minor', child: Text('Ligeira')),
+                DropdownMenuItem(value: 'moderate', child: Text('Moderada')),
+                DropdownMenuItem(value: 'serious', child: Text('Grave')),
+              ],
+              onChanged: (v) => setState(() => _severity = v ?? 'minor'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _descCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Descrição *',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _actionCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Medidas tomadas',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.access_time),
+              label: Text(_time != null
+                  ? '${_time!.hour.toString().padLeft(2, '0')}:${_time!.minute.toString().padLeft(2, '0')}'
+                  : 'Hora da ocorrência'),
+              onPressed: () async {
+                final t = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay.now(),
+                );
+                if (t != null) setState(() => _time = t);
+              },
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Registar'),
+        ),
+      ],
+    );
   }
 }
 

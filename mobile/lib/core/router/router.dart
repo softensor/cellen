@@ -77,6 +77,7 @@ import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
 import '../../features/admin/finance/cash_sessions_screen.dart';
 import '../../features/teacher/attendance/attendance_history_screen.dart';
+import '../../features/parent/food/parent_food_hub.dart';
 import '../../core/api/api_client.dart';
 import '../../core/providers/currency_provider.dart';
 import '../../features/notifications/notifications_screen.dart';
@@ -262,6 +263,7 @@ const _parentItems = [
   SidebarItem(path: '/parent/invoices',         label: 'Finanças',      icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
   SidebarItem(path: '/health',                  label: 'Saúde',         icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
   SidebarItem(path: '/parent/school',           label: 'Escola',        icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/parent/food',             label: 'Alimentação',   icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
   SidebarItem(path: '/messages',                label: 'Mensagens',     icon: Icons.chat_bubble_outline,             selectedIcon: Icons.chat_bubble),
   SidebarItem(path: '/appointments',            label: 'Marcações',     icon: Icons.event_available_outlined,        selectedIcon: Icons.event_available),
   SidebarItem(path: '/parent/authorizations',   label: 'Autorizações',  icon: Icons.assignment_outlined,             selectedIcon: Icons.assignment),
@@ -508,6 +510,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/parent/authorizations',      builder: (_, __) => const ParentAuthHubScreen()),
           GoRoute(path: '/parent/caderneta',           builder: (_, __) => const ChildCadernetaScreen()),
           GoRoute(path: '/parent/invoices',            builder: (_, __) => const ParentInvoicesScreen()),
+          GoRoute(path: '/parent/food',                builder: (_, __) => const ParentFoodHubScreen()),
           GoRoute(path: '/parent/menu',                builder: (_, __) => const FoodMenuScreen()),
           GoRoute(path: '/parent/attendance',            builder: (_, __) => const AttendanceHistoryScreen()),
 

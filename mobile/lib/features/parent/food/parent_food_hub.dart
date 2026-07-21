@@ -3,37 +3,30 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-class ParentAuthHubScreen extends StatelessWidget {
-  const ParentAuthHubScreen({super.key});
+class ParentFoodHubScreen extends StatelessWidget {
+  const ParentFoodHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     const items = [
       (
-        icon: Icons.assignment_outlined,
-        color: Colors.blue,
-        label: 'Visitas de Estudo',
-        description: 'Autorizar ou recusar pedidos de visitas de estudo',
-        path: '/trip-authorizations',
-      ),
-      (
-        icon: Icons.transfer_within_a_station_outlined,
+        icon: Icons.restaurant_menu_outlined,
         color: Colors.teal,
-        label: 'Levantamentos',
-        description: 'Gerir pessoas autorizadas a levantar o seu filho',
-        path: '/pickup-authorizations',
+        label: 'Ementa da Semana',
+        description: 'Consultar a ementa semanal do jardim',
+        path: '/parent/menu',
       ),
       (
-        icon: Icons.event_available_outlined,
-        color: Colors.purple,
-        label: 'Marcações',
-        description: 'Agendar reuniões com educadores e administração',
-        path: '/appointments',
+        icon: Icons.lunch_dining_outlined,
+        color: Colors.orange,
+        label: 'Refeições',
+        description: 'Pedir e gerir refeições para o seu filho',
+        path: '/meal-orders',
       ),
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Autorizações')),
+      appBar: AppBar(title: const Text('Alimentação')),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -99,10 +92,12 @@ class _HubCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(label,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 4),
               Text(description,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ],

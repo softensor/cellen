@@ -237,12 +237,9 @@ class _PickupAuthorizationsScreenState
   }
 
   Future<void> _showAddDialog(BuildContext context) async {
-    final childrenState = ref.read(childrenForPickupProvider);
-    final children = childrenState.valueOrNull ?? [];
-    await showDialog(useRootNavigator: false, 
+    await showDialog(useRootNavigator: false,
       context: context,
       builder: (_) => _AddPickupDialog(
-        children: children,
         onAdded: () => ref.invalidate(pickupAuthsProvider),
       ),
     );
@@ -364,11 +361,9 @@ class _PickupCard extends ConsumerWidget {
 // Add dialog
 // ---------------------------------------------------------------------------
 class _AddPickupDialog extends ConsumerStatefulWidget {
-  final List<Child> children;
   final VoidCallback onAdded;
 
-  const _AddPickupDialog(
-      {required this.children, required this.onAdded});
+  const _AddPickupDialog({required this.onAdded});
 
   @override
   ConsumerState<_AddPickupDialog> createState() =>
@@ -394,9 +389,6 @@ class _AddPickupDialogState extends ConsumerState<_AddPickupDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.children.length == 1) {
-      _selectedChildId = widget.children.first.id;
-    }
   }
 
   @override
@@ -442,6 +434,10 @@ class _AddPickupDialogState extends ConsumerState<_AddPickupDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final children = ref.watch(childrenForPickupProvider).valueOrNull ?? [];
+    if (children.length == 1 && _selectedChildId == null) {
+      _selectedChildId = children.first.id;
+    }
     return AlertDialog(
       title: const Text('Adicionar Pessoa Autorizada'),
       content: SizedBox(
@@ -463,13 +459,15 @@ class _AddPickupDialogState extends ConsumerState<_AddPickupDialog> {
                         style:
                             TextStyle(color: Colors.red.shade800)),
                   ),
-                if (widget.children.length > 1)
+                if (children.isEmpty)
+                  const LinearProgressIndicator()
+                else if (children.length > 1)
                   DropdownButtonFormField<String>(
                     value: _selectedChildId,
                     decoration: const InputDecoration(
                         labelText: 'Criança *',
                         border: OutlineInputBorder()),
-                    items: widget.children
+                    items: children
                         .map((c) => DropdownMenuItem(
                             value: c.id, child: Text(c.fullName)))
                         .toList(),
@@ -478,7 +476,7 @@ class _AddPickupDialogState extends ConsumerState<_AddPickupDialog> {
                     validator: (v) =>
                         v == null ? 'Obrigatório' : null,
                   ),
-                if (widget.children.length > 1)
+                if (children.length > 1)
                   const SizedBox(height: 12),
                 TextFormField(
                   controller: _nameCtrl,

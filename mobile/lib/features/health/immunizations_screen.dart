@@ -186,13 +186,10 @@ class _ImmunizationsScreenState extends ConsumerState<ImmunizationsScreen> {
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         onPressed: () async {
-          final children =
-              ref.read(childrenForImmunizationsProvider).valueOrNull ?? [];
           if (!mounted) return;
-          final created = await showDialog<bool>(useRootNavigator: false, 
+          final created = await showDialog<bool>(useRootNavigator: false,
             context: context,
             builder: (ctx) => _CreateImmunizationDialog(
-              children: children,
               preselectedChildId: _selectedChildId,
             ),
           );
@@ -360,11 +357,9 @@ class _ImmunizationCard extends StatelessWidget {
 // Create Immunization Dialog
 // ---------------------------------------------------------------------------
 class _CreateImmunizationDialog extends ConsumerStatefulWidget {
-  final List<Child> children;
   final String? preselectedChildId;
 
   const _CreateImmunizationDialog({
-    required this.children,
     this.preselectedChildId,
   });
 
@@ -463,6 +458,7 @@ class _CreateImmunizationDialogState
 
   @override
   Widget build(BuildContext context) {
+    final childrenAsync = ref.watch(childrenForImmunizationsProvider);
     return AlertDialog(
       title: const Text('Registar Vacina'),
       content: SizedBox(
@@ -474,20 +470,24 @@ class _CreateImmunizationDialogState
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Child selector
-                DropdownButtonFormField<String?>(
-                  value: _childId,
-                  decoration: const InputDecoration(
-                    labelText: 'Criança *',
-                    border: OutlineInputBorder(),
+                childrenAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => const Text('Erro ao carregar crianças'),
+                  data: (children) => DropdownButtonFormField<String?>(
+                    value: _childId,
+                    decoration: const InputDecoration(
+                      labelText: 'Criança *',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: children
+                        .map((c) => DropdownMenuItem<String?>(
+                              value: c.id,
+                              child: Text('${c.firstName} ${c.lastName}'),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _childId = v),
+                    validator: (v) => v == null ? 'Obrigatório' : null,
                   ),
-                  items: widget.children
-                      .map((c) => DropdownMenuItem<String?>(
-                            value: c.id,
-                            child: Text('${c.firstName} ${c.lastName}'),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setState(() => _childId = v),
-                  validator: (v) => v == null ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
                 // Vaccine name

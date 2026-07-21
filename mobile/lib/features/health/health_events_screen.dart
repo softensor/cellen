@@ -165,12 +165,10 @@ class _HealthEventsScreenState extends ConsumerState<HealthEventsScreen> {
       floatingActionButton: ref.watch(authProvider).role != UserRole.parent
           ? FloatingActionButton.extended(
               onPressed: () async {
-                final children = ref.read(childrenForHealthProvider).valueOrNull ?? [];
                 if (!mounted) return;
-                final created = await showDialog<bool>(useRootNavigator: false, 
+                final created = await showDialog<bool>(useRootNavigator: false,
                   context: context,
                   builder: (ctx) => _CreateHealthEventDialog(
-                    children: children,
                     preselectedChildId: _selectedChildId,
                   ),
                 );
@@ -357,10 +355,8 @@ class _HealthEventCard extends StatelessWidget {
 // Create Health Event Dialog
 // ---------------------------------------------------------------------------
 class _CreateHealthEventDialog extends ConsumerStatefulWidget {
-  final List<Child> children;
   final String? preselectedChildId;
   const _CreateHealthEventDialog({
-    required this.children,
     this.preselectedChildId,
   });
 
@@ -446,6 +442,7 @@ class _CreateHealthEventDialogState
 
   @override
   Widget build(BuildContext context) {
+    final childrenAsync = ref.watch(childrenForHealthProvider);
     return AlertDialog(
       title: const Text('Registar Evento de Saúde'),
       content: SizedBox(
@@ -456,20 +453,24 @@ class _CreateHealthEventDialogState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String?>(
-                  value: _childId,
-                  decoration: const InputDecoration(
-                    labelText: 'Criança *',
-                    border: OutlineInputBorder(),
+                childrenAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => const Text('Erro ao carregar crianças'),
+                  data: (children) => DropdownButtonFormField<String?>(
+                    value: _childId,
+                    decoration: const InputDecoration(
+                      labelText: 'Criança *',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: children
+                        .map((c) => DropdownMenuItem<String?>(
+                              value: c.id,
+                              child: Text('${c.firstName} ${c.lastName}'),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _childId = v),
+                    validator: (v) => v == null ? 'Obrigatório' : null,
                   ),
-                  items: widget.children
-                      .map((c) => DropdownMenuItem<String?>(
-                            value: c.id,
-                            child: Text('${c.firstName} ${c.lastName}'),
-                          ))
-                      .toList(),
-                  onChanged: (v) => setState(() => _childId = v),
-                  validator: (v) => v == null ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(

@@ -13,37 +13,61 @@ final weeklyMenuProvider =
     FutureProvider.autoDispose<List<FoodMenu>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/food/menus') as List;
-  return data
+  final menus = data
       .map((e) => FoodMenu.fromJson(e as Map<String, dynamic>))
       .toList();
+  // Sort newest first
+  menus.sort((a, b) => a.startDate.compareTo(b.startDate));
+  return menus;
 });
 
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
-class FoodMenuScreen extends ConsumerWidget {
+class FoodMenuScreen extends ConsumerStatefulWidget {
   const FoodMenuScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FoodMenuScreen> createState() => _FoodMenuScreenState();
+}
+
+class _FoodMenuScreenState extends ConsumerState<FoodMenuScreen> {
+  int _menuIndex = 0;
+  List<FoodMenu>? _menus;
+
+  // Pick the menu closest to today when data first loads
+  void _initIndex(List<FoodMenu> menus) {
+    final now = DateTime.now();
+    int best = menus.length - 1; // default: most recent
+    for (int i = 0; i < menus.length; i++) {
+      if (!menus[i].endDate.isBefore(now)) {
+        best = i;
+        break;
+      }
+    }
+    _menuIndex = best.clamp(0, menus.length - 1);
+    _menus = menus;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final menuAsync = ref.watch(weeklyMenuProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ementa da Semana'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(weeklyMenuProvider),
-          ),
-        ],
+    return menuAsync.when(
+      loading: () => Scaffold(
+        appBar: AppBar(title: const Text('Ementa da Semana')),
+        body: const Center(child: CircularProgressIndicator()),
       ),
-      body: menuAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(weeklyMenuProvider)),
-        data: (menus) {
-          if (menus.isEmpty) {
-            return Center(
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Ementa da Semana')),
+        body: AppErrorWidget(
+            error: e, onRetry: () => ref.invalidate(weeklyMenuProvider)),
+      ),
+      data: (menus) {
+        if (menus.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Ementa da Semana')),
+            body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -52,7 +76,7 @@ class FoodMenuScreen extends ConsumerWidget {
                       color: Theme.of(context).colorScheme.outlineVariant),
                   const SizedBox(height: 16),
                   Text(
-                    'Ementa não disponível esta semana',
+                    'Ementa não disponível',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color:
                               Theme.of(context).colorScheme.onSurfaceVariant,
@@ -60,14 +84,74 @@ class FoodMenuScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-            );
-          }
+            ),
+          );
+        }
 
-          // Use the first menu returned (most relevant)
-          final menu = menus.first;
-          return _WeeklyMenuView(menu: menu);
-        },
+        // Initialise index only on first load (or if menus changed)
+        if (_menus == null || _menus!.length != menus.length) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _initIndex(menus));
+          });
+          // Use sensible default while scheduling
+          final clampedIndex = _menuIndex.clamp(0, menus.length - 1);
+          return _buildScaffold(context, menus, clampedIndex);
+        }
+
+        return _buildScaffold(
+            context, menus, _menuIndex.clamp(0, menus.length - 1));
+      },
+    );
+  }
+
+  Widget _buildScaffold(
+      BuildContext context, List<FoodMenu> menus, int index) {
+    final menu = menus[index];
+    final df = DateFormat('d/M');
+    final weekLabel =
+        '${df.format(menu.startDate)} – ${df.format(menu.endDate)}';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ementa da Semana',
+                style: TextStyle(fontSize: 17)),
+            Text(weekLabel,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6))),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Semana anterior',
+            onPressed: index > 0
+                ? () => setState(() => _menuIndex = index - 1)
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Semana seguinte',
+            onPressed: index < menus.length - 1
+                ? () => setState(() => _menuIndex = index + 1)
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() => _menus = null);
+              ref.invalidate(weeklyMenuProvider);
+            },
+          ),
+        ],
       ),
+      body: _WeeklyMenuView(menu: menu),
     );
   }
 }
@@ -94,7 +178,19 @@ class _WeeklyMenuView extends StatelessWidget {
     }
 
     final now = DateTime.now();
-    final initialTab = (now.weekday - 1).clamp(0, 4);
+    // Default to today's weekday tab if it falls within the menu week
+    int initialTab = 0;
+    final monday =
+        menu.startDate.subtract(Duration(days: menu.startDate.weekday - 1));
+    for (int i = 0; i < 5; i++) {
+      final tabDate = monday.add(Duration(days: i));
+      if (tabDate.year == now.year &&
+          tabDate.month == now.month &&
+          tabDate.day == now.day) {
+        initialTab = i;
+        break;
+      }
+    }
 
     return DefaultTabController(
       length: 5,
@@ -103,9 +199,6 @@ class _WeeklyMenuView extends StatelessWidget {
         children: [
           TabBar(
             tabs: List.generate(5, (i) {
-              // Compute the actual date for this weekday in the menu's week
-              final monday = menu.startDate.subtract(
-                  Duration(days: menu.startDate.weekday - 1));
               final tabDate = monday.add(Duration(days: i));
               final isToday = tabDate.year == now.year &&
                   tabDate.month == now.month &&
@@ -202,7 +295,6 @@ class _DayView extends StatelessWidget {
       'snack': Colors.purple,
     };
 
-    // Build ordered list of present meal types
     final orderedTypes = [
       ...mealOrder.where((t) => byMealType.containsKey(t)),
       ...byMealType.keys.where((t) => !mealOrder.contains(t)),
@@ -255,7 +347,7 @@ class _MealSection extends StatelessWidget {
       case 'drink':
         return 'Bebida';
       default:
-        return component ?? '—';
+        return component ?? '';
     }
   }
 
@@ -291,14 +383,38 @@ class _MealSection extends StatelessWidget {
           const SizedBox(height: 8),
           for (final entry in entries)
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.circle, size: 6, color: color.withOpacity(0.7)),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(_componentLabel(entry.mealComponent)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (entry.foodName != null &&
+                            entry.foodName!.isNotEmpty)
+                          Text(
+                            entry.foodName!,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w500, fontSize: 14),
+                          ),
+                        if (entry.mealComponent != null)
+                          Text(
+                            _componentLabel(entry.mealComponent),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                          ),
+                        if (entry.foodName == null &&
+                            entry.mealComponent == null)
+                          const Text('—'),
+                      ],
+                    ),
                   ),
                 ],
               ),
