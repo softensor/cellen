@@ -1,50 +1,52 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/models/school_terms.dart';
+import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Hub for parents to access all child-specific information in one place.
-class ParentChildrenHubScreen extends StatelessWidget {
+/// Cards are filtered by school segment features.
+class ParentChildrenHubScreen extends ConsumerWidget {
   const ParentChildrenHubScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    const items = [
-      (
-        icon: Icons.menu_book_outlined,
-        color: Colors.blue,
-        label: 'Caderneta',
-        description: 'Relatórios diários dos educadores — humor, sono, alimentação',
-        path: '/parent/caderneta',
-      ),
-      (
-        icon: Icons.health_and_safety_outlined,
-        color: Colors.red,
-        label: 'Saúde',
-        description: 'Registos de saúde, medicamentos e bem-estar do seu filho',
-        path: '/health',
-      ),
-      (
-        icon: Icons.vaccines_outlined,
-        color: Colors.teal,
-        label: 'Vacinas',
-        description: 'Calendário vacinal e registos de imunização',
-        path: '/health/immunizations',
-      ),
-      (
-        icon: Icons.school_outlined,
-        color: Colors.purple,
-        label: 'Avaliações',
-        description: 'Avaliações pedagógicas e boletim de desenvolvimento',
-        path: '/evaluations',
-      ),
-      (
-        icon: Icons.warning_amber_outlined,
-        color: Colors.orange,
-        label: 'Ocorrências',
-        description: 'Incidentes e ocorrências registadas',
-        path: '/incidents',
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final school = ref.watch(schoolInfoProvider).valueOrNull;
+    final terms = SchoolTerms.of(school);
+    final k12 = terms.isK12;
+
+    final allCards = [
+      // Preschool-only cards
+      if (!k12 && (school?.hasFeature('caderneta') ?? true))
+        (
+          icon: Icons.menu_book_outlined,
+          color: Colors.blue,
+          label: 'Caderneta',
+          description: 'Relatórios diários dos educadores — humor, sono, alimentação',
+          path: '/parent/caderneta',
+        ),
+      if (!k12 && (school?.hasFeature('evaluations') ?? true))
+        (
+          icon: Icons.school_outlined,
+          color: Colors.purple,
+          label: 'Avaliações',
+          description: 'Avaliações pedagógicas e boletim de desenvolvimento',
+          path: '/evaluations',
+        ),
+
+      // K-12-only cards
+      if (k12 && (school?.hasFeature('grades') ?? true))
+        (
+          icon: Icons.grade_outlined,
+          color: Colors.green,
+          label: 'Notas & Boletim',
+          description: 'Notas por disciplina e trimestre — boletim escolar',
+          path: '/parent/grades',
+        ),
+
+      // Shared cards (all segments)
       (
         icon: Icons.fact_check_outlined,
         color: Colors.indigo,
@@ -52,17 +54,35 @@ class ParentChildrenHubScreen extends StatelessWidget {
         description: 'Histórico de presenças e faltas',
         path: '/parent/attendance',
       ),
+      if (school?.hasFeature('health') ?? true)
+        (
+          icon: Icons.health_and_safety_outlined,
+          color: Colors.red,
+          label: 'Saúde',
+          description: 'Registos de saúde e bem-estar',
+          path: '/health',
+        ),
+      if (school?.hasFeature('immunizations') ?? true)
+        (
+          icon: Icons.vaccines_outlined,
+          color: Colors.teal,
+          label: 'Vacinas',
+          description: 'Calendário vacinal e registos de imunização',
+          path: '/health/immunizations',
+        ),
       (
-        icon: Icons.grade_outlined,
-        color: Colors.green,
-        label: 'Notas & Boletim',
-        description: 'Notas por disciplina e trimestre — boletim escolar',
-        path: '/parent/grades',
+        icon: Icons.warning_amber_outlined,
+        color: Colors.orange,
+        label: 'Ocorrências',
+        description: 'Incidentes e ocorrências registadas',
+        path: '/incidents',
       ),
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Os Meus Filhos')),
+      appBar: AppBar(
+        title: Text(k12 ? 'O Meu Educando' : 'Os Meus Filhos'),
+      ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -71,9 +91,9 @@ class ParentChildrenHubScreen extends StatelessWidget {
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
-        itemCount: items.length,
+        itemCount: allCards.length,
         itemBuilder: (context, i) {
-          final item = items[i];
+          final item = allCards[i];
           return _HubCard(
             icon: item.icon,
             color: item.color,
@@ -128,10 +148,12 @@ class _HubCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(label,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 4),
               Text(description,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
             ],

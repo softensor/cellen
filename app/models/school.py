@@ -54,6 +54,7 @@ class School(Base):
 _SEGMENT_DEFAULTS: dict[str, dict] = {
     "preschool": {
         "caderneta": True,
+        "evaluations": True,      # developmental milestone tracking
         "meal_orders": True,
         "immunizations": True,
         "health": True,
@@ -62,9 +63,11 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "med_report": False,
         "trip_auth": True,
         "pickup_auth": True,
+        "timetable_k12": False,   # uses simple activity schedule
     },
     "primary": {
         "caderneta": False,
+        "evaluations": False,
         "meal_orders": True,
         "immunizations": True,
         "health": True,
@@ -73,9 +76,11 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "med_report": True,
         "trip_auth": True,
         "pickup_auth": False,
+        "timetable_k12": True,    # uses subject×teacher×period grid
     },
     "secondary": {
         "caderneta": False,
+        "evaluations": False,
         "meal_orders": False,
         "immunizations": False,
         "health": True,
@@ -84,9 +89,11 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "med_report": True,
         "trip_auth": False,
         "pickup_auth": False,
+        "timetable_k12": True,
     },
     "combined": {
         "caderneta": False,
+        "evaluations": False,
         "meal_orders": True,
         "immunizations": True,
         "health": True,
@@ -95,9 +102,11 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "med_report": True,
         "trip_auth": True,
         "pickup_auth": False,
+        "timetable_k12": True,
     },
     "full": {
         "caderneta": True,
+        "evaluations": True,
         "meal_orders": True,
         "immunizations": True,
         "health": True,
@@ -106,6 +115,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "med_report": True,
         "trip_auth": True,
         "pickup_auth": True,
+        "timetable_k12": True,
     },
 }
 

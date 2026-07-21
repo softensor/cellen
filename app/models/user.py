@@ -2,8 +2,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -22,7 +22,9 @@ class User(Base):
     )
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(50), nullable=False)  # school_admin, teacher, staff, parent
+    # Multi-role: list of role strings. Use roles[0] as primary.
+    # Valid values: school_admin | coordinator | finance_officer | secretary | teacher | nurse | parent | student
+    roles: Mapped[list] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
@@ -37,3 +39,8 @@ class User(Base):
     )
 
     school = relationship("School", foreign_keys=[school_id])
+
+    @property
+    def role(self) -> str:
+        """Compat: returns the primary (first) role string."""
+        return self.roles[0] if self.roles else ""

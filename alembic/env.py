@@ -22,7 +22,8 @@ from app.models.user import User  # noqa: F401
 from app.models.person import Guardian, Child, ChildGuardian  # noqa: F401
 from app.models.employee import Employee  # noqa: F401
 from app.models.academic import (  # noqa: F401
-    SchoolYear, Turma, Activity, Schedule, ScheduleTeacher, ScheduleSlot, Enrollment
+    SchoolYear, Turma, Activity, Schedule, ScheduleTeacher, ScheduleSlot, Enrollment,
+    TimetablePeriod,
 )
 from app.models.caderneta import Caderneta  # noqa: F401
 from app.models.food import Food, FoodMenu, FoodMenuItem  # noqa: F401

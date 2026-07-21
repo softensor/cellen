@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_provider.dart';
 import '../../core/auth/auth_state.dart';
+import '../../core/models/school.dart';
 import '../../core/widgets/sidebar_layout.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/admin/dashboard/admin_dashboard_screen.dart';
@@ -82,6 +83,7 @@ import '../../features/admin/reports/med_report_screen.dart';
 import '../../features/admin/academic/subjects_screen.dart';
 import '../../features/admin/academic/turma_subjects_screen.dart';
 import '../../features/admin/academic/report_cards_screen.dart';
+import '../../features/admin/academic/timetable_screen.dart';
 import '../../features/teacher/grades/grades_screen.dart';
 import '../../features/parent/grades/parent_grades_screen.dart';
 import '../../core/api/api_client.dart';
@@ -220,70 +222,160 @@ class _ChangePasswordDialogState
 }
 
 // ---------------------------------------------------------------------------
-// Nav item definitions per role  (each role owns exactly its list)
+// Nav item definitions per role
+// Multi-role users get the union of their applicable lists (deduped by path).
 // ---------------------------------------------------------------------------
-
-// School Admin — hub-based (9 top-level items)
-const _adminItems = [
-  SidebarItem(path: '/admin',               label: 'Dashboard',     icon: Icons.dashboard_outlined,              selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/admin/people',        label: 'Pessoas',       icon: Icons.people_outline,                  selectedIcon: Icons.people),
-  SidebarItem(path: '/admin/academic',      label: 'Académico',     icon: Icons.school_outlined,                 selectedIcon: Icons.school),
-  SidebarItem(path: '/admin/finance',       label: 'Financeiro',    icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
-  SidebarItem(path: '/admin/health-hub',    label: 'Saúde',         icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/admin/comms',         label: 'Comunicação',   icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
-  SidebarItem(path: '/admin/activities',    label: 'Actividades',   icon: Icons.category_outlined,               selectedIcon: Icons.category),
-  SidebarItem(path: '/admin/food-hub',      label: 'Alimentação',   icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
-  SidebarItem(path: '/notifications',       label: 'Notificações',  icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
-  SidebarItem(path: '/admin/reports/med',   label: 'Relatórios',    icon: Icons.bar_chart_outlined,              selectedIcon: Icons.bar_chart),
-  SidebarItem(path: '/admin/school-settings', label: 'Configurações', icon: Icons.settings_outlined,             selectedIcon: Icons.settings),
-];
-
-// Teacher — attendance, caderneta, health, incidents, evaluations + shared
-const _teacherItems = [
-  SidebarItem(path: '/teacher',                      label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/teacher/attendance',           label: 'Presenças',     icon: Icons.fact_check_outlined,                  selectedIcon: Icons.fact_check),
-  SidebarItem(path: '/teacher/caderneta',            label: 'Caderneta',     icon: Icons.menu_book_outlined,                   selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/teacher/grades',               label: 'Notas',         icon: Icons.grade_outlined,                       selectedIcon: Icons.grade),
-  SidebarItem(path: '/health',                       label: 'Saúde',         icon: Icons.health_and_safety_outlined,           selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/health/immunizations',         label: 'Vacinas',       icon: Icons.vaccines_outlined,                    selectedIcon: Icons.vaccines),
-  SidebarItem(path: '/incidents',                    label: 'Ocorrências',   icon: Icons.report_outlined,                      selectedIcon: Icons.report),
-  SidebarItem(path: '/evaluations',                  label: 'Avaliações',    icon: Icons.school_outlined,                      selectedIcon: Icons.school),
-  SidebarItem(path: '/announcements',                label: 'Comunicados',   icon: Icons.campaign_outlined,                    selectedIcon: Icons.campaign),
-  SidebarItem(path: '/messages',                     label: 'Mensagens',     icon: Icons.chat_bubble_outline,                  selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/photos',                       label: 'Galeria',       icon: Icons.photo_library_outlined,               selectedIcon: Icons.photo_library),
-  SidebarItem(path: '/events',                       label: 'Calendário',    icon: Icons.calendar_month_outlined,              selectedIcon: Icons.calendar_month),
-  SidebarItem(path: '/trip-authorizations',          label: 'Autorizações',  icon: Icons.assignment_outlined,                  selectedIcon: Icons.assignment),
-  SidebarItem(path: '/pickup-authorizations',        label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined,   selectedIcon: Icons.transfer_within_a_station),
-  SidebarItem(path: '/meal-orders',                  label: 'Refeições',     icon: Icons.restaurant_menu_outlined,             selectedIcon: Icons.restaurant_menu),
-  SidebarItem(path: '/appointments',                 label: 'Marcações',     icon: Icons.event_available_outlined,             selectedIcon: Icons.event_available),
-  SidebarItem(path: '/documents',                    label: 'Documentos',    icon: Icons.folder_outlined,                      selectedIcon: Icons.folder),
-  SidebarItem(path: '/notifications',                label: 'Notificações',  icon: Icons.notifications_outlined,               selectedIcon: Icons.notifications),
-];
-
-// Staff (educational assistant) — same access as teacher; finance is the cutoff
-const _staffItems = _teacherItems;
-
-// Parent — 10 top-level items per SPEC §21
-const _parentItems = [
-  SidebarItem(path: '/parent',                  label: 'Início',        icon: Icons.home_outlined,                   selectedIcon: Icons.home),
-  SidebarItem(path: '/parent/children',         label: 'Os Meus Filhos', icon: Icons.child_care_outlined,            selectedIcon: Icons.child_care),
-  SidebarItem(path: '/parent/caderneta',        label: 'Caderneta',     icon: Icons.menu_book_outlined,              selectedIcon: Icons.menu_book),
-  SidebarItem(path: '/parent/invoices',         label: 'Finanças',      icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
-  SidebarItem(path: '/health',                  label: 'Saúde',         icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/parent/school',           label: 'Escola',        icon: Icons.school_outlined,                 selectedIcon: Icons.school),
-  SidebarItem(path: '/parent/food',             label: 'Alimentação',   icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
-  SidebarItem(path: '/messages',                label: 'Mensagens',     icon: Icons.chat_bubble_outline,             selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/appointments',            label: 'Marcações',     icon: Icons.event_available_outlined,        selectedIcon: Icons.event_available),
-  SidebarItem(path: '/parent/authorizations',   label: 'Autorizações',  icon: Icons.assignment_outlined,             selectedIcon: Icons.assignment),
-  SidebarItem(path: '/notifications',           label: 'Notificações',  icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
-];
 
 // Platform Admin
 const _platformItems = [
-  SidebarItem(path: '/platform',                     label: 'Dashboard',     icon: Icons.dashboard_outlined,                   selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/platform/schools',             label: 'Escolas',       icon: Icons.school_outlined,                      selectedIcon: Icons.school),
-  SidebarItem(path: '/platform/website',             label: 'Website',       icon: Icons.language_outlined,                    selectedIcon: Icons.language),
+  SidebarItem(path: '/platform',         label: 'Dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/platform/schools', label: 'Escolas',   icon: Icons.school_outlined,    selectedIcon: Icons.school),
+  SidebarItem(path: '/platform/website', label: 'Website',   icon: Icons.language_outlined,  selectedIcon: Icons.language),
 ];
+
+// School Admin — full access
+const _adminItems = [
+  SidebarItem(path: '/admin',                 label: 'Dashboard',    icon: Icons.dashboard_outlined,              selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/people',          label: 'Pessoas',      icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic',        label: 'Académico',    icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/finance',         label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/admin/health-hub',      label: 'Saúde',        icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/comms',           label: 'Comunicação',  icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
+  SidebarItem(path: '/admin/activities',      label: 'Actividades',  icon: Icons.category_outlined,               selectedIcon: Icons.category),
+  SidebarItem(path: '/admin/food-hub',        label: 'Alimentação',  icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/admin/reports/med',     label: 'Relatórios',   icon: Icons.bar_chart_outlined,              selectedIcon: Icons.bar_chart),
+  SidebarItem(path: '/notifications',         label: 'Notificações', icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin/school-settings', label: 'Configurações',icon: Icons.settings_outlined,               selectedIcon: Icons.settings),
+];
+
+// Coordinator — academic management, no finance, no school settings
+const _coordinatorItems = [
+  SidebarItem(path: '/admin',             label: 'Dashboard',    icon: Icons.dashboard_outlined,         selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/people',      label: 'Pessoas',      icon: Icons.people_outline,             selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic',    label: 'Académico',    icon: Icons.school_outlined,            selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/health-hub',  label: 'Saúde',        icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/comms',       label: 'Comunicação',  icon: Icons.forum_outlined,             selectedIcon: Icons.forum),
+  SidebarItem(path: '/admin/activities',  label: 'Actividades',  icon: Icons.category_outlined,          selectedIcon: Icons.category),
+  SidebarItem(path: '/admin/food-hub',    label: 'Alimentação',  icon: Icons.restaurant_outlined,        selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/admin/reports/med', label: 'Relatórios',   icon: Icons.bar_chart_outlined,         selectedIcon: Icons.bar_chart),
+  SidebarItem(path: '/notifications',     label: 'Notificações', icon: Icons.notifications_outlined,     selectedIcon: Icons.notifications),
+];
+
+// Finance Officer — finance only
+const _financeItems = [
+  SidebarItem(path: '/admin/finance', label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
+];
+
+// Secretary — enrollment lookup, comms, read-only admin
+const _secretaryItems = [
+  SidebarItem(path: '/admin/people',   label: 'Pessoas',      icon: Icons.people_outline,         selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic', label: 'Académico',    icon: Icons.school_outlined,         selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/absences', label: 'Ausências',    icon: Icons.event_busy_outlined,     selectedIcon: Icons.event_busy),
+  SidebarItem(path: '/announcements',  label: 'Comunicados',  icon: Icons.campaign_outlined,       selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',       label: 'Mensagens',    icon: Icons.chat_bubble_outline,     selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/notifications',  label: 'Notificações', icon: Icons.notifications_outlined,  selectedIcon: Icons.notifications),
+];
+
+// Teacher — classroom operations
+const _teacherItems = [
+  SidebarItem(path: '/teacher',               label: 'Dashboard',     icon: Icons.dashboard_outlined,                 selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/teacher/attendance',    label: 'Presenças',     icon: Icons.fact_check_outlined,                selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/teacher/caderneta',     label: 'Caderneta',     icon: Icons.menu_book_outlined,                 selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/teacher/grades',        label: 'Notas',         icon: Icons.grade_outlined,                     selectedIcon: Icons.grade),
+  SidebarItem(path: '/timetable',             label: 'Horário',       icon: Icons.table_chart_outlined,               selectedIcon: Icons.table_chart),
+  SidebarItem(path: '/health',                label: 'Saúde',         icon: Icons.health_and_safety_outlined,         selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/health/immunizations',  label: 'Vacinas',       icon: Icons.vaccines_outlined,                  selectedIcon: Icons.vaccines),
+  SidebarItem(path: '/incidents',             label: 'Ocorrências',   icon: Icons.report_outlined,                    selectedIcon: Icons.report),
+  SidebarItem(path: '/evaluations',           label: 'Avaliações',    icon: Icons.school_outlined,                    selectedIcon: Icons.school),
+  SidebarItem(path: '/announcements',         label: 'Comunicados',   icon: Icons.campaign_outlined,                  selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',              label: 'Mensagens',     icon: Icons.chat_bubble_outline,                selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/photos',                label: 'Galeria',       icon: Icons.photo_library_outlined,             selectedIcon: Icons.photo_library),
+  SidebarItem(path: '/events',                label: 'Calendário',    icon: Icons.calendar_month_outlined,            selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/trip-authorizations',   label: 'Autorizações',  icon: Icons.assignment_outlined,                selectedIcon: Icons.assignment),
+  SidebarItem(path: '/pickup-authorizations', label: 'Levantamentos', icon: Icons.transfer_within_a_station_outlined, selectedIcon: Icons.transfer_within_a_station),
+  SidebarItem(path: '/meal-orders',           label: 'Refeições',     icon: Icons.restaurant_menu_outlined,           selectedIcon: Icons.restaurant_menu),
+  SidebarItem(path: '/appointments',          label: 'Marcações',     icon: Icons.event_available_outlined,           selectedIcon: Icons.event_available),
+  SidebarItem(path: '/documents',             label: 'Documentos',    icon: Icons.folder_outlined,                    selectedIcon: Icons.folder),
+  SidebarItem(path: '/notifications',         label: 'Notificações',  icon: Icons.notifications_outlined,             selectedIcon: Icons.notifications),
+];
+
+// Nurse — health + immunizations only
+const _nurseItems = [
+  SidebarItem(path: '/health',               label: 'Saúde',        icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/health/immunizations', label: 'Vacinas',      icon: Icons.vaccines_outlined,          selectedIcon: Icons.vaccines),
+  SidebarItem(path: '/messages',             label: 'Mensagens',    icon: Icons.chat_bubble_outline,        selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/notifications',        label: 'Notificações', icon: Icons.notifications_outlined,     selectedIcon: Icons.notifications),
+];
+
+// Parent
+const _parentItems = [
+  SidebarItem(path: '/parent',                label: 'Início',         icon: Icons.home_outlined,                   selectedIcon: Icons.home),
+  SidebarItem(path: '/parent/children',       label: 'Os Meus Filhos', icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/parent/caderneta',      label: 'Caderneta',      icon: Icons.menu_book_outlined,              selectedIcon: Icons.menu_book),
+  SidebarItem(path: '/parent/invoices',       label: 'Finanças',       icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/health',                label: 'Saúde',          icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/parent/school',         label: 'Escola',         icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/parent/food',           label: 'Alimentação',    icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/messages',              label: 'Mensagens',      icon: Icons.chat_bubble_outline,             selectedIcon: Icons.chat_bubble),
+  SidebarItem(path: '/appointments',          label: 'Marcações',      icon: Icons.event_available_outlined,        selectedIcon: Icons.event_available),
+  SidebarItem(path: '/parent/authorizations', label: 'Autorizações',   icon: Icons.assignment_outlined,             selectedIcon: Icons.assignment),
+  SidebarItem(path: '/notifications',         label: 'Notificações',   icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
+];
+
+// Student — minimal portal (secondary only)
+const _studentItems = [
+  SidebarItem(path: '/parent/grades', label: 'Boletim',      icon: Icons.grade_outlined,            selectedIcon: Icons.grade),
+  SidebarItem(path: '/documents',     label: 'Documentos',   icon: Icons.folder_outlined,            selectedIcon: Icons.folder),
+  SidebarItem(path: '/events',        label: 'Calendário',   icon: Icons.calendar_month_outlined,    selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined,     selectedIcon: Icons.notifications),
+];
+
+// ---------------------------------------------------------------------------
+// Multi-role sidebar builder — merges applicable lists, dedupes by path
+// ---------------------------------------------------------------------------
+
+// Priority order determines whose items appear first when roles are merged
+const _roleItemOrder = [
+  (UserRole.platformAdmin,  _platformItems),
+  (UserRole.schoolAdmin,    _adminItems),
+  (UserRole.coordinator,    _coordinatorItems),
+  (UserRole.financeOfficer, _financeItems),
+  (UserRole.secretary,      _secretaryItems),
+  (UserRole.teacher,        _teacherItems),
+  (UserRole.nurse,          _nurseItems),
+  (UserRole.parent,         _parentItems),
+  (UserRole.student,        _studentItems),
+];
+
+/// Feature flag required per sidebar path. Paths not listed are always shown.
+const _pathFeatureMap = {
+  '/teacher/caderneta':     'caderneta',
+  '/teacher/grades':        'grades',
+  '/timetable':             'timetable_k12',
+  '/evaluations':           'evaluations',
+  '/parent/caderneta':      'caderneta',
+  '/health/immunizations':  'immunizations',
+  '/meal-orders':           'meal_orders',
+  '/pickup-authorizations': 'pickup_auth',
+  '/trip-authorizations':   'trip_auth',
+  '/admin/reports/med':     'med_report',
+};
+
+List<SidebarItem> _buildSidebarItems(Set<UserRole> roles, [School? school]) {
+  final seen = <String>{};
+  final result = <SidebarItem>[];
+  for (final (role, items) in _roleItemOrder) {
+    if (roles.contains(role)) {
+      for (final item in items) {
+        final feature = _pathFeatureMap[item.path];
+        if (feature != null && !(school?.hasFeature(feature) ?? true)) continue;
+        if (seen.add(item.path)) result.add(item);
+      }
+    }
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Title helper
@@ -305,14 +397,21 @@ String _titleForPath(String path, List<SidebarItem> items) {
 // Role home routes (used by redirect logic)
 // ---------------------------------------------------------------------------
 
-String _roleHome(UserRole? role) => switch (role) {
-  UserRole.platformAdmin => '/platform',
-  UserRole.schoolAdmin   => '/admin',
-  UserRole.teacher       => '/teacher',
-  UserRole.staff         => '/teacher',
-  UserRole.parent        => '/parent',
-  null                   => '/login',
-};
+String _roleHome(Set<UserRole> roles) => _buildHomeFromRoles(roles);
+
+String _buildHomeFromRoles(Set<UserRole> roles) {
+  // Uses same priority order as AuthState.homeRoute
+  if (roles.contains(UserRole.platformAdmin))  return '/platform';
+  if (roles.contains(UserRole.schoolAdmin))    return '/admin';
+  if (roles.contains(UserRole.coordinator))    return '/admin';
+  if (roles.contains(UserRole.financeOfficer)) return '/admin/finance';
+  if (roles.contains(UserRole.secretary))      return '/admin/people';
+  if (roles.contains(UserRole.teacher))        return '/teacher';
+  if (roles.contains(UserRole.nurse))          return '/health';
+  if (roles.contains(UserRole.parent))         return '/parent';
+  if (roles.contains(UserRole.student))        return '/parent/grades';
+  return '/login';
+}
 
 // ---------------------------------------------------------------------------
 // Unified Shell — single widget, selects nav items by role
@@ -330,14 +429,7 @@ class _UnifiedShell extends ConsumerWidget {
 
     final unread = ref.watch(unreadNotifCountProvider).valueOrNull ?? 0;
 
-    final baseItems = switch (auth.role) {
-      UserRole.platformAdmin => _platformItems,
-      UserRole.schoolAdmin   => _adminItems,
-      UserRole.teacher       => _teacherItems,
-      UserRole.staff         => _staffItems,
-      UserRole.parent        => _parentItems,
-      null                   => const <SidebarItem>[],
-    };
+    final baseItems = _buildSidebarItems(auth.roles, school);
 
     // Inject notification badge count into the Notificações item
     final items = unread > 0
@@ -357,8 +449,8 @@ class _UnifiedShell extends ConsumerWidget {
       items: items,
       currentPath: currentPath,
       title: _titleForPath(currentPath, items),
-      schoolName: auth.role != UserRole.platformAdmin ? school?.name : null,
-      schoolLogoUrl: auth.role != UserRole.platformAdmin ? school?.logoUrl : null,
+      schoolName: !auth.hasRole(UserRole.platformAdmin) ? school?.name : null,
+      schoolLogoUrl: !auth.hasRole(UserRole.platformAdmin) ? school?.logoUrl : null,
       onSchoolTap: auth.isAdmin ? () => context.go('/admin/school-profile') : null,
       actions: [
         IconButton(
@@ -400,38 +492,47 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isAuthenticated && !isLoginPage) return '/login';
 
       // Authenticated on login page → home
-      if (isAuthenticated && isLoginPage) return _roleHome(authState.role);
+      if (isAuthenticated && isLoginPage) return _roleHome(authState.roles);
 
       // ── Role-based route guards ──────────────────────────────────────────
-      final role = authState.role;
+      final roles = authState.roles;
+      const adminAreaRoles = {
+        UserRole.schoolAdmin, UserRole.coordinator,
+        UserRole.financeOfficer, UserRole.secretary,
+      };
 
       // Platform routes: only platform admin
-      if (path.startsWith('/platform') && role != UserRole.platformAdmin) {
-        return _roleHome(role);
+      if (path.startsWith('/platform') && !roles.contains(UserRole.platformAdmin)) {
+        return _roleHome(roles);
       }
 
-      // Admin-only routes
-      if ((path.startsWith('/admin') || path.startsWith('/admin/')) &&
-          role != UserRole.schoolAdmin) {
-        return _roleHome(role);
+      // Admin area: admin-tier roles only
+      if (path.startsWith('/admin') && !roles.any(adminAreaRoles.contains)) {
+        return _roleHome(roles);
       }
 
-      // Teacher/staff routes: no parent access
-      if (path.startsWith('/teacher') && role == UserRole.parent) {
-        return '/parent';
+      // Finance routes: must have finance access
+      if (path.startsWith('/admin/finance') &&
+          !roles.any({UserRole.schoolAdmin, UserRole.financeOfficer}.contains)) {
+        return _roleHome(roles);
       }
 
-      // Parent-only routes: no other role access
-      if (path.startsWith('/parent') &&
-          role != UserRole.parent) {
-        return _roleHome(role);
+      // School settings: school admin only
+      if (path.startsWith('/admin/school-settings') && !roles.contains(UserRole.schoolAdmin)) {
+        return _roleHome(roles);
       }
 
-      // Admin finance/absence routes: admin only (parent uses /parent/invoices)
-      if ((path.startsWith('/admin/finance') ||
-              path.startsWith('/admin/absences')) &&
-          role == UserRole.parent) {
-        return '/parent';
+      // Teacher area: not for parent or student
+      if (path.startsWith('/teacher') &&
+          roles.any({UserRole.parent, UserRole.student}.contains) &&
+          !roles.any({UserRole.teacher, UserRole.coordinator, UserRole.schoolAdmin}.contains)) {
+        return _roleHome(roles);
+      }
+
+      // Parent-only routes
+      if (path.startsWith('/parent') && !roles.contains(UserRole.parent) &&
+          !roles.any(adminAreaRoles.contains) && !roles.contains(UserRole.platformAdmin)) {
+        return _roleHome(roles);
       }
 
       return null;
@@ -506,6 +607,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/academic/subjects',       builder: (_, __) => const SubjectsScreen()),
           GoRoute(path: '/admin/academic/turma-subjects', builder: (_, __) => const TurmaSubjectsScreen()),
           GoRoute(path: '/admin/academic/report-cards',   builder: (_, __) => const ReportCardsScreen()),
+          GoRoute(path: '/admin/academic/timetable',      builder: (_, __) => const TimetableScreen()),
 
           // ── Teacher / Staff ──────────────────────────────────────────────
           GoRoute(path: '/teacher',                    builder: (_, __) => const TeacherDashboardScreen()),
@@ -527,6 +629,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/parent/menu',                builder: (_, __) => const FoodMenuScreen()),
           GoRoute(path: '/parent/attendance',            builder: (_, __) => const AttendanceHistoryScreen()),
           GoRoute(path: '/parent/grades',              builder: (_, __) => const ParentGradesScreen()),
+
+          // ── Timetable (shared: admin via hub + teacher read-only) ───────
+          GoRoute(path: '/timetable', builder: (_, __) => const TimetableScreen()),
 
           // ── Shared routes (registered ONCE — shell picks correct nav) ────
           GoRoute(path: '/announcements',              builder: (_, __) => const AnnouncementsScreen()),

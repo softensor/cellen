@@ -120,13 +120,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         }
 
         if (!mounted) return;
-        final dest = switch (next.role) {
-          UserRole.platformAdmin || UserRole.schoolAdmin => '/admin',
-          UserRole.teacher || UserRole.staff => '/teacher',
-          UserRole.parent => '/parent',
-          null => '/admin',
-        };
-        context.go(dest);
+        context.go(next.homeRoute);
       }
     });
 

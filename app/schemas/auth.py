@@ -12,7 +12,8 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    role: str
+    role: str            # primary role — kept for compat
+    roles: list[str] = []
 
 
 class RefreshRequest(BaseModel):
@@ -27,6 +28,7 @@ class AccessTokenResponse(BaseModel):
 class MeResponse(BaseModel):
     id: str
     username: str
-    role: str
+    role: str            # primary role — kept for compat
+    roles: list[str] = []
     school_id: Optional[str] = None
     is_active: bool

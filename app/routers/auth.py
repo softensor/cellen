@@ -60,9 +60,12 @@ async def refresh_token(body: RefreshRequest):
             detail="Invalid token type",
         )
     # Build new access token preserving all original claims
+    role = payload.get("role", "")
+    roles = payload.get("roles") or ([role] if role else [])
     token_data = {
         "sub": payload["sub"],
-        "role": payload["role"],
+        "role": role,
+        "roles": roles,
         "school_id": payload.get("school_id"),
         "employee_id": payload.get("employee_id"),
         "guardian_id": payload.get("guardian_id"),
@@ -102,10 +105,12 @@ async def me(current_user=Depends(get_current_user)):
     # PlatformUser has email, User has username
     username = getattr(current_user, "username", None) or getattr(current_user, "email", "")
 
+    roles_list: list[str] = getattr(current_user, "_roles_list", [role])
     return MeResponse(
         id=str(current_user.id),
         username=username,
         role=role,
+        roles=roles_list,
         school_id=str(school_id) if school_id else None,
         is_active=current_user.is_active,
     )

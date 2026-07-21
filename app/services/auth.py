@@ -41,9 +41,12 @@ async def get_school_by_slug(db: AsyncSession, slug: str) -> Optional[School]:
 
 
 def build_tokens_for_school_user(user: User) -> dict:
+    primary_role = user.role  # uses the @property (roles[0])
+    roles = list(user.roles)
     token_data = {
         "sub": str(user.id),
-        "role": user.role,
+        "role": primary_role,  # compat: primary role
+        "roles": roles,        # full list
         "school_id": str(user.school_id),
         "employee_id": str(user.employee_id) if user.employee_id else None,
         "guardian_id": str(user.guardian_id) if user.guardian_id else None,
@@ -54,7 +57,8 @@ def build_tokens_for_school_user(user: User) -> dict:
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "role": user.role,
+        "role": primary_role,
+        "roles": roles,
     }
 
 

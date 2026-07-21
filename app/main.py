@@ -35,6 +35,7 @@ from app.routers import (
     website,
     reports,
     grades,
+    timetable,
 )
 
 app = FastAPI(
@@ -93,6 +94,7 @@ app.include_router(pickup_authorizations.router, prefix="/api/v1")
 app.include_router(website.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(grades.router, prefix="/api/v1")
+app.include_router(timetable.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)

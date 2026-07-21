@@ -114,6 +114,29 @@ class ScheduleTeacher(Base):
     schedule = relationship("Schedule", back_populates="teacher_links")
 
 
+class TimetablePeriod(Base):
+    """
+    School-defined period template for K-12 timetables.
+    E.g.: period_number=1, name='1ª Aula', start=07:30, end=08:30
+    Breaks (intervalo) have is_break=True — no subjects assigned to them.
+    """
+    __tablename__ = "timetable_periods"
+    __table_args__ = (
+        UniqueConstraint("school_id", "period_number", name="uq_timetable_periods_school_num"),
+        Index("ix_timetable_periods_school_id", "school_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
+    )
+    period_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)    # '1ª Aula', 'Intervalo'
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    is_break: Mapped[bool] = mapped_column(Boolean, default=False)   # lunch/break — no subject
+
+
 class ScheduleSlot(Base):
     __tablename__ = "schedule_slots"
     __table_args__ = (
@@ -128,18 +151,39 @@ class ScheduleSlot(Base):
     schedule_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False
     )
-    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Sun..6=Sat
-    slot_time: Mapped[time] = mapped_column(Time, nullable=False)
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Mon..6=Sun
+    slot_time: Mapped[time] = mapped_column(Time, nullable=False)       # start time
+
+    # ── Preschool: activity-based ──────────────────────────────────────────
     activity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("activities.id", ondelete="RESTRICT"), nullable=True
     )
 
+    # ── K-12: subject × teacher × room × period ───────────────────────────
+    subject_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=True
+    )
+    # Per-slot teacher (may differ from schedule-level teacher)
+    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    room: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    period_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("timetable_periods.id", ondelete="SET NULL"), nullable=True
+    )
+
     schedule = relationship("Schedule", back_populates="slots")
     activity = relationship("Activity", lazy="selectin", foreign_keys=[activity_id])
+    subject = relationship("Subject", lazy="selectin", foreign_keys=[subject_id])
+    period = relationship("TimetablePeriod", lazy="selectin", foreign_keys=[period_id])
 
     @property
     def activity_name(self) -> Optional[str]:
         return self.activity.name if self.activity else None
+
+    @property
+    def subject_name(self) -> Optional[str]:
+        return self.subject.name if self.subject else None
 
 
 class Enrollment(Base):
