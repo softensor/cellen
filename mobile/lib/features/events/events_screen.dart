@@ -374,7 +374,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                               '${startDateStr}T${startTime!.hour.toString().padLeft(2, '0')}:${startTime!.minute.toString().padLeft(2, '0')}:00';
                         }
                         await ref.read(apiClientProvider).post(
-                          '/events',
+                          '/events/',
                           data: {
                             'title': titleCtrl.text.trim(),
                             'event_type': selectedType,

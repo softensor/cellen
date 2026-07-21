@@ -45,7 +45,14 @@ class Caderneta {
     return Caderneta(
       id: json['id']?.toString() ?? '',
       childId: json['child_id']?.toString() ?? '',
-      childName: json['child_name'] as String?,
+      childName: () {
+        final direct = json['child_name'] as String?;
+        if (direct != null && direct.isNotEmpty) return direct;
+        final composed = [json['first_name']?.toString(), json['last_name']?.toString()]
+            .where((s) => s != null && s.isNotEmpty)
+            .join(' ');
+        return composed.isNotEmpty ? composed : null;
+      }(),
       teacherId: json['teacher_id']?.toString() ?? '',
       teacherName: json['teacher_name'] as String?,
       reportDate: json['report_date'] != null

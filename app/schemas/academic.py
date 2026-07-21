@@ -55,6 +55,8 @@ class TurmaResponse(TurmaBase):
     school_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    current_pupils: int = 0
+    free_places: int = 0
 
 
 # Activity
@@ -95,6 +97,7 @@ class ScheduleSlotResponse(ScheduleSlotBase):
     id: int
     schedule_id: uuid.UUID
     school_id: uuid.UUID
+    activity_name: Optional[str] = None
 
 
 # Schedule

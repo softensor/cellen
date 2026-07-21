@@ -23,7 +23,11 @@ class AttendanceRecord {
     return AttendanceRecord(
       id: json['id']?.toString() ?? '',
       childId: json['child_id']?.toString() ?? json['child']?.toString() ?? '',
-      childName: json['child_name']?.toString() ?? json['child_full_name']?.toString() ?? '',
+      childName: json['child_name']?.toString() ??
+          json['child_full_name']?.toString() ??
+          [json['first_name']?.toString(), json['last_name']?.toString()]
+              .where((s) => s != null && s.isNotEmpty)
+              .join(' '),
       childPhotoUrl: json['child_photo_url']?.toString() ?? json['child_photo']?.toString(),
       status: json['status']?.toString() ?? 'absent',
       checkInTime: json['check_in_time']?.toString() ?? json['checkin_time']?.toString(),

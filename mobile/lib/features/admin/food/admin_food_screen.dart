@@ -732,10 +732,12 @@ class _MenuDetailPageState extends ConsumerState<_MenuDetailPage> {
                                   : Colors.teal,
                           size: 20,
                         ),
-                        title: Text(_mealLabels[item.mealType] ?? item.mealType),
-                        subtitle: item.mealComponent != null
-                            ? Text(_componentLabels[item.mealComponent] ?? item.mealComponent!)
-                            : null,
+                        title: Text(item.foodName ?? (_mealLabels[item.mealType] ?? item.mealType)),
+                        subtitle: Text([
+                          _mealLabels[item.mealType] ?? item.mealType,
+                          if (item.mealComponent != null)
+                            _componentLabels[item.mealComponent] ?? item.mealComponent!,
+                        ].join(' · ')),
                       ),
                     )),
                 const SizedBox(height: 12),

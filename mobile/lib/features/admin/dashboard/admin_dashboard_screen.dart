@@ -168,7 +168,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               crossAxisCount: isWide ? 4 : 2,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
-              childAspectRatio: isWide ? 1.5 : 1.3,
+              childAspectRatio: isWide ? 1.5 : 1.15,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               children: [

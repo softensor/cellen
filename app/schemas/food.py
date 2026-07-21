@@ -48,6 +48,7 @@ class FoodMenuItemResponse(FoodMenuItemBase):
     id: int
     food_menu_id: uuid.UUID
     school_id: uuid.UUID
+    food_name: Optional[str] = None
 
 
 class FoodMenuBase(BaseModel):

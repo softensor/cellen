@@ -421,6 +421,7 @@ class _CreateHealthEventDialogState
         'event_type': _eventType,
         'description': _descCtrl.text.trim(),
         'parent_notified': _parentNotified,
+        'event_date': DateTime.now().toIso8601String().substring(0, 10),
       };
       if (_tempCtrl.text.trim().isNotEmpty) {
         body['temperature'] = _tempCtrl.text.trim() as dynamic;

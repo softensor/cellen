@@ -230,14 +230,24 @@ class _TurmaCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const Spacer(),
-                Text(
-                  '${(occupancy * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                    color: occupancyColor,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                if (turma.maxCapacity > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: occupancyColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      turma.maxCapacity - turma.currentPupils > 0
+                          ? '${turma.maxCapacity - turma.currentPupils} vagas livres'
+                          : 'Turma cheia',
+                      style: TextStyle(
+                        color: occupancyColor,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 6),

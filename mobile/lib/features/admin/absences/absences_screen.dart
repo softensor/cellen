@@ -37,7 +37,7 @@ class EmployeeAbsence {
 }
 
 // ---------------------------------------------------------------------------
-// Provider
+// Providers
 // ---------------------------------------------------------------------------
 final absencesProvider =
     FutureProvider.autoDispose<List<EmployeeAbsence>>((ref) async {
@@ -46,6 +46,19 @@ final absencesProvider =
   return data
       .map((e) => EmployeeAbsence.fromJson(e as Map<String, dynamic>))
       .toList();
+});
+
+final _absenceEmployeesProvider =
+    FutureProvider.autoDispose<List<Map<String, String>>>((ref) async {
+  final api = ref.read(apiClientProvider);
+  final data = await api.get('/employees') as List;
+  return data.map((e) {
+    final m = e as Map<String, dynamic>;
+    final firstName = m['first_name']?.toString() ?? '';
+    final lastName = m['last_name']?.toString() ?? '';
+    final name = '$firstName $lastName'.trim();
+    return {'id': m['id']?.toString() ?? '', 'name': name.isNotEmpty ? name : m['id']?.toString() ?? ''};
+  }).toList();
 });
 
 // ---------------------------------------------------------------------------
@@ -57,6 +70,11 @@ class AbsencesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final absencesAsync = ref.watch(absencesProvider);
+    final employeesAsync = ref.watch(_absenceEmployeesProvider);
+    final employeeMap = employeesAsync.maybeWhen(
+      data: (list) => {for (final e in list) e['id']!: e['name']!},
+      orElse: () => <String, String>{},
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -133,7 +151,7 @@ class AbsencesScreen extends ConsumerWidget {
                       ),
                     ),
                     title: Text(
-                      'Funcionário: ${absence.employeeId}',
+                      employeeMap[absence.employeeId] ?? absence.employeeId,
                       style:
                           const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -208,8 +226,8 @@ class _CreateAbsenceDialog extends ConsumerStatefulWidget {
 
 class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _employeeIdCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
+  String? _selectedEmployeeId;
   DateTime _date = DateTime.now();
   bool _isJustified = false;
   bool _isLoading = false;
@@ -217,7 +235,6 @@ class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
 
   @override
   void dispose() {
-    _employeeIdCtrl.dispose();
     _reasonCtrl.dispose();
     super.dispose();
   }
@@ -231,7 +248,7 @@ class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
     try {
       final api = ref.read(apiClientProvider);
       await api.post('/absences', data: {
-        'employee_id': _employeeIdCtrl.text.trim(),
+        'employee_id': _selectedEmployeeId,
         'absence_date':
             '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
         'justified': _isJustified,
@@ -250,6 +267,7 @@ class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final employeesAsync = ref.watch(_absenceEmployeesProvider);
     return AlertDialog(
       title: const Text('Registar Ausência'),
       content: Form(
@@ -258,15 +276,25 @@ class _CreateAbsenceDialogState extends ConsumerState<_CreateAbsenceDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _employeeIdCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'ID do Funcionário *',
-                  prefixIcon: Icon(Icons.badge),
+              employeesAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, __) => const Text('Erro ao carregar funcionários'),
+                data: (employees) => DropdownButtonFormField<String>(
+                  value: _selectedEmployeeId,
+                  decoration: const InputDecoration(
+                    labelText: 'Funcionário *',
+                    prefixIcon: Icon(Icons.badge),
+                  ),
+                  items: employees
+                      .map((e) => DropdownMenuItem(
+                            value: e['id'],
+                            child: Text(e['name']!),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedEmployeeId = v),
+                  validator: (v) =>
+                      v == null ? 'Seleccione um funcionário' : null,
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Campo obrigatório'
-                    : null,
               ),
               const SizedBox(height: 12),
 

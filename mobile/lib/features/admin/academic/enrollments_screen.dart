@@ -450,16 +450,18 @@ class _CreateEnrollmentSheetState
                         prefixIcon: Icon(Icons.child_care),
                       ),
                       items: _children
-                          .map((c) => DropdownMenuItem(
-                                value:
-                                    c['id']?.toString() ?? '',
-                                child: Text(
-                                  (c['full_name'] as String?) ??
-                                      (c['name'] as String?) ??
-                                      c['id']?.toString() ??
-                                      '',
-                                ),
-                              ))
+                          .map((c) {
+                                final fullName = (c['full_name'] as String?) ??
+                                    (c['name'] as String?);
+                                final composed = fullName ??
+                                    [c['first_name']?.toString(), c['last_name']?.toString()]
+                                        .where((s) => s != null && s.isNotEmpty)
+                                        .join(' ');
+                                return DropdownMenuItem(
+                                  value: c['id']?.toString() ?? '',
+                                  child: Text(composed.isNotEmpty ? composed : c['id']?.toString() ?? ''),
+                                );
+                              })
                           .toList(),
                       onChanged: (v) =>
                           setState(() => _selectedChildId = v),

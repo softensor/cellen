@@ -72,3 +72,8 @@ class FoodMenuItem(Base):
     )
 
     menu = relationship("FoodMenu", back_populates="items")
+    food = relationship("Food", lazy="selectin")
+
+    @property
+    def food_name(self) -> Optional[str]:
+        return self.food.name if self.food else None

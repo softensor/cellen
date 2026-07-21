@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -34,7 +34,40 @@ async def list_turmas(
     result = await db.execute(
         select(Turma).where(Turma.school_id == school_id).offset(skip).limit(limit)
     )
-    return result.scalars().all()
+    turmas = result.scalars().all()
+    if not turmas:
+        return []
+
+    # Count active enrollments per turma via schedule
+    turma_ids = [t.id for t in turmas]
+    count_result = await db.execute(
+        select(Schedule.turma_id, func.count(Enrollment.id).label('cnt'))
+        .join(Enrollment, Enrollment.schedule_id == Schedule.id)
+        .where(
+            Schedule.school_id == school_id,
+            Schedule.turma_id.in_(turma_ids),
+            Enrollment.status == 'active',
+        )
+        .group_by(Schedule.turma_id)
+    )
+    count_map = {row.turma_id: row.cnt for row in count_result.all()}
+
+    responses = []
+    for t in turmas:
+        enrolled = count_map.get(t.id, 0)
+        responses.append({
+            'id': t.id,
+            'school_id': t.school_id,
+            'name': t.name,
+            'level': t.level,
+            'room': t.room,
+            'max_capacity': t.max_capacity,
+            'created_at': t.created_at,
+            'updated_at': t.updated_at,
+            'current_pupils': enrolled,
+            'free_places': max(0, t.max_capacity - enrolled),
+        })
+    return responses
 
 
 @router.post("/turmas", response_model=TurmaResponse, status_code=status.HTTP_201_CREATED)

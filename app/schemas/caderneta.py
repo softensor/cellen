@@ -54,3 +54,4 @@ class CadernetaResponse(CadernetaBase):
     health_observations: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    child_name: Optional[str] = None

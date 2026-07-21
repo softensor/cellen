@@ -2,11 +2,13 @@ class FoodMenuItemEntry {
   final int dayOfWeek;
   final String mealType;
   final String? mealComponent;
+  final String? foodName;
 
   const FoodMenuItemEntry({
     required this.dayOfWeek,
     required this.mealType,
     this.mealComponent,
+    this.foodName,
   });
 
   factory FoodMenuItemEntry.fromJson(Map<String, dynamic> json) {
@@ -14,6 +16,7 @@ class FoodMenuItemEntry {
       dayOfWeek: (json['day_of_week'] as num?)?.toInt() ?? 1,
       mealType: json['meal_type'] as String? ?? '',
       mealComponent: json['meal_component'] as String?,
+      foodName: json['food_name'] as String?,
     );
   }
 }

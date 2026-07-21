@@ -134,6 +134,11 @@ class ScheduleSlot(Base):
     )
 
     schedule = relationship("Schedule", back_populates="slots")
+    activity = relationship("Activity", lazy="selectin", foreign_keys=[activity_id])
+
+    @property
+    def activity_name(self) -> Optional[str]:
+        return self.activity.name if self.activity else None
 
 
 class Enrollment(Base):

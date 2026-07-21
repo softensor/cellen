@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -47,3 +47,11 @@ class Caderneta(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    child = relationship("Child", lazy="selectin", foreign_keys=[child_id])
+
+    @property
+    def child_name(self) -> Optional[str]:
+        if self.child:
+            return f"{self.child.first_name} {self.child.last_name}".strip()
+        return None
