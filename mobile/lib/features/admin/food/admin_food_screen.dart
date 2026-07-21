@@ -111,7 +111,7 @@ class AdminFoodScreen extends ConsumerWidget {
   }
 
   Future<void> _showCreateMenuDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => _CreateMenuDialog(
         onCreated: () => ref.invalidate(adminMenusProvider),
@@ -128,7 +128,7 @@ class AdminFoodScreen extends ConsumerWidget {
   }
 
   Future<void> _deleteMenu(BuildContext context, WidgetRef ref, String menuId) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar Ementa'),
@@ -450,7 +450,7 @@ class _MenuDetailPageState extends ConsumerState<_MenuDetailPage> {
     String? selectedComponent;
     _FoodItem? selectedFood;
 
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
@@ -565,7 +565,7 @@ class _MenuDetailPageState extends ConsumerState<_MenuDetailPage> {
   Future<void> _addFood() async {
     final nameCtrl = TextEditingController();
     String selectedType = 'lunch';
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(

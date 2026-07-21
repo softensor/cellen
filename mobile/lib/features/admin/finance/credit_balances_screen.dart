@@ -95,11 +95,11 @@ class _CreditGuardianCard extends ConsumerWidget {
           onSelected: (action) {
             final guardianId = guardian['billing_guardian_id']?.toString() ?? guardian['id']?.toString() ?? '';
             if (action == 'detail') {
-              showDialog(context: context, builder: (_) => _CreditDetailDialog(guardianId: guardianId, name: name, ref: ref));
+              showDialog(useRootNavigator: false, context: context, builder: (_) => _CreditDetailDialog(guardianId: guardianId, name: name, ref: ref));
             } else if (action == 'apply') {
-              showDialog(context: context, builder: (_) => _ApplyCreditDialog(guardianId: guardianId, balance: balance, currency: currency, onApplied: onChanged));
+              showDialog(useRootNavigator: false, context: context, builder: (_) => _ApplyCreditDialog(guardianId: guardianId, balance: balance, currency: currency, onApplied: onChanged));
             } else if (action == 'refund') {
-              showDialog(context: context, builder: (_) => _RefundCreditDialog(guardianId: guardianId, balance: balance, currency: currency, onRefunded: onChanged));
+              showDialog(useRootNavigator: false, context: context, builder: (_) => _RefundCreditDialog(guardianId: guardianId, balance: balance, currency: currency, onRefunded: onChanged));
             }
           },
         ),

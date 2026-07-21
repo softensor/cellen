@@ -83,7 +83,7 @@ class _WebsiteDashboardScreenState
   }
 
   Future<void> _deletePage(WebsitePage page) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar página'),
@@ -121,7 +121,7 @@ class _WebsiteDashboardScreenState
     final slugCtrl = TextEditingController();
     final titleCtrl = TextEditingController();
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nova página'),

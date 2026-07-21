@@ -380,7 +380,7 @@ class _GuardianFormScreenState extends ConsumerState<GuardianFormScreen> {
     bool obscure = true;
     String? dialogError;
 
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

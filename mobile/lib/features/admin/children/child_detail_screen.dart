@@ -294,7 +294,7 @@ class _GuardiansTabState extends ConsumerState<_GuardiansTab> {
     String selectedRelationship = 'father';
     bool isPrimary = false;
 
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
@@ -377,7 +377,7 @@ class _GuardiansTabState extends ConsumerState<_GuardiansTab> {
   }
 
   Future<void> _unlink(String guardianId, String guardianName) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remover ligação'),

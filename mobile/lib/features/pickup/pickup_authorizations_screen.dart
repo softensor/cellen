@@ -239,7 +239,7 @@ class _PickupAuthorizationsScreenState
   Future<void> _showAddDialog(BuildContext context) async {
     final childrenState = ref.read(childrenForPickupProvider);
     final children = childrenState.valueOrNull ?? [];
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _AddPickupDialog(
         children: children,
@@ -317,7 +317,7 @@ class _PickupCard extends ConsumerWidget {
                   data: {'is_active': !auth.isActive});
               onChanged();
             } else if (action == 'delete') {
-              final confirmed = await showDialog<bool>(
+              final confirmed = await showDialog<bool>(useRootNavigator: false, 
                 context: context,
                 builder: (_) => AlertDialog(
                   title: const Text('Remover Autorização'),

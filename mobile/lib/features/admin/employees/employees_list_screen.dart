@@ -32,7 +32,7 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
   String _filter = 'all'; // all, teacher, staff, admin
 
   Future<void> _deactivateEmployee(Employee emp) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Desactivar Funcionário'),

@@ -279,7 +279,7 @@ class _GuardianTile extends ConsumerWidget {
                   .push<bool>('/admin/guardians/${guardian.id}/edit');
               if (updated == true) onDeleted();
             } else if (action == 'delete') {
-              final confirmed = await showDialog<bool>(
+              final confirmed = await showDialog<bool>(useRootNavigator: false, 
                 context: context,
                 builder: (_) => AlertDialog(
                   title: const Text('Eliminar Encarregado'),

@@ -174,7 +174,7 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
     final captionCtrl = TextEditingController();
     DateTime? selectedDate;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

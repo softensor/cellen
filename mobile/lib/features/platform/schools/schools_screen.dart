@@ -58,7 +58,7 @@ class _SchoolsScreenState extends ConsumerState<SchoolsScreen> {
   }
 
   Future<void> _showCreateDialog() async {
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       barrierDismissible: false,
       builder: (_) => _CreateSchoolDialog(
@@ -69,7 +69,7 @@ class _SchoolsScreenState extends ConsumerState<SchoolsScreen> {
   }
 
   Future<void> _showEditDialog(Map<String, dynamic> school) async {
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       barrierDismissible: false,
       builder: (_) => _EditSchoolDialog(

@@ -311,7 +311,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   // Task 1: Record Payment dialog
   // -------------------------------------------------------------------------
   void _showRecordPaymentDialog(BuildContext context, Invoice inv) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _RecordPaymentDialog(
         invoice: inv,
@@ -324,7 +324,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   // Task 5: Void invoice — opens VoidInvoiceDialog which collects a reason
   // -------------------------------------------------------------------------
   void _showVoidConfirmation(BuildContext context, Invoice inv) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => VoidInvoiceDialog(
         invoiceId: inv.id,
@@ -337,7 +337,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   // Task 4: Bulk generate dialog
   // -------------------------------------------------------------------------
   void _showBulkGenerateDialog(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _BulkGenerateDialog(
         onSuccess: (count) {

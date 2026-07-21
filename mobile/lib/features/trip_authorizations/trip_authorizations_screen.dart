@@ -151,7 +151,7 @@ class TripAuthorizationsScreen extends ConsumerWidget {
   }
 
   Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateTripDialog(
         onCreated: () => ref.invalidate(tripAuthorizationsProvider),
@@ -204,7 +204,7 @@ class _AdminTripCard extends ConsumerWidget {
                 PopupMenuButton<String>(
                   onSelected: (action) async {
                     if (action == 'delete') {
-                      final confirmed = await showDialog<bool>(
+                      final confirmed = await showDialog<bool>(useRootNavigator: false, 
                         context: context,
                         builder: (_) => AlertDialog(
                           title: const Text('Eliminar Autorização'),

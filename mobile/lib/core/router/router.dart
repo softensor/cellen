@@ -354,7 +354,7 @@ class _UnifiedShell extends ConsumerWidget {
         IconButton(
           icon: const Icon(Icons.lock_outline),
           tooltip: 'Alterar palavra-passe',
-          onPressed: () => showDialog(
+          onPressed: () => showDialog(useRootNavigator: false, 
             context: context,
             builder: (_) => const _ChangePasswordDialog(),
           ),

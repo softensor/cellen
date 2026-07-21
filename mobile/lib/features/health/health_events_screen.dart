@@ -167,7 +167,7 @@ class _HealthEventsScreenState extends ConsumerState<HealthEventsScreen> {
               onPressed: () async {
                 final children = ref.read(childrenForHealthProvider).valueOrNull ?? [];
                 if (!mounted) return;
-                final created = await showDialog<bool>(
+                final created = await showDialog<bool>(useRootNavigator: false, 
                   context: context,
                   builder: (ctx) => _CreateHealthEventDialog(
                     children: children,

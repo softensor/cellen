@@ -98,7 +98,7 @@ class _WebsiteMediaScreenState extends ConsumerState<WebsiteMediaScreen> {
   }
 
   Future<void> _delete(WebsiteMedia item) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar ficheiro'),

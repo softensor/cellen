@@ -138,7 +138,7 @@ class _IncidentsScreenState extends ConsumerState<IncidentsScreen> {
 
     final children = childrenAsync.valueOrNull ?? [];
 
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

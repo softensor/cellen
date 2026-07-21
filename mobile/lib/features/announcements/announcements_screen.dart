@@ -215,7 +215,7 @@ class AnnouncementsScreen extends ConsumerWidget {
   }
 
   void _showCreateDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateAnnouncementDialog(
         onCreated: () {

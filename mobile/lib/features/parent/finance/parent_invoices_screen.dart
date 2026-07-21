@@ -861,7 +861,7 @@ class _InvoiceCard extends ConsumerWidget {
   }
 
   Future<void> _showPaymentDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog(
+    await showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _SubmitPaymentDialog(
         invoice: invoice,

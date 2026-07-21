@@ -140,7 +140,7 @@ class SchoolSettingsScreen extends ConsumerWidget {
   }
 
   void _showCreateYearDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateSchoolYearDialog(
         onCreated: () => ref.invalidate(schoolYearsProvider),

@@ -13,7 +13,7 @@ from app.models.academic import (
 from app.schemas.academic import (
     ActivityCreate, ActivityResponse, ActivityUpdate,
     EnrollmentCreate, EnrollmentResponse, EnrollmentUpdate,
-    ScheduleCreate, ScheduleResponse, ScheduleSlotCreate, ScheduleSlotResponse,
+    ScheduleCreate, ScheduleResponse, ScheduleSlotCreate, ScheduleSlotResponse, ScheduleSlotUpdate,
     ScheduleTeacherAssign, ScheduleTeacherResponse, ScheduleUpdate,
     TurmaCreate, TurmaResponse, TurmaUpdate,
 )
@@ -420,6 +420,42 @@ async def delete_schedule_slot(
     await db.delete(slot)
     await db.commit()
     return {"message": "Slot removed"}
+
+
+@router.patch("/schedules/{schedule_id}/slots/{slot_id}", response_model=ScheduleSlotResponse)
+async def update_schedule_slot(
+    schedule_id: uuid.UUID,
+    slot_id: int,
+    body: ScheduleSlotUpdate,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_school_admin),
+):
+    result = await db.execute(
+        select(ScheduleSlot).where(
+            ScheduleSlot.id == slot_id,
+            ScheduleSlot.schedule_id == schedule_id,
+            ScheduleSlot.school_id == school_id,
+        )
+    )
+    slot = result.scalar_one_or_none()
+    if slot is None:
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    if body.activity_id is not None:
+        from app.models.academic import Activity
+        act_result = await db.execute(
+            select(Activity).where(Activity.id == body.activity_id, Activity.school_id == school_id)
+        )
+        if act_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=422, detail=f"Activity {body.activity_id} not found in this school")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(slot, field, value)
+
+    await db.commit()
+    await db.refresh(slot)
+    return slot
 
 
 # Schedule teachers

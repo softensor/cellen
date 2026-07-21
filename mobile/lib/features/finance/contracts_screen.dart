@@ -165,7 +165,7 @@ class ContractsScreen extends ConsumerWidget {
   }
 
   void _showCreateDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateContractDialog(
         onCreated: () => ref.invalidate(contractsProvider),

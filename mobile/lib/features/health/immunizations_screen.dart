@@ -189,7 +189,7 @@ class _ImmunizationsScreenState extends ConsumerState<ImmunizationsScreen> {
           final children =
               ref.read(childrenForImmunizationsProvider).valueOrNull ?? [];
           if (!mounted) return;
-          final created = await showDialog<bool>(
+          final created = await showDialog<bool>(useRootNavigator: false, 
             context: context,
             builder: (ctx) => _CreateImmunizationDialog(
               children: children,

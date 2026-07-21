@@ -92,6 +92,12 @@ class ScheduleSlotCreate(ScheduleSlotBase):
     pass
 
 
+class ScheduleSlotUpdate(BaseModel):
+    day_of_week: Optional[int] = None
+    slot_time: Optional[time] = None
+    activity_id: Optional[uuid.UUID] = None
+
+
 class ScheduleSlotResponse(ScheduleSlotBase):
     model_config = ConfigDict(from_attributes=True)
     id: int

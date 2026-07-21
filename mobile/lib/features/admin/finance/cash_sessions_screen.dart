@@ -120,7 +120,7 @@ class _OpenSessionBannerState extends ConsumerState<_OpenSessionBanner> {
   }
 
   void _showCloseDialog(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CloseSessionDialog(
         session: widget.session,
@@ -168,7 +168,7 @@ class _ClosedSessionBannerState extends ConsumerState<_ClosedSessionBanner> {
 
   void _showOpenDialog(BuildContext context) {
     final ctrl = TextEditingController(text: '0');
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Abrir Sessão de Caixa'),
@@ -361,7 +361,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
 
   void _showReopenDialog(BuildContext context) {
     final reasonCtrl = TextEditingController();
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reabrir Sessão'),

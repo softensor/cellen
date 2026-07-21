@@ -189,7 +189,7 @@ class AbsencesScreen extends ConsumerWidget {
   }
 
   void _showCreateAbsenceDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateAbsenceDialog(
         onCreated: () {

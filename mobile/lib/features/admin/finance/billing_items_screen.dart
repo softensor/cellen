@@ -71,7 +71,7 @@ class BillingItemsScreen extends ConsumerWidget {
   }
 
   void _showCreateDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _BillingItemDialog(
         onSaved: () => ref.invalidate(_billingItemsProvider),
@@ -129,9 +129,9 @@ class _BillingItemCard extends ConsumerWidget {
               ],
               onSelected: (action) {
                 if (action == 'edit') {
-                  showDialog(context: context, builder: (_) => _BillingItemDialog(item: item, onSaved: onChanged));
+                  showDialog(useRootNavigator: false, context: context, builder: (_) => _BillingItemDialog(item: item, onSaved: onChanged));
                 } else if (action == 'prices') {
-                  showDialog(context: context, builder: (_) => _PriceTableDialog(item: item, ref: ref));
+                  showDialog(useRootNavigator: false, context: context, builder: (_) => _PriceTableDialog(item: item, ref: ref));
                 } else if (action == 'toggle') {
                   _toggle(context, ref);
                 }
@@ -412,7 +412,7 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
 
   Future<void> _setPrice(Map<String, dynamic> year) async {
     final ctrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: Text('Preço para ${year['name']}'),

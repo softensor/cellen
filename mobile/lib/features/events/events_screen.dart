@@ -223,7 +223,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
     TimeOfDay? endTime;
     bool isLoading = false;
 
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

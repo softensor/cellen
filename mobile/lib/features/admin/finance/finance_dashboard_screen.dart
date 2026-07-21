@@ -577,7 +577,7 @@ _QuickChip(icon: Icons.savings_outlined, label: 'Créditos', onTap: () => contex
                 children: invoices.take(8).map((inv) => _InvoiceTile(
                   invoice: inv,
                   currency: currency,
-                  onRecordPayment: (inv) => showDialog(
+                  onRecordPayment: (inv) => showDialog(useRootNavigator: false, 
                     context: context,
                     builder: (_) => _RecordPaymentDialog(
                       invoice: inv,
@@ -587,7 +587,7 @@ _QuickChip(icon: Icons.savings_outlined, label: 'Créditos', onTap: () => contex
                       },
                     ),
                   ),
-                  onVoid: (inv) => showDialog(
+                  onVoid: (inv) => showDialog(useRootNavigator: false, 
                     context: context,
                     builder: (_) => VoidInvoiceDialog(
                       invoiceId: inv.id,
@@ -597,7 +597,7 @@ _QuickChip(icon: Icons.savings_outlined, label: 'Créditos', onTap: () => contex
                       },
                     ),
                   ),
-                  onPartialCreditNote: (inv) => showDialog(
+                  onPartialCreditNote: (inv) => showDialog(useRootNavigator: false, 
                     context: context,
                     builder: (_) => _PartialCreditNoteDialog(
                       invoice: inv,
@@ -736,21 +736,21 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
                       invoice: inv,
                       currency: currency,
                       showDocNumber: true,
-                      onRecordPayment: (inv) => showDialog(
+                      onRecordPayment: (inv) => showDialog(useRootNavigator: false, 
                         context: ctx,
                         builder: (_) => _RecordPaymentDialog(
                           invoice: inv,
                           onSuccess: _refresh,
                         ),
                       ),
-                      onVoid: (inv) => showDialog(
+                      onVoid: (inv) => showDialog(useRootNavigator: false, 
                         context: ctx,
                         builder: (_) => VoidInvoiceDialog(
                           invoiceId: inv.id,
                           onVoided: _refresh,
                         ),
                       ),
-                      onPartialCreditNote: (inv) => showDialog(
+                      onPartialCreditNote: (inv) => showDialog(useRootNavigator: false, 
                         context: ctx,
                         builder: (_) => _PartialCreditNoteDialog(
                           invoice: inv,
@@ -780,7 +780,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   }
 
   void _showBulkGenerate(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _BulkGenerateDialog(
         onSuccess: (count, warnings) {
@@ -792,7 +792,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
   }
 
   void _showBulkResult(BuildContext context, int count, List<dynamic> warnings) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: Row(
@@ -988,7 +988,7 @@ class _ContractsTabState extends ConsumerState<_ContractsTab> {
   }
 
   void _showBulkInvoice(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _BulkGenerateDialog(
         onSuccess: (count, warnings) {
@@ -1006,7 +1006,7 @@ class _ContractsTabState extends ConsumerState<_ContractsTab> {
   }
 
   void _showCreateContract(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateContractDialog(
         onCreated: () => ref.invalidate(_contractsHubProvider),
@@ -1015,7 +1015,7 @@ class _ContractsTabState extends ConsumerState<_ContractsTab> {
   }
 
   void _showEditContract(BuildContext context, _Contract c) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _EditContractDialog(
         contract: c,
@@ -1204,7 +1204,7 @@ class _PendingProofCardState extends ConsumerState<_PendingProofCard> {
   }
 
   Future<void> _reject() async {
-    final reason = await showDialog<String>(
+    final reason = await showDialog<String>(useRootNavigator: false, 
       context: context,
       builder: (ctx) {
         final ctrl = TextEditingController();
@@ -1492,7 +1492,7 @@ class _InvoiceTile extends ConsumerWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: () => canPay
             ? onRecordPayment(inv)
-            : showDialog(context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv))),
+            : showDialog(useRootNavigator: false, context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv))),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
           child: Row(
@@ -1596,13 +1596,13 @@ class _InvoiceTile extends ConsumerWidget {
                     ],
                     onSelected: (action) {
                       if (action == 'detail') {
-                        showDialog(context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv)));
+                        showDialog(useRootNavigator: false, context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv)));
                       }
                       if (action == 'pay') onRecordPayment(inv);
                       if (action == 'partial_nc' && onPartialCreditNote != null) onPartialCreditNote!(inv);
                       if (action == 'void') onVoid(inv);
                       if (action == 'reverse') {
-                        showDialog(context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv), showPayments: true));
+                        showDialog(useRootNavigator: false, context: context, builder: (_) => _InvoiceDetailDialog(invoice: inv, currency: currency, onAction: () => onRecordPayment(inv), showPayments: true));
                       }
                     },
                   ),
@@ -2355,7 +2355,7 @@ class _InvoiceDetailDialogState extends ConsumerState<_InvoiceDetailDialog> with
   }
 
   Future<void> _reversePayment(String paymentId) async {
-    final reason = await showDialog<String>(
+    final reason = await showDialog<String>(useRootNavigator: false, 
       context: context,
       builder: (_) => _ReasonDialog(title: 'Motivo da Reversão', hint: 'Descreva o motivo da reversão do pagamento'),
     );

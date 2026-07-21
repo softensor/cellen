@@ -293,7 +293,7 @@ class _EvaluationsScreenState extends ConsumerState<EvaluationsScreen> {
   ) async {
     if (_childFilter == null) {
       // No child selected — prompt the user
-      await showDialog<void>(
+      await showDialog<void>(useRootNavigator: false, 
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Seleccione uma Criança'),
@@ -347,7 +347,7 @@ class _EvaluationsScreenState extends ConsumerState<EvaluationsScreen> {
   }
 
   void _showCreateDialog(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateEvaluationDialog(
         onCreated: () => ref.invalidate(evaluationsProvider),

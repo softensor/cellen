@@ -189,7 +189,7 @@ class _DelinquentReminderCardState extends ConsumerState<_DelinquentReminderCard
   }
 
   void _showSendReminder(BuildContext context, Map<String, dynamic> guardian, int lastLevel) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _SendReminderDialog(
         guardian: guardian,

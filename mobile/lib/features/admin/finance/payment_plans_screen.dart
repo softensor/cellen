@@ -96,7 +96,7 @@ class _PaymentPlansScreenState extends ConsumerState<PaymentPlansScreen> {
   );
 
   void _showCreatePlan(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreatePlanDialog(onCreated: () => ref.invalidate(_paymentPlansProvider)),
     );
@@ -182,7 +182,7 @@ class _PlanCardState extends ConsumerState<_PlanCard> {
   }
 
   Future<void> _cancel(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Cancelar Plano'),
@@ -258,7 +258,7 @@ class _InstallmentRowState extends ConsumerState<_InstallmentRow> {
   Future<void> _markMet(BuildContext context) async {
     // Ask for payment method before recording
     String method = 'bank_transfer';
-    final picked = await showDialog<String>(
+    final picked = await showDialog<String>(useRootNavigator: false, 
       context: context,
       builder: (_) => SimpleDialog(
         title: const Text('Método de Pagamento'),
@@ -497,7 +497,7 @@ class _CreatePlanDialogState extends ConsumerState<_CreatePlanDialog> {
   void _addInstallment(BuildContext context) {
     final amountCtrl = TextEditingController();
     DateTime dueDate = DateTime.now().add(const Duration(days: 30));
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(

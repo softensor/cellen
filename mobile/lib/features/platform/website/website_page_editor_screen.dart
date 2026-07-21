@@ -65,7 +65,7 @@ class _WebsitePageEditorScreenState
   }
 
   Future<void> _deleteSection(WebsiteSection section) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar secção'),
@@ -100,7 +100,7 @@ class _WebsitePageEditorScreenState
   }
 
   Future<void> _addSection() async {
-    final type = await showDialog<String>(
+    final type = await showDialog<String>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Tipo de secção'),
@@ -365,7 +365,7 @@ class _WebsitePageEditorScreenState
     final metaCtrl =
         TextEditingController(text: _page!.metaDescription ?? '');
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Editar página'),

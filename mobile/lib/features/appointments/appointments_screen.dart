@@ -189,7 +189,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen>
   }
 
   void _showCreateDialog(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateAppointmentDialog(
         onCreated: () => ref.invalidate(appointmentsProvider),

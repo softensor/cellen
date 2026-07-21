@@ -54,7 +54,7 @@ class _WebsiteSettingsScreenState
       text: _prettyJson(setting.value),
     );
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Editar: ${setting.key}'),
@@ -104,7 +104,7 @@ class _WebsiteSettingsScreenState
   Future<void> _addSetting() async {
     final keyCtrl = TextEditingController();
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nova configuração'),
@@ -143,7 +143,7 @@ class _WebsiteSettingsScreenState
   }
 
   Future<void> _deleteSetting(WebsiteSetting setting) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar configuração'),

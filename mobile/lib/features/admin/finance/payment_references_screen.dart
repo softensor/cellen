@@ -95,7 +95,7 @@ class _PaymentReferencesScreenState extends ConsumerState<PaymentReferencesScree
   );
 
   void _showCreate(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _CreateRefDialog(onCreated: () => ref.invalidate(_paymentRefsProvider)),
     );
@@ -199,7 +199,7 @@ class _RefCardState extends ConsumerState<_RefCard> {
   void _showMarkPaid(BuildContext context) {
     final amountCtrl = TextEditingController(text: ((widget.ref_['amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2));
     DateTime payDate = DateTime.now();
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
@@ -250,7 +250,7 @@ class _RefCardState extends ConsumerState<_RefCard> {
   }
 
   Future<void> _cancel(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Cancelar Referência'),

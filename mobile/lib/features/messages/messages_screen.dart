@@ -288,7 +288,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     final navigator = Navigator.of(context);
 
     // 1. Show loading dialog
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const AlertDialog(
@@ -314,7 +314,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
     // Show error or the actual dialog
     if (error != null) {
-      showDialog(
+      showDialog(useRootNavigator: false, 
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Erro'),
@@ -374,7 +374,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     bool isLoading = false;
     String searchQuery = '';
 
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {

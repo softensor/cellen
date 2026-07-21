@@ -222,7 +222,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   }
 
   void _showAddDialog(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => _AddDocumentDialog(
         onAdded: () => ref.invalidate(documentsProvider),
@@ -357,7 +357,7 @@ class _DocumentCard extends StatelessWidget {
   }
 
   void _confirmDelete(BuildContext context) {
-    showDialog(
+    showDialog(useRootNavigator: false, 
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Eliminar documento'),
