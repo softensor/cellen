@@ -10,6 +10,8 @@ class School {
   final bool isActive;
   final bool waEnabled;
   final String? waPhoneNumberId;
+  final String segment;
+  final Map<String, dynamic> resolvedFeatures;
 
   const School({
     required this.id,
@@ -23,9 +25,19 @@ class School {
     required this.isActive,
     this.waEnabled = false,
     this.waPhoneNumberId,
+    this.segment = 'preschool',
+    this.resolvedFeatures = const {},
   });
 
+  /// Returns true if feature is enabled. Missing key defaults to true
+  /// so existing schools without feature data are unaffected.
+  bool hasFeature(String key) {
+    if (!resolvedFeatures.containsKey(key)) return true;
+    return resolvedFeatures[key] as bool? ?? true;
+  }
+
   factory School.fromJson(Map<String, dynamic> json) {
+    final rf = json['resolved_features'];
     return School(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
@@ -38,6 +50,8 @@ class School {
       isActive: json['is_active'] as bool? ?? true,
       waEnabled: json['wa_enabled'] as bool? ?? false,
       waPhoneNumberId: json['wa_phone_number_id'] as String?,
+      segment: json['segment'] as String? ?? 'preschool',
+      resolvedFeatures: rf is Map ? Map<String, dynamic>.from(rf) : {},
     );
   }
 
@@ -51,5 +65,6 @@ class School {
         if (logoUrl != null) 'logo_url': logoUrl,
         'currency': currency,
         'is_active': isActive,
+        'segment': segment,
       };
 }

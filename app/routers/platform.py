@@ -28,6 +28,43 @@ DEFAULT_EXPENSE_CATEGORIES = [
     "Outros",
 ]
 
+from decimal import Decimal as _D
+
+_BILLING_ITEMS_BY_SEGMENT: dict[str, list[dict]] = {
+    "preschool": [
+        {"code": "MENS-BERC",   "name": "Mensalidade Berçário",            "unit_price": _D("45000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MENS-CRECHE", "name": "Mensalidade Creche",              "unit_price": _D("35000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MENS-JARDIN", "name": "Mensalidade Jardim de Infância",  "unit_price": _D("30000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MATRICULA",   "name": "Matrícula",                       "unit_price": _D("10000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "EXTRAS",      "name": "Serviços Extras",                 "unit_price": _D("0.00"),     "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+    ],
+    "primary": [
+        {"code": "PROPINA-EP",  "name": "Propina Ensino Primário",         "unit_price": _D("20000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MATRICULA",   "name": "Matrícula",                       "unit_price": _D("10000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "EXTRAS",      "name": "Serviços Extras",                 "unit_price": _D("0.00"),     "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+    ],
+    "secondary": [
+        {"code": "PROPINA-ES",  "name": "Propina Ensino Secundário",       "unit_price": _D("25000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MATRICULA",   "name": "Matrícula",                       "unit_price": _D("10000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "EXTRAS",      "name": "Serviços Extras",                 "unit_price": _D("0.00"),     "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+    ],
+    "combined": [
+        {"code": "PROPINA-EP",  "name": "Propina Ensino Primário",         "unit_price": _D("20000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "PROPINA-ES",  "name": "Propina Ensino Secundário",       "unit_price": _D("25000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MATRICULA",   "name": "Matrícula",                       "unit_price": _D("10000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "EXTRAS",      "name": "Serviços Extras",                 "unit_price": _D("0.00"),     "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+    ],
+    "full": [
+        {"code": "MENS-BERC",   "name": "Mensalidade Berçário",            "unit_price": _D("45000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MENS-CRECHE", "name": "Mensalidade Creche",              "unit_price": _D("35000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MENS-JARDIN", "name": "Mensalidade Jardim de Infância",  "unit_price": _D("30000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "PROPINA-EP",  "name": "Propina Ensino Primário",         "unit_price": _D("20000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "PROPINA-ES",  "name": "Propina Ensino Secundário",       "unit_price": _D("25000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "MATRICULA",   "name": "Matrícula",                       "unit_price": _D("10000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+        {"code": "EXTRAS",      "name": "Serviços Extras",                 "unit_price": _D("0.00"),     "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
+    ],
+}
+
 
 @router.get("/schools", response_model=list[SchoolWithStats])
 async def list_schools(
@@ -70,6 +107,9 @@ async def create_school(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="School slug already in use")
 
+    valid_segments = {"preschool", "primary", "secondary", "combined", "full"}
+    segment = body.segment if body.segment in valid_segments else "preschool"
+
     school = School(
         name=body.name,
         slug=body.slug,
@@ -81,6 +121,7 @@ async def create_school(
         nif=body.nif,
         logo_url=body.logo_url,
         subscription_notes=body.subscription_notes,
+        segment=segment,
         is_active=True,
     )
     db.add(school)
@@ -94,17 +135,9 @@ async def create_school(
         )
         db.add(category)
 
-    # Seed default billing items
+    # Seed segment-appropriate billing items
     from app.models.billing_item import BillingItem
-    from decimal import Decimal as _Decimal
-    default_billing_items = [
-        {"code": "MENS-BERC", "name": "Mensalidade Berçário", "unit_price": _Decimal("45000.00"), "iva_rate": _Decimal("0"), "iva_exemption_reason": "M10"},
-        {"code": "MENS-CRECHE", "name": "Mensalidade Creche", "unit_price": _Decimal("35000.00"), "iva_rate": _Decimal("0"), "iva_exemption_reason": "M10"},
-        {"code": "MENS-JARDIN", "name": "Mensalidade Jardim de Infância", "unit_price": _Decimal("30000.00"), "iva_rate": _Decimal("0"), "iva_exemption_reason": "M10"},
-        {"code": "MATRICULA", "name": "Matrícula", "unit_price": _Decimal("10000.00"), "iva_rate": _Decimal("0"), "iva_exemption_reason": "M10"},
-        {"code": "EXTRAS", "name": "Serviços Extras", "unit_price": _Decimal("0.00"), "iva_rate": _Decimal("0"), "iva_exemption_reason": "M10"},
-    ]
-    for bi_data in default_billing_items:
+    for bi_data in _BILLING_ITEMS_BY_SEGMENT.get(segment, _BILLING_ITEMS_BY_SEGMENT["preschool"]):
         db.add(BillingItem(school_id=school.id, **bi_data))
 
     # Create school_admin user

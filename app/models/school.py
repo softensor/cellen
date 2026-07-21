@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -30,12 +30,84 @@ class School(Base):
     wa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     wa_phone_number_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     wa_access_token: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # School type / segment (preschool | primary | secondary | combined | full)
+    segment: Mapped[str] = mapped_column(String(30), nullable=False, default="preschool", server_default="preschool")
+    # Per-school feature overrides (JSONB); merged with segment defaults at read time
+    features: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     subscription_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     subscription_notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def resolved_features(self) -> dict:
+        """Merge segment defaults with per-school overrides."""
+        defaults = _SEGMENT_DEFAULTS.get(self.segment, _SEGMENT_DEFAULTS["preschool"]).copy()
+        if self.features:
+            defaults.update(self.features)
+        return defaults
+
+
+# Feature defaults per school segment
+_SEGMENT_DEFAULTS: dict[str, dict] = {
+    "preschool": {
+        "caderneta": True,
+        "meal_orders": True,
+        "immunizations": True,
+        "health": True,
+        "grades": False,
+        "subjects": False,
+        "med_report": False,
+        "trip_auth": True,
+        "pickup_auth": True,
+    },
+    "primary": {
+        "caderneta": False,
+        "meal_orders": True,
+        "immunizations": True,
+        "health": True,
+        "grades": True,
+        "subjects": True,
+        "med_report": True,
+        "trip_auth": True,
+        "pickup_auth": False,
+    },
+    "secondary": {
+        "caderneta": False,
+        "meal_orders": False,
+        "immunizations": False,
+        "health": True,
+        "grades": True,
+        "subjects": True,
+        "med_report": True,
+        "trip_auth": False,
+        "pickup_auth": False,
+    },
+    "combined": {
+        "caderneta": False,
+        "meal_orders": True,
+        "immunizations": True,
+        "health": True,
+        "grades": True,
+        "subjects": True,
+        "med_report": True,
+        "trip_auth": True,
+        "pickup_auth": False,
+    },
+    "full": {
+        "caderneta": True,
+        "meal_orders": True,
+        "immunizations": True,
+        "health": True,
+        "grades": True,
+        "subjects": True,
+        "med_report": True,
+        "trip_auth": True,
+        "pickup_auth": True,
+    },
+}
 
 
 class PlatformUser(Base):

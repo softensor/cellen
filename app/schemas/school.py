@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,6 +17,7 @@ class SchoolBase(BaseModel):
     logo_url: Optional[str] = None
     currency: str = "AOA"
     subscription_notes: Optional[str] = None
+    segment: str = "preschool"
 
 
 class SchoolCreate(SchoolBase):
@@ -39,6 +40,8 @@ class SchoolUpdate(BaseModel):
     wa_enabled: Optional[bool] = None
     wa_phone_number_id: Optional[str] = None
     wa_access_token: Optional[str] = None
+    segment: Optional[str] = None
+    features: Optional[dict[str, Any]] = None
 
 
 class SchoolResponse(SchoolBase):
@@ -52,6 +55,8 @@ class SchoolResponse(SchoolBase):
     wa_enabled: bool = False
     wa_phone_number_id: Optional[str] = None
     # wa_access_token intentionally omitted from response for security
+    features: Optional[dict[str, Any]] = None
+    resolved_features: dict[str, Any] = {}
 
 
 class SchoolWithStats(SchoolResponse):
