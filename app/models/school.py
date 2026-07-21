@@ -27,7 +27,7 @@ class School(Base):
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="AOA")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # WhatsApp Business API settings (overrides platform env vars when set)
-    wa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    wa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     wa_phone_number_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     wa_access_token: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     subscription_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
