@@ -11,6 +11,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_provider.dart';
@@ -513,6 +514,50 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
 
   Future<void> _generateForYear() async {
     final yearId = _selectedYear!.id;
+
+    // ── Pre-check 1: periods must exist ────────────────────────────────
+    List<_Period> periods = [];
+    try {
+      final raw =
+          await ref.read(apiClientProvider).get('/timetable/periods') as List;
+      periods = raw
+          .map((e) => _Period.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {}
+
+    final teachingPeriods = periods.where((p) => !p.isBreak).toList();
+    if (teachingPeriods.isEmpty) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Períodos lectivos não configurados'),
+          content: const Text(
+            'Para gerar o horário o solver precisa de saber quais são os '
+            'períodos de aula (ex: 1ª Aula 08:00–09:00, Intervalo 09:00–09:30, '
+            '2ª Aula 09:30–10:30, …).\n\n'
+            'Clique em "Configurar" para os definir agora.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _showPeriodsDialog();
+              },
+              icon: const Icon(Icons.access_time_outlined),
+              label: const Text('Configurar Períodos'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // ── Pre-check 2: schedules must exist ──────────────────────────────
     final schedules = ref.read(_schedulesForYearProvider(yearId)).valueOrNull;
 
     if (schedules == null) {
@@ -1088,6 +1133,29 @@ class _GridTabState extends ConsumerState<_GridTab> {
             },
           ),
         ),
+        if (_selectedScheduleId != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  final schedules = ref
+                      .read(_schedulesForYearProvider(widget.yearId))
+                      .valueOrNull;
+                  final s = schedules?.firstWhere(
+                      (x) => x.id == _selectedScheduleId,
+                      orElse: () => schedules!.first);
+                  context.push(
+                    '/lesson-attendance/summary/$_selectedScheduleId'
+                    '?turmaName=${Uri.encodeComponent(s?.turmaName ?? '')}',
+                  );
+                },
+                icon: const Icon(Icons.how_to_reg_outlined, size: 18),
+                label: const Text('Ver Faltas'),
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         // ── Grid ───────────────────────────────────────────────────────
         Expanded(

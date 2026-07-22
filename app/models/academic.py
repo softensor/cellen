@@ -284,3 +284,48 @@ class Enrollment(Base):
         UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LessonAttendance(Base):
+    """Per-lesson per-student attendance (K-12 livro de ponto model)."""
+    __tablename__ = "lesson_attendance"
+    __table_args__ = (
+        UniqueConstraint(
+            "schedule_id", "subject_id", "date", "period_id", "child_id",
+            name="uq_lesson_attendance_session_student",
+        ),
+        Index("ix_lesson_attendance_school_id", "school_id"),
+        Index("ix_lesson_attendance_schedule_date", "schedule_id", "date"),
+        Index("ix_lesson_attendance_child_id", "child_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
+    )
+    schedule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False
+    )
+    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    period_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("timetable_periods.id", ondelete="RESTRICT"), nullable=False
+    )
+    child_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("children.id", ondelete="RESTRICT"), nullable=False
+    )
+    # present | absent | late | justified
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="present")
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    subject = relationship("Subject", lazy="selectin")
+    period = relationship("TimetablePeriod", lazy="selectin")

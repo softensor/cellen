@@ -62,6 +62,14 @@ class AcademicHubScreen extends ConsumerWidget {
         feature: 'timetable_k12',
       ),
       (
+        icon: Icons.how_to_reg_outlined,
+        color: Colors.deepOrange,
+        label: 'Livro de Ponto',
+        description: 'Presenças por aula — registo de faltas por disciplina',
+        path: '/lesson-attendance',
+        feature: 'timetable_k12',
+      ),
+      (
         icon: Icons.book_outlined,
         color: Colors.purple,
         label: 'Disciplinas',

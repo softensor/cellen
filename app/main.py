@@ -36,6 +36,7 @@ from app.routers import (
     reports,
     grades,
     timetable,
+    lesson_attendance,
 )
 
 app = FastAPI(
@@ -95,6 +96,7 @@ app.include_router(website.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(grades.router, prefix="/api/v1")
 app.include_router(timetable.router, prefix="/api/v1")
+app.include_router(lesson_attendance.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)

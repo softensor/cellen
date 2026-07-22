@@ -78,6 +78,8 @@ import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
 import '../../features/admin/finance/cash_sessions_screen.dart';
 import '../../features/teacher/attendance/attendance_history_screen.dart';
+import '../../features/teacher/attendance/lesson_attendance_screen.dart';
+import '../../features/teacher/attendance/lesson_attendance_summary_screen.dart';
 import '../../features/parent/food/parent_food_hub.dart';
 import '../../features/admin/reports/med_report_screen.dart';
 import '../../features/admin/academic/subjects_screen.dart';
@@ -281,6 +283,7 @@ const _secretaryItems = [
 const _teacherItems = [
   SidebarItem(path: '/teacher',               label: 'Dashboard',     icon: Icons.dashboard_outlined,                 selectedIcon: Icons.dashboard),
   SidebarItem(path: '/teacher/attendance',    label: 'Presenças',     icon: Icons.fact_check_outlined,                selectedIcon: Icons.fact_check),
+  SidebarItem(path: '/lesson-attendance',     label: 'Livro de Ponto', icon: Icons.how_to_reg_outlined,               selectedIcon: Icons.how_to_reg),
   SidebarItem(path: '/teacher/caderneta',     label: 'Caderneta',     icon: Icons.menu_book_outlined,                 selectedIcon: Icons.menu_book),
   SidebarItem(path: '/teacher/grades',        label: 'Notas',         icon: Icons.grade_outlined,                     selectedIcon: Icons.grade),
   SidebarItem(path: '/timetable',             label: 'Horário',       icon: Icons.table_chart_outlined,               selectedIcon: Icons.table_chart),
@@ -355,6 +358,7 @@ const _pathFeatureMap = {
   '/teacher/caderneta':     'caderneta',
   '/teacher/grades':        'grades',
   '/timetable':             'timetable_k12',
+  '/lesson-attendance':     'timetable_k12',
   '/evaluations':           'evaluations',
   '/parent/caderneta':      'caderneta',
   '/health/immunizations':  'immunizations',
@@ -615,6 +619,30 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/teacher',                    builder: (_, __) => const TeacherDashboardScreen()),
           GoRoute(path: '/teacher/attendance',         builder: (_, __) => const AttendanceScreen()),
           GoRoute(path: '/teacher/attendance/history', builder: (_, __) => const AttendanceHistoryScreen()),
+          GoRoute(
+            path: '/lesson-attendance',
+            builder: (_, __) => const LessonAttendanceTodayScreen(),
+          ),
+          GoRoute(
+            path: '/lesson-attendance/session',
+            builder: (_, state) {
+              final extra = state.extra as Map<String, String>? ?? {};
+              return LessonAttendanceSessionScreen(
+                scheduleId: extra['scheduleId'] ?? '',
+                subjectId: extra['subjectId'] ?? '',
+                periodId: extra['periodId'] ?? '',
+                turmaName: extra['turmaName'] ?? '',
+                subjectName: extra['subjectName'] ?? '',
+              );
+            },
+          ),
+          GoRoute(
+            path: '/lesson-attendance/summary/:scheduleId',
+            builder: (_, state) => LessonAttendanceSummaryScreen(
+              scheduleId: state.pathParameters['scheduleId'] ?? '',
+              turmaName: state.uri.queryParameters['turmaName'] ?? '',
+            ),
+          ),
           GoRoute(path: '/teacher/grades',             builder: (_, __) => const GradesScreen()),
           GoRoute(path: '/teacher/caderneta',          builder: (_, __) => const CadernetaListScreen()),
           GoRoute(path: '/teacher/caderneta/new',      builder: (_, __) => const CadernetaFormScreen()),
