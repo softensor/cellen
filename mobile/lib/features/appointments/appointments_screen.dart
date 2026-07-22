@@ -218,7 +218,6 @@ class _AppointmentsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
     if (appointments.isEmpty) {
       return Center(
         child: Column(
@@ -380,7 +379,7 @@ class _AppointmentCard extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(terms.studentIcon,
+                  const Icon(Icons.person_outlined,
                       size: 14, color: AppTheme.textSecondary),
                   const SizedBox(width: 4),
                   Text(a.childName!,

@@ -187,7 +187,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               // List
               Expanded(
                 child: filtered.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text('Nenhum ${terms.student.toLowerCase()} encontrado'),
                       )
                     : ListView.builder(
@@ -246,6 +246,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
   Future<void> _markAllPresent() async {
     setState(() => _isBulkLoading = true);
+    final terms = SchoolTerms.of(ref.read(schoolInfoProvider).valueOrNull);
     try {
       final summary = ref.read(attendanceTodayProvider).value;
       final today = DateTime.now();

@@ -240,9 +240,9 @@ class _ParentDashboardScreenState
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.border),
                     ),
-                    child: const Center(
+                    child: Center(
                       child: Text('Nenhum ${terms.student.toLowerCase()} associado',
-                          style: TextStyle(color: AppTheme.textSecondary)),
+                          style: const TextStyle(color: AppTheme.textSecondary)),
                     ),
                   );
                 }
