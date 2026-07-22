@@ -696,7 +696,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
 
     if (!mounted) return;
     final wasCancelled = !_dialogOpen;
-    if (_dialogOpen) Navigator.of(context).pop(); // close loading dialog
+    if (_dialogOpen) Navigator.of(context, rootNavigator: true).pop(); // close loading dialog
 
     // If user pressed Cancelar while waiting, discard the result silently
     if (wasCancelled) return;
@@ -758,7 +758,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
           'cells': result!.cells.map((c) => c.toJson()).toList(),
           'replace_existing': true,
         });
-        if (mounted) Navigator.of(context).pop(); // close apply dialog
+        if (mounted) Navigator.of(context, rootNavigator: true).pop(); // close apply dialog
         for (final id in scheduleIds) {
           ref.invalidate(_gridProvider(id));
         }
@@ -777,7 +777,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
         }
       } catch (e) {
         if (mounted) {
-          Navigator.of(context).pop(); // close apply dialog
+          Navigator.of(context, rootNavigator: true).pop(); // close apply dialog
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text('Erro ao aplicar: $e')));
         }
@@ -2378,7 +2378,7 @@ class _PreviewDialogState extends State<_PreviewDialog> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
           ),
           title: const Text('Proposta do Motor'),
           actions: [
@@ -2399,7 +2399,7 @@ class _PreviewDialogState extends State<_PreviewDialog> {
             FilledButton.icon(
               onPressed: allCells.isEmpty
                   ? null
-                  : () => Navigator.of(context).pop(true),
+                  : () => Navigator.of(context, rootNavigator: true).pop(true),
               icon: const Icon(Icons.check),
               label: const Text('Aceitar e Aplicar'),
             ),
