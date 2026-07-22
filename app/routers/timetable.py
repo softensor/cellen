@@ -29,7 +29,7 @@ from app.models.academic import (
     TimetableTeacherConstraint, Turma, SchoolYear,
 )
 from app.models.employee import Employee
-from app.models.grades import Subject
+from app.models.grades import Subject, TurmaSubject
 from app.schemas.timetable import (
     PeriodCreate, PeriodUpdate, PeriodResponse,
     TimetableCellUpsert, TimetableCellResponse, TimetableGridResponse, TeacherSlot,
@@ -686,11 +686,12 @@ async def generate_timetable(
         for p in db_periods
     ]
 
-    # Run solver off the async event loop (it blocks for up to 15 s with OR-Tools)
-    loop = asyncio.get_event_loop()
+    # Run solver off the async event loop (it blocks for up to 5 s with OR-Tools,
+    # then falls back to greedy which completes in milliseconds).
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         None,
-        functools.partial(run_solver, solver_reqs, solver_periods, blocked, 15.0),
+        functools.partial(run_solver, solver_reqs, solver_periods, blocked, 5.0),
     )
 
     # Build response with enriched names
@@ -750,16 +751,18 @@ async def apply_timetable(
     if not body.schedule_ids:
         raise HTTPException(status_code=400, detail="schedule_ids não pode estar vazio")
 
-    # Verify schedules belong to school
+    # Verify schedules belong to school and load their turma/year metadata
     sched_result = await db.execute(
         select(Schedule).where(
             Schedule.id.in_(body.schedule_ids),
             Schedule.school_id == school_id,
         )
     )
-    found = {s.id for s in sched_result.scalars().all()}
+    schedules = sched_result.scalars().all()
+    found = {s.id for s in schedules}
     if len(found) != len(body.schedule_ids):
         raise HTTPException(status_code=404, detail="Um ou mais schedules não encontrados")
+    schedule_meta = {s.id: s for s in schedules}
 
     # Load period start times (needed for slot_time)
     period_ids = {c.period_id for c in body.cells}
@@ -797,6 +800,39 @@ async def apply_timetable(
         )
         db.add(slot)
         created += 1
+
+    # ── Auto-sync TurmaSubject from timetable (single source of truth) ──────────
+    # Collect unique (turma, subject, year, teacher) combos from applied cells.
+    # This means Pautas & Notas never needs manual teacher-class assignment.
+    seen_ts: set[tuple] = set()
+    for cell in body.cells:
+        sched = schedule_meta.get(cell.schedule_id)
+        if sched is None or cell.subject_id is None or cell.employee_id is None:
+            continue
+        key = (sched.turma_id, cell.subject_id, sched.school_year_id)
+        if key in seen_ts:
+            continue
+        seen_ts.add(key)
+        # Upsert: update teacher if record already exists, else create
+        existing = await db.execute(
+            select(TurmaSubject).where(
+                TurmaSubject.school_id == school_id,
+                TurmaSubject.turma_id == sched.turma_id,
+                TurmaSubject.subject_id == cell.subject_id,
+                TurmaSubject.school_year_id == sched.school_year_id,
+            )
+        )
+        ts = existing.scalar_one_or_none()
+        if ts:
+            ts.teacher_id = cell.employee_id  # update to latest timetable assignment
+        else:
+            db.add(TurmaSubject(
+                school_id=school_id,
+                turma_id=sched.turma_id,
+                subject_id=cell.subject_id,
+                school_year_id=sched.school_year_id,
+                teacher_id=cell.employee_id,
+            ))
 
     await db.commit()
     return {"created": created, "schedules": len(body.schedule_ids)}

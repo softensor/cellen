@@ -91,18 +91,16 @@ def solve(
     requirements: list[SolverRequirement],
     periods: list[SolverPeriod],
     blocked: set[tuple],           # set of (employee_id, day_int, period_id)
-    time_limit_seconds: float = 30.0,
+    time_limit_seconds: float = 5.0,
 ) -> SolverResult:
     """
     Generate an optimal (or best-effort) timetable.
 
-    Args:
-        requirements: All solver cards for the schedules being generated.
-                      Cards for different classes can be mixed — the solver
-                      handles cross-class teacher conflicts automatically.
-        periods:      Non-break periods for the school, ordered by period_number.
-        blocked:      Teacher unavailability: (employee_id, day 0-4, period_id).
-        time_limit_seconds: CP-SAT search timeout.
+    Strategy:
+      1. Always run greedy first — completes in milliseconds, always returns cells.
+      2. If OR-Tools is available, run CP-SAT for `time_limit_seconds` to try to
+         improve quality. If OR-Tools finds a better solution, return it; otherwise
+         keep the greedy result. This guarantees the endpoint always responds quickly.
 
     Returns:
         SolverResult with cells (the proposed timetable) and conflicts (unmet
@@ -111,9 +109,22 @@ def solve(
     if not requirements:
         return SolverResult(status='optimal')
 
-    if _ORTOOLS:
-        return _ortools_solve(requirements, periods, blocked, time_limit_seconds)
-    return _greedy_solve(requirements, periods, blocked)
+    # Step 1: fast greedy baseline — always available
+    greedy = _greedy_solve(requirements, periods, blocked)
+
+    if not _ORTOOLS:
+        return greedy
+
+    # Step 2: try to improve with OR-Tools within the time budget
+    try:
+        ortools = _ortools_solve(requirements, periods, blocked, time_limit_seconds)
+        # Prefer OR-Tools result only if it placed at least as many cells as greedy
+        if len(ortools.cells) >= len(greedy.cells):
+            return ortools
+    except Exception:
+        pass  # OR-Tools failed for any reason — fall back to greedy
+
+    return greedy
 
 
 # ---------------------------------------------------------------------------

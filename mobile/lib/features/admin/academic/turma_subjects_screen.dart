@@ -279,23 +279,55 @@ class _TurmaSubjectsScreenState extends ConsumerState<TurmaSubjectsScreen> {
                   )
                 : _assignments!.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add_circle_outline, size: 64, color: Colors.grey.shade300),
-                            const SizedBox(height: 16),
-                            const Text('Nenhuma disciplina atribuída a esta turma'),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Toque em + para atribuir disciplinas e professores',
-                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                            ),
-                          ],
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.table_chart_outlined, size: 64, color: Colors.grey.shade300),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Sem disciplinas atribuídas',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'As disciplinas e professores são preenchidos automaticamente '
+                                'ao gerar e aplicar o Horário Lectivo.\n\n'
+                                'Vá a Horário Lectivo → Gerar Horário → Aceitar e Aplicar.',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
                       )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-                        itemCount: _assignments!.length,
+                    : Column(
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                            ),
+                            child: const Row(children: [
+                              Icon(Icons.info_outline, size: 15, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Expanded(child: Text(
+                                'Preenchido automaticamente pelo Horário Lectivo. '
+                                'Pode editar o professor atribuído se necessário.',
+                                style: TextStyle(fontSize: 12, color: Colors.blue),
+                              )),
+                            ]),
+                          ),
+                          Expanded(
+                            child: ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                              itemCount: _assignments!.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final a = _assignments![i];
@@ -340,6 +372,9 @@ class _TurmaSubjectsScreenState extends ConsumerState<TurmaSubjectsScreen> {
                           );
                         },
                       ),
+                    ),
+                  ],
+                ),
           ),
         ],
       ),
