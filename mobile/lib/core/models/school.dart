@@ -40,15 +40,19 @@ class School {
   bool isRoleAvailable(String roleKey) => hasFeature('role_$roleKey');
 
   /// Returns true if [roleKey] can access [featureKey] at this school.
-  /// role_permissions in resolved_features is a Map<role, Map<feature, bool>>.
-  /// Missing entry = true (default access granted).
-  bool roleCanAccess(String roleKey, String featureKey) {
+  /// [defaultAccess] is the baseline (from role's defaultFeatures list).
+  /// role_permissions overrides are stored as explicit true/false per role×feature.
+  bool roleCanAccessWithDefault(String roleKey, String featureKey, bool defaultAccess) {
     final perms = resolvedFeatures['role_permissions'];
-    if (perms is! Map) return true;
+    if (perms is! Map) return defaultAccess;
     final rolePerms = perms[roleKey];
-    if (rolePerms is! Map) return true;
-    return rolePerms[featureKey] as bool? ?? true;
+    if (rolePerms is! Map) return defaultAccess;
+    return rolePerms[featureKey] as bool? ?? defaultAccess;
   }
+
+  /// Convenience overload — defaults to true (backwards compat for callers without role defs).
+  bool roleCanAccess(String roleKey, String featureKey) =>
+      roleCanAccessWithDefault(roleKey, featureKey, true);
 
   factory School.fromJson(Map<String, dynamic> json) {
     final rf = json['resolved_features'];

@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/models/role_definitions.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -100,12 +101,12 @@ class _Feat {
 
 const _allFeatures = <_Feat>[
   // Pedagógico
-  _Feat('checkin',      'Entradas / Saídas',           'Registo de entradas e saídas pelo encarregado',                  _Cat.pedagogical, Icons.login_outlined),
+  _Feat('checkin',      'Presenças',                   'Registo diário de entradas e saídas dos alunos',                 _Cat.pedagogical, Icons.fact_check_outlined),
   _Feat('caderneta',    'Caderneta Diária',             'Relatório diário do educador / professor',                        _Cat.pedagogical, Icons.menu_book_outlined),
   _Feat('evaluations',  'Avaliações de Desenvolvimento','Fichas de avaliação por dimensões (Cognitivo, Motor…)',           _Cat.pedagogical, Icons.school_outlined),
   _Feat('activities',   'Actividades',                  'Planificação de actividades e horário semanal por grupo',         _Cat.pedagogical, Icons.sports_soccer_outlined),
   _Feat('timetable_k12',     'Horário Lectivo',          'Grade de horário: período × dia × disciplina × professor',        _Cat.pedagogical, Icons.table_chart_outlined),
-  _Feat('lesson_attendance', 'Presenças / Faltas',      'Livro de ponto: registo de presenças e faltas por aula',          _Cat.pedagogical, Icons.how_to_reg_outlined),
+  _Feat('lesson_attendance', 'Livro de Ponto',           'Registo de presenças e faltas por aula (K-12)',                   _Cat.pedagogical, Icons.how_to_reg_outlined),
   _Feat('grades',            'Notas',                   'Lançamento de notas por disciplina',                              _Cat.pedagogical, Icons.grade_outlined),
   _Feat('subjects',     'Disciplinas',                  'Cadastro de disciplinas e afectação por turma',                   _Cat.pedagogical, Icons.book_outlined),
   _Feat('report_cards', 'Boletins',                     'Geração e exportação de boletins escolares',                      _Cat.pedagogical, Icons.assignment_outlined),
@@ -156,49 +157,7 @@ const _catIcons = {
   _Cat.roles:       Icons.people_outline,
 };
 
-// ---------------------------------------------------------------------------
-// Role × feature permission definitions
-// Defines which features each role can potentially access (in their sidebar).
-// Platform admin can restrict any of these per-school.
-// ---------------------------------------------------------------------------
-
-class _RoleDef {
-  final String key;
-  final String label;
-  final IconData icon;
-  final Color color;
-  final List<String> features; // feature keys this role can access
-  const _RoleDef(this.key, this.label, this.icon, this.color, this.features);
-}
-
-const _rolePermDefs = <_RoleDef>[
-  _RoleDef('teacher', 'Professor / Educador', Icons.school_outlined, Colors.blue, [
-    'checkin', 'lesson_attendance', 'caderneta', 'grades', 'evaluations', 'timetable_k12',
-    'health', 'immunizations', 'incidents', 'announcements', 'messages',
-    'photos', 'events', 'trip_auth', 'pickup_auth', 'meal_orders', 'appointments', 'documents',
-  ]),
-  _RoleDef('coordinator', 'Coordenador Pedagógico', Icons.manage_accounts_outlined, Colors.teal, [
-    'timetable_k12', 'grades', 'subjects', 'report_cards', 'evaluations',
-    'health', 'incidents', 'announcements', 'messages', 'documents', 'events', 'appointments',
-  ]),
-  _RoleDef('finance_officer', 'Director Financeiro', Icons.account_balance_outlined, Colors.green, [
-    'finance', 'announcements', 'messages', 'documents',
-  ]),
-  _RoleDef('secretary', 'Secretaria', Icons.badge_outlined, Colors.orange, [
-    'announcements', 'messages', 'documents', 'events', 'appointments',
-  ]),
-  _RoleDef('nurse', 'Enfermagem', Icons.medical_services_outlined, Colors.red, [
-    'health', 'immunizations', 'med_report', 'incidents', 'messages',
-  ]),
-  _RoleDef('parent', 'Encarregado de Educação', Icons.family_restroom_outlined, Colors.purple, [
-    'caderneta', 'grades', 'report_cards', 'health', 'incidents',
-    'meal_orders', 'appointments', 'trip_auth', 'pickup_auth',
-    'photos', 'events', 'announcements', 'messages', 'documents', 'finance',
-  ]),
-  _RoleDef('student', 'Aluno', Icons.person_outlined, Colors.indigo, [
-    'grades', 'report_cards', 'documents', 'events', 'announcements',
-  ]),
-];
+// _rolePermDefs removed — using kConfigRoles from role_definitions.dart (single source of truth)
 
 // Feature labels for the role permission matrix (shorter, for chips/cells)
 const _featLabel = <String, String>{
@@ -213,7 +172,7 @@ const _featLabel = <String, String>{
   'photos': 'Galeria', 'events': 'Calendário',
   'documents': 'Documentos', 'announcements': 'Comunicados',
   'messages': 'Mensagens', 'finance': 'Financeiro',
-  'lesson_attendance': 'Livro de Ponto',
+  'lesson_attendance': 'Livro de Ponto', 'absences': 'Faltas Funcionários',
 };
 
 const _segments = [
@@ -335,21 +294,28 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
     });
   }
 
-  // Role permissions
+  // Role permissions — default access derived from role's defaultFeatures list
+  bool _roleDefault(String roleKey, String featureKey) {
+    final role = kConfigRoles.where((r) => r.key == roleKey).firstOrNull;
+    return role?.defaultFeatures.contains(featureKey) ?? true;
+  }
+
   bool _roleCanAccess(String roleKey, String featureKey) =>
-      _rolePerms[roleKey]?[featureKey] ?? true;
+      _rolePerms[roleKey]?[featureKey] ?? _roleDefault(roleKey, featureKey);
 
   bool _isRolePermOverridden(String roleKey, String featureKey) =>
       _rolePerms[roleKey]?.containsKey(featureKey) ?? false;
 
   void _toggleRolePerm(String roleKey, String featureKey, bool value) {
     setState(() {
-      if (value) {
-        // Granting access = remove override (default is true)
+      final def = _roleDefault(roleKey, featureKey);
+      if (value == def) {
+        // Matches default — remove explicit override (clean slate)
         _rolePerms[roleKey]?.remove(featureKey);
         if (_rolePerms[roleKey]?.isEmpty ?? false) _rolePerms.remove(roleKey);
       } else {
-        _rolePerms.putIfAbsent(roleKey, () => {})[featureKey] = false;
+        // Differs from default — store explicit override (true to grant, false to deny)
+        _rolePerms.putIfAbsent(roleKey, () => {})[featureKey] = value;
       }
     });
   }
@@ -357,12 +323,13 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
   Future<void> _save() async {
     setState(() { _saving = true; _error = null; });
     try {
-      // Build feature overrides dict
+      // Build feature overrides dict — only include keys that differ from segment default.
+      // Sending null values would corrupt resolved_features (null overrides the default).
       final featOverrides = <String, dynamic>{};
       for (final f in _allFeatures) {
         final def = (_segmentDefaults[_segment] ?? {})[f.key] ?? true;
         final eff = _effectiveFeat(f.key);
-        featOverrides[f.key] = (eff != def) ? eff : null; // null clears override
+        if (eff != def) featOverrides[f.key] = eff;
       }
       // Add role_permissions
       if (_rolePerms.isNotEmpty) {
@@ -601,15 +568,15 @@ class _RolePermsTab extends StatelessWidget {
             Icon(Icons.info_outline, size: 18, color: Colors.blue),
             SizedBox(width: 8),
             Expanded(child: Text(
-              'Por defeito, cada função acede a todas as funcionalidades activas que tem no seu menu. '
-              'Use os controlos abaixo para restringir o acesso de funções específicas a determinadas funcionalidades nesta escola.',
+              'Cada função tem um conjunto predefinido de funcionalidades. '
+              'Use os controlos abaixo para conceder acesso a funcionalidades extra ou restringir funcionalidades predefinidas, por função e por escola.',
               style: TextStyle(fontSize: 12, color: Colors.blue),
             )),
           ]),
         ),
         const SizedBox(height: 16),
 
-        for (final role in _rolePermDefs) ...[
+        for (final role in kConfigRoles) ...[
           const SizedBox(height: 8),
           _RolePermCard(
             role: role,
@@ -625,7 +592,7 @@ class _RolePermsTab extends StatelessWidget {
 }
 
 class _RolePermCard extends StatefulWidget {
-  final _RoleDef role;
+  final RoleDef role;
   final Set<String> enabledFeatures;
   final bool Function(String, String) roleCanAccess;
   final bool Function(String, String) isOverridden;
@@ -648,21 +615,50 @@ class _RolePermCardState extends State<_RolePermCard> {
 
   @override
   Widget build(BuildContext context) {
-    final relevantFeats = widget.role.features
-        .where((f) => widget.enabledFeatures.contains(f))
-        .toList();
-    final restrictedCount = relevantFeats
-        .where((f) => !widget.roleCanAccess(widget.role.key, f))
+    final allFeats = widget.enabledFeatures.toList()
+      ..sort((a, b) {
+        // Default-ON features first, then extras
+        final aDefault = widget.role.defaultFeatures.contains(a);
+        final bDefault = widget.role.defaultFeatures.contains(b);
+        if (aDefault == bDefault) return a.compareTo(b);
+        return aDefault ? -1 : 1;
+      });
+
+    final deniedCount = allFeats
+        .where((f) => widget.role.defaultFeatures.contains(f) &&
+            !widget.roleCanAccess(widget.role.key, f))
         .length;
+    final grantedExtras = allFeats
+        .where((f) => !widget.role.defaultFeatures.contains(f) &&
+            widget.roleCanAccess(widget.role.key, f))
+        .length;
+    final hasOverrides = deniedCount > 0 || grantedExtras > 0;
+
+    String subtitle;
+    Color subtitleColor;
+    if (deniedCount > 0 && grantedExtras > 0) {
+      subtitle = '$deniedCount restrição(ões) · $grantedExtras extra(s) concedido(s)';
+      subtitleColor = Colors.orange;
+    } else if (deniedCount > 0) {
+      subtitle = '$deniedCount restrição(ões) activa(s)';
+      subtitleColor = Colors.orange;
+    } else if (grantedExtras > 0) {
+      subtitle = '$grantedExtras funcionalidade(s) extra concedida(s)';
+      subtitleColor = Colors.blue;
+    } else {
+      subtitle = 'Acesso predefinido a ${widget.role.defaultFeatures.where(widget.enabledFeatures.contains).length} funcionalidade(s)';
+      subtitleColor = AppTheme.textSecondary;
+    }
 
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: restrictedCount > 0
-              ? Colors.orange.withOpacity(0.4)
+          color: hasOverrides
+              ? widget.role.color.withOpacity(0.35)
               : Colors.grey.shade200,
+          width: hasOverrides ? 1.5 : 1,
         ),
       ),
       child: Column(children: [
@@ -684,69 +680,126 @@ class _RolePermCardState extends State<_RolePermCard> {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(widget.role.label,
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(
-                  restrictedCount > 0
-                      ? '$restrictedCount restrição(ões) activa(s)'
-                      : 'Acesso completo às funcionalidades activas',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: restrictedCount > 0 ? Colors.orange : AppTheme.textSecondary,
-                    fontWeight: restrictedCount > 0 ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12, color: subtitleColor,
+                        fontWeight: hasOverrides ? FontWeight.w600 : FontWeight.normal)),
               ])),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more,
-                  color: Colors.grey.shade600),
+                  color: Colors.grey.shade500),
             ]),
           ),
         ),
-        if (_expanded && relevantFeats.isEmpty)
+        if (_expanded) ...[
+          const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-            child: Text(
-              'Nenhuma funcionalidade activa nesta escola é relevante para esta função.',
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-            ),
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // ── Default features ──────────────────────────────────────────
+              if (allFeats.any(widget.role.defaultFeatures.contains)) ...[
+                _PermSection(
+                  label: 'Acesso por defeito',
+                  subtitle: 'Activo para esta função salvo restrição explícita',
+                  color: Colors.green,
+                  icon: Icons.check_circle_outline,
+                  features: allFeats.where(widget.role.defaultFeatures.contains).toList(),
+                  roleKey: widget.role.key,
+                  roleCanAccess: widget.roleCanAccess,
+                  isOverridden: widget.isOverridden,
+                  onToggle: widget.onToggle,
+                ),
+                const SizedBox(height: 16),
+              ],
+              // ── Extra features (not in defaults) ─────────────────────────
+              if (allFeats.any((f) => !widget.role.defaultFeatures.contains(f))) ...[
+                _PermSection(
+                  label: 'Funcionalidades adicionais',
+                  subtitle: 'Inactivo por defeito — active para conceder acesso extra',
+                  color: Colors.blue,
+                  icon: Icons.add_circle_outline,
+                  features: allFeats.where((f) => !widget.role.defaultFeatures.contains(f)).toList(),
+                  roleKey: widget.role.key,
+                  roleCanAccess: widget.roleCanAccess,
+                  isOverridden: widget.isOverridden,
+                  onToggle: widget.onToggle,
+                ),
+              ],
+              if (allFeats.isEmpty)
+                Text('Nenhuma funcionalidade activa nesta escola.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+            ]),
           ),
-        if (_expanded && relevantFeats.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-            child: Wrap(
-              spacing: 8, runSpacing: 8,
-              children: relevantFeats.map((f) {
-                final allowed = widget.roleCanAccess(widget.role.key, f);
-                final overridden = widget.isOverridden(widget.role.key, f);
-                return FilterChip(
-                  avatar: Icon(
-                    allowed ? Icons.check_circle_outline : Icons.block_outlined,
-                    size: 16,
-                    color: allowed
-                        ? (overridden ? Colors.orange : Colors.green)
-                        : Colors.red,
-                  ),
-                  label: Text(_featLabel[f] ?? f,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: allowed ? null : Colors.red,
-                        decoration: allowed ? null : TextDecoration.lineThrough,
-                      )),
-                  selected: allowed,
-                  selectedColor: overridden
-                      ? Colors.orange.withOpacity(0.15)
-                      : Colors.green.withOpacity(0.12),
-                  checkmarkColor: Colors.green,
-                  onSelected: (v) => widget.onToggle(widget.role.key, f, v),
-                  side: BorderSide(
-                    color: allowed
-                        ? (overridden ? Colors.orange.withOpacity(0.5) : Colors.green.withOpacity(0.4))
-                        : Colors.red.withOpacity(0.4),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
+        ],
       ]),
     );
+  }
+}
+
+class _PermSection extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final Color color;
+  final IconData icon;
+  final List<String> features;
+  final String roleKey;
+  final bool Function(String, String) roleCanAccess;
+  final bool Function(String, String) isOverridden;
+  final void Function(String, String, bool) onToggle;
+
+  const _PermSection({
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.icon,
+    required this.features,
+    required this.roleKey,
+    required this.roleCanAccess,
+    required this.isOverridden,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+      ]),
+      const SizedBox(height: 2),
+      Text(subtitle,
+          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: features.map((f) {
+          final allowed = roleCanAccess(roleKey, f);
+          final overridden = isOverridden(roleKey, f);
+          return FilterChip(
+            visualDensity: VisualDensity.compact,
+            label: Text(_featLabel[f] ?? f,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: allowed ? null : Colors.red.shade700,
+                  decoration: allowed ? null : TextDecoration.lineThrough,
+                  fontWeight: overridden ? FontWeight.w600 : FontWeight.normal,
+                )),
+            selected: allowed,
+            selectedColor: overridden
+                ? color.withOpacity(0.15)
+                : color.withOpacity(0.10),
+            checkmarkColor: color,
+            onSelected: (v) => onToggle(roleKey, f, v),
+            side: BorderSide(
+              color: allowed
+                  ? (overridden ? color.withOpacity(0.6) : color.withOpacity(0.3))
+                  : Colors.red.withOpacity(0.4),
+            ),
+          );
+        }).toList(),
+      ),
+    ]);
   }
 }
 

@@ -43,13 +43,16 @@ class School(Base):
 
     @property
     def resolved_features(self) -> dict:
-        """Merge segment defaults with per-school overrides (deep-merge dicts)."""
+        """Merge segment defaults with per-school overrides (deep-merge dicts).
+        Null values in overrides are skipped — they fall back to the segment default.
+        """
         defaults = _SEGMENT_DEFAULTS.get(self.segment, _SEGMENT_DEFAULTS["preschool"]).copy()
         if self.features:
             for key, value in self.features.items():
+                if value is None:
+                    continue  # skip nulls — use segment default
                 if isinstance(value, dict) and isinstance(defaults.get(key), dict):
-                    merged = {**defaults[key], **value}
-                    defaults[key] = merged
+                    defaults[key] = {**defaults[key], **value}
                 else:
                     defaults[key] = value
         return defaults

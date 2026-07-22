@@ -3,11 +3,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Employee(Base):
@@ -62,3 +67,16 @@ class Employee(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # Relationship to User (one employee → one user account)
+    user: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys="[User.employee_id]", uselist=False, lazy="raise"
+    )
+
+    @property
+    def roles(self) -> list:
+        """Returns the user's roles list, or empty list if no account."""
+        try:
+            return self.user.roles if self.user else []
+        except Exception:
+            return []

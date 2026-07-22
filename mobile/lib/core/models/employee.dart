@@ -4,7 +4,8 @@ class Employee {
   final String firstName;
   final String? middleName;
   final String lastName;
-  final String employeeType; // teacher, staff, admin
+  final String employeeType; // teacher, staff, admin (HR category)
+  final List<String> roles;  // actual system roles from User.roles
   final String? position;
   final String? cedula;
   final String? phone;
@@ -21,6 +22,7 @@ class Employee {
     this.middleName,
     required this.lastName,
     required this.employeeType,
+    this.roles = const [],
     this.position,
     this.cedula,
     this.phone,
@@ -37,11 +39,11 @@ class Employee {
   String get employeeTypeLabel {
     switch (employeeType) {
       case 'teacher':
-        return 'Educador(a)';
+        return 'Professor / Educador';
       case 'staff':
-        return 'Auxiliar';
+        return 'Funcionário';
       case 'admin':
-        return 'Administração';
+        return 'Administrador';
       default:
         return employeeType;
     }
@@ -55,6 +57,7 @@ class Employee {
       middleName: json['middle_name'] as String?,
       lastName: json['last_name'] as String? ?? '',
       employeeType: json['employee_type'] as String? ?? 'staff',
+      roles: (json['roles'] as List?)?.map((e) => e.toString()).toList() ?? [],
       position: json['position'] as String?,
       cedula: json['cedula'] as String?,
       phone: json['phone'] as String?,

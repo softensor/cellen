@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/models/employee.dart';
-import '../../../core/models/school_terms.dart';
+import '../../../core/models/role_definitions.dart';
 import '../../../core/providers/currency_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ class EmployeesListScreen extends ConsumerStatefulWidget {
 }
 
 class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
-  String _filter = 'all'; // all, teacher, staff, admin
+  String _filter = 'all'; // all, or a role key from kStaffRoles
 
   Future<void> _deactivateEmployee(Employee emp) async {
     final confirmed = await showDialog<bool>(useRootNavigator: false, 
@@ -74,7 +74,6 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
   Widget build(BuildContext context) {
     final employeesAsync = ref.watch(employeesProvider);
     final school = ref.watch(schoolInfoProvider).valueOrNull;
-    final terms = SchoolTerms.of(school);
 
     return Scaffold(
       appBar: AppBar(
@@ -87,7 +86,7 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
       ),
       body: Column(
         children: [
-          // Filter chips
+          // Filter chips — built from kStaffRoles (single source of truth)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: SingleChildScrollView(
@@ -99,25 +98,15 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                     selected: _filter == 'all',
                     onSelected: (_) => setState(() => _filter = 'all'),
                   ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: terms.isK12 ? 'Professores' : 'Educadores',
-                    selected: _filter == 'teacher',
-                    onSelected: (_) =>
-                        setState(() => _filter = 'teacher'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'Auxiliares',
-                    selected: _filter == 'staff',
-                    onSelected: (_) => setState(() => _filter = 'staff'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'Admin',
-                    selected: _filter == 'admin',
-                    onSelected: (_) => setState(() => _filter = 'admin'),
-                  ),
+                  for (final role in kStaffRoles.where((r) =>
+                      school?.hasFeature(r.featureFlag) ?? r.alwaysAvailable)) ...[
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: role.label,
+                      selected: _filter == role.key,
+                      onSelected: (_) => setState(() => _filter = role.key),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -148,7 +137,9 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                 final filtered = _filter == 'all'
                     ? employees
                     : employees
-                        .where((e) => e.employeeType == _filter)
+                        .where((e) => e.roles.contains(_filter) ||
+                            (_filter == 'school_admin' && e.employeeType == 'admin') ||
+                            (e.roles.isEmpty && e.employeeType == _filter))
                         .toList();
 
                 if (filtered.isEmpty) {
@@ -248,7 +239,22 @@ class _EmployeeTile extends StatelessWidget {
           children: [
             if (employee.position != null) Text(employee.position!),
             const SizedBox(height: 4),
-            _TypeChip(type: employee.employeeType, label: employee.employeeTypeLabel),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: employee.roles.isNotEmpty
+                  ? employee.roles.map((r) {
+                      final def = roleDefByKey(r);
+                      return _RoleChip(
+                        label: def?.label ?? r,
+                        color: def?.color ?? Colors.grey,
+                      );
+                    }).toList()
+                  : [_RoleChip(
+                      label: employee.employeeTypeLabel,
+                      color: Colors.grey,
+                    )],
+            ),
           ],
         ),
         trailing: Row(
@@ -293,24 +299,13 @@ class _EmployeeTile extends StatelessWidget {
   }
 }
 
-class _TypeChip extends StatelessWidget {
-  final String type;
+class _RoleChip extends StatelessWidget {
   final String label;
-  const _TypeChip({required this.type, required this.label});
+  final Color color;
+  const _RoleChip({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    Color color;
-    switch (type) {
-      case 'teacher':
-        color = Colors.blue;
-        break;
-      case 'admin':
-        color = Colors.purple;
-        break;
-      default:
-        color = Colors.teal;
-    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -319,8 +314,7 @@ class _TypeChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }

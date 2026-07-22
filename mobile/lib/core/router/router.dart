@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_provider.dart';
 import '../../core/auth/auth_state.dart';
+import '../../core/models/role_definitions.dart';
 import '../../core/models/school.dart';
 import '../../core/widgets/sidebar_layout.dart';
 import '../../features/auth/login_screen.dart';
@@ -251,33 +252,45 @@ const _adminItems = [
   SidebarItem(path: '/admin/school-settings', label: 'Configurações',icon: Icons.settings_outlined,               selectedIcon: Icons.settings),
 ];
 
-// Coordinator — academic management, no finance, no school settings
+// Coordinator — academic management + grantable extras (finance, absences already default)
 const _coordinatorItems = [
-  SidebarItem(path: '/admin',             label: 'Dashboard',    icon: Icons.dashboard_outlined,         selectedIcon: Icons.dashboard),
-  SidebarItem(path: '/admin/people',      label: 'Pessoas',      icon: Icons.people_outline,             selectedIcon: Icons.people),
-  SidebarItem(path: '/admin/academic',    label: 'Académico',    icon: Icons.school_outlined,            selectedIcon: Icons.school),
-  SidebarItem(path: '/admin/health-hub',  label: 'Saúde',        icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
-  SidebarItem(path: '/admin/comms',       label: 'Comunicação',  icon: Icons.forum_outlined,             selectedIcon: Icons.forum),
-  SidebarItem(path: '/admin/activities',  label: 'Actividades',  icon: Icons.category_outlined,          selectedIcon: Icons.category),
-  SidebarItem(path: '/admin/food-hub',    label: 'Alimentação',  icon: Icons.restaurant_outlined,        selectedIcon: Icons.restaurant),
-  SidebarItem(path: '/admin/reports/med', label: 'Relatórios',   icon: Icons.bar_chart_outlined,         selectedIcon: Icons.bar_chart),
-  SidebarItem(path: '/notifications',     label: 'Notificações', icon: Icons.notifications_outlined,     selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin',             label: 'Dashboard',    icon: Icons.dashboard_outlined,              selectedIcon: Icons.dashboard),
+  SidebarItem(path: '/admin/people',      label: 'Pessoas',      icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic',    label: 'Académico',    icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/health-hub',  label: 'Saúde',        icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/comms',       label: 'Comunicação',  icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
+  SidebarItem(path: '/admin/activities',  label: 'Actividades',  icon: Icons.category_outlined,               selectedIcon: Icons.category),
+  SidebarItem(path: '/admin/food-hub',    label: 'Alimentação',  icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/admin/reports/med', label: 'Relatórios',   icon: Icons.bar_chart_outlined,              selectedIcon: Icons.bar_chart),
+  SidebarItem(path: '/admin/absences',    label: 'Ausências',    icon: Icons.event_busy_outlined,             selectedIcon: Icons.event_busy),
+  // Grantable extras (not default for coordinator):
+  SidebarItem(path: '/admin/finance',     label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/notifications',     label: 'Notificações', icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
 ];
 
-// Finance Officer — finance only
+// Finance Officer — finance by default; people/comms grantable
 const _financeItems = [
-  SidebarItem(path: '/admin/finance', label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/admin/finance',  label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  // Grantable extras:
+  SidebarItem(path: '/admin/people',  label: 'Pessoas',      icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/comms',   label: 'Comunicação',  icon: Icons.forum_outlined,                  selectedIcon: Icons.forum),
   SidebarItem(path: '/notifications', label: 'Notificações', icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
 ];
 
-// Secretary — enrollment lookup, comms, read-only admin
+// Secretary — comms/absences by default; health, finance, food, activities grantable
 const _secretaryItems = [
-  SidebarItem(path: '/admin/people',   label: 'Pessoas',      icon: Icons.people_outline,         selectedIcon: Icons.people),
-  SidebarItem(path: '/admin/academic', label: 'Académico',    icon: Icons.school_outlined,         selectedIcon: Icons.school),
-  SidebarItem(path: '/admin/absences', label: 'Ausências',    icon: Icons.event_busy_outlined,     selectedIcon: Icons.event_busy),
-  SidebarItem(path: '/announcements',  label: 'Comunicados',  icon: Icons.campaign_outlined,       selectedIcon: Icons.campaign),
-  SidebarItem(path: '/messages',       label: 'Mensagens',    icon: Icons.chat_bubble_outline,     selectedIcon: Icons.chat_bubble),
-  SidebarItem(path: '/notifications',  label: 'Notificações', icon: Icons.notifications_outlined,  selectedIcon: Icons.notifications),
+  SidebarItem(path: '/admin/people',      label: 'Pessoas',      icon: Icons.people_outline,                  selectedIcon: Icons.people),
+  SidebarItem(path: '/admin/academic',    label: 'Académico',    icon: Icons.school_outlined,                 selectedIcon: Icons.school),
+  SidebarItem(path: '/admin/absences',    label: 'Ausências',    icon: Icons.event_busy_outlined,             selectedIcon: Icons.event_busy),
+  SidebarItem(path: '/announcements',     label: 'Comunicados',  icon: Icons.campaign_outlined,               selectedIcon: Icons.campaign),
+  SidebarItem(path: '/messages',          label: 'Mensagens',    icon: Icons.chat_bubble_outline,             selectedIcon: Icons.chat_bubble),
+  // Grantable extras:
+  SidebarItem(path: '/admin/health-hub',  label: 'Saúde',        icon: Icons.health_and_safety_outlined,      selectedIcon: Icons.health_and_safety),
+  SidebarItem(path: '/admin/finance',     label: 'Financeiro',   icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet),
+  SidebarItem(path: '/admin/food-hub',    label: 'Alimentação',  icon: Icons.restaurant_outlined,             selectedIcon: Icons.restaurant),
+  SidebarItem(path: '/admin/activities',  label: 'Actividades',  icon: Icons.category_outlined,               selectedIcon: Icons.category),
+  SidebarItem(path: '/admin/reports/med', label: 'Relatórios',   icon: Icons.bar_chart_outlined,              selectedIcon: Icons.bar_chart),
+  SidebarItem(path: '/notifications',     label: 'Notificações', icon: Icons.notifications_outlined,          selectedIcon: Icons.notifications),
 ];
 
 // Teacher — classroom operations
@@ -304,11 +317,17 @@ const _teacherItems = [
   SidebarItem(path: '/notifications',         label: 'Notificações',  icon: Icons.notifications_outlined,             selectedIcon: Icons.notifications),
 ];
 
-// Nurse — health + immunizations only
+// Nurse — health, immunizations, med_report, incidents by default; comms grantable
 const _nurseItems = [
   SidebarItem(path: '/health',               label: 'Saúde',        icon: Icons.health_and_safety_outlined, selectedIcon: Icons.health_and_safety),
   SidebarItem(path: '/health/immunizations', label: 'Vacinas',      icon: Icons.vaccines_outlined,          selectedIcon: Icons.vaccines),
+  SidebarItem(path: '/incidents',            label: 'Ocorrências',  icon: Icons.report_outlined,            selectedIcon: Icons.report),
+  SidebarItem(path: '/admin/reports/med',    label: 'Rel. Médico',  icon: Icons.medical_information_outlined, selectedIcon: Icons.medical_information),
   SidebarItem(path: '/messages',             label: 'Mensagens',    icon: Icons.chat_bubble_outline,        selectedIcon: Icons.chat_bubble),
+  // Grantable extras:
+  SidebarItem(path: '/announcements',        label: 'Comunicados',  icon: Icons.campaign_outlined,          selectedIcon: Icons.campaign),
+  SidebarItem(path: '/events',               label: 'Calendário',   icon: Icons.calendar_month_outlined,    selectedIcon: Icons.calendar_month),
+  SidebarItem(path: '/documents',            label: 'Documentos',   icon: Icons.folder_outlined,            selectedIcon: Icons.folder),
   SidebarItem(path: '/notifications',        label: 'Notificações', icon: Icons.notifications_outlined,     selectedIcon: Icons.notifications),
 ];
 
@@ -411,14 +430,17 @@ List<SidebarItem> _buildSidebarItems(Set<UserRole> roles, [School? school]) {
   final result = <SidebarItem>[];
   for (final (role, items) in _roleItemOrder) {
     if (roles.contains(role)) {
-      final permKey = _rolePermKey[role]; // null for admin/platform — no restrictions
+      final permKey = _rolePermKey[role]; // null for admin/platform — full access
+      final roleDef = permKey != null ? roleDefByKey(permKey) : null;
       for (final item in items) {
         final feature = _pathFeatureMap[item.path];
         // 1. School must have this feature enabled
         if (feature != null && !(school?.hasFeature(feature) ?? true)) continue;
-        // 2. This role must be allowed to access this feature at this school
-        if (feature != null && permKey != null &&
-            !(school?.roleCanAccess(permKey, feature) ?? true)) continue;
+        // 2. Role must have access — default comes from roleDef.defaultFeatures
+        if (feature != null && permKey != null) {
+          final defaultAccess = roleDef?.defaultFeatures.contains(feature) ?? true;
+          if (!(school?.roleCanAccessWithDefault(permKey, feature, defaultAccess) ?? defaultAccess)) continue;
+        }
         if (seen.add(item.path)) result.add(item);
       }
     }

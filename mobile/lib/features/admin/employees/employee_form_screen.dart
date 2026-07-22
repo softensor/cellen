@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/models/employee.dart';
+import '../../../core/models/role_definitions.dart';
 import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
 import 'employees_list_screen.dart' show employeesProvider;
@@ -37,6 +38,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   final _passwordCtrl = TextEditingController();
 
   String _employeeType = 'teacher';
+  // Multi-role selection — used for new employees; empty = use _employeeType mapping
+  final Set<String> _selectedRoles = {'teacher'};
   DateTime? _hireDate;
   bool _isLoading = false;
   bool _isLoadingEmployee = false;
@@ -66,6 +69,9 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       _positionCtrl.text = emp.position ?? '';
       setState(() {
         _employeeType = emp.employeeType;
+        _selectedRoles
+          ..clear()
+          ..add(emp.employeeType == 'admin' ? 'school_admin' : emp.employeeType);
         _hireDate = emp.hireDate;
         _isLoadingEmployee = false;
       });
@@ -120,10 +126,18 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       _error = null;
     });
 
+    // Derive employee_type from selected roles for HR stats
+    final primaryRole = _selectedRoles.isEmpty ? 'teacher' : _selectedRoles.first;
+    final derivedType = primaryRole == 'school_admin'
+        ? 'admin'
+        : (primaryRole == 'teacher' ? 'teacher' : 'staff');
+
     final body = <String, dynamic>{
       'first_name': _firstNameCtrl.text.trim(),
       'last_name': _lastNameCtrl.text.trim(),
-      'employee_type': _employeeType,
+      'employee_type': derivedType,
+      if (!isEditing && _selectedRoles.isNotEmpty)
+        'roles': _selectedRoles.toList(),
     };
     if (_middleNameCtrl.text.trim().isNotEmpty) {
       body['middle_name'] = _middleNameCtrl.text.trim();
@@ -303,27 +317,58 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
               ),
               const SizedBox(height: 24),
 
-              _sectionHeader(context, 'Dados de Emprego'),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _employeeType,
-                decoration: const InputDecoration(
-                  labelText: 'Tipo de Funcionário *',
-                  prefixIcon: Icon(Icons.work),
-                ),
-                items: [
-                  DropdownMenuItem(
-                      value: 'teacher', child: Text(terms.isK12 ? 'Professor(a)' : 'Educador(a)')),
-                  DropdownMenuItem(
-                      value: 'staff', child: Text('Auxiliar')),
-                  DropdownMenuItem(
-                      value: 'admin', child: Text('Administração')),
-                ],
-                onChanged: (v) {
-                  if (v != null) setState(() => _employeeType = v);
-                },
+              _sectionHeader(context, 'Funções de Acesso'),
+              const SizedBox(height: 4),
+              Text(
+                'Seleccione uma ou mais funções. As funcionalidades disponíveis dependem da configuração da escola.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
+              const SizedBox(height: 12),
+              Builder(builder: (context) {
+                final school = ref.watch(schoolInfoProvider).valueOrNull;
+                final available = kStaffRoles.where((r) =>
+                  r.alwaysAvailable || (school?.hasFeature(r.featureFlag) ?? true)
+                ).toList();
+                if (_selectedRoles.isEmpty && available.isNotEmpty) {
+                  _selectedRoles.add(available.first.key);
+                }
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: available.map((role) {
+                    final selected = _selectedRoles.contains(role.key);
+                    return FilterChip(
+                      avatar: Icon(role.icon,
+                          size: 18,
+                          color: selected ? Colors.white : role.color),
+                      label: Text(role.label),
+                      selected: selected,
+                      selectedColor: role.color,
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(
+                          color: selected ? Colors.white : null,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                          fontSize: 13),
+                      onSelected: (on) {
+                        setState(() {
+                          if (on) {
+                            _selectedRoles.add(role.key);
+                          } else if (_selectedRoles.length > 1) {
+                            _selectedRoles.remove(role.key);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                );
+              }),
+              if (_selectedRoles.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Seleccione pelo menos uma função.',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                ),
               const SizedBox(height: 12),
 
               TextFormField(

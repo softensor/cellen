@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_school_id, require_school_admin
@@ -38,7 +39,7 @@ async def list_employees(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_school_admin),
 ):
-    query = select(Employee).where(Employee.school_id == school_id)
+    query = select(Employee).where(Employee.school_id == school_id).options(selectinload(Employee.user))
     if employee_type:
         query = query.where(Employee.employee_type == employee_type)
     if employee_status:
@@ -67,12 +68,16 @@ async def create_employee(
     db.add(employee)
     await db.flush()  # get employee.id before creating user
 
-    role = _EMPLOYEE_TYPE_TO_ROLE.get(body.employee_type, "staff")
+    # Use explicitly provided roles, or fall back to employee_type mapping
+    if body.roles:
+        assigned_roles = body.roles
+    else:
+        assigned_roles = [_EMPLOYEE_TYPE_TO_ROLE.get(body.employee_type, "staff")]
     user = User(
         school_id=school_id,
         username=body.username,
         password_hash=hash_password(body.password),
-        roles=[role],
+        roles=assigned_roles,
         employee_id=employee.id,
     )
     db.add(user)
@@ -90,6 +95,7 @@ async def get_employee(
 ):
     result = await db.execute(
         select(Employee).where(Employee.id == employee_id, Employee.school_id == school_id)
+        .options(selectinload(Employee.user))
     )
     employee = result.scalar_one_or_none()
     if employee is None:
@@ -107,6 +113,7 @@ async def update_employee(
 ):
     result = await db.execute(
         select(Employee).where(Employee.id == employee_id, Employee.school_id == school_id)
+        .options(selectinload(Employee.user))
     )
     employee = result.scalar_one_or_none()
     if employee is None:

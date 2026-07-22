@@ -46,6 +46,8 @@ class EmployeeBase(BaseModel):
 class EmployeeCreate(EmployeeBase):
     username: str
     password: str
+    # Explicit role list — if provided, used directly instead of deriving from employee_type.
+    roles: Optional[list[str]] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -91,3 +93,4 @@ class EmployeeResponse(EmployeeBase):
     school_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    roles: list[str] = []
