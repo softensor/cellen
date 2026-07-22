@@ -167,7 +167,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Gestão de Creche',
+                      'Gestão Escolar',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.85),
                         fontSize: 15,

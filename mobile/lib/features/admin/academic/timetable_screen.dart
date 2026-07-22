@@ -261,9 +261,22 @@ class _EmployeeItem {
   }
 }
 
+class _TurmaItem {
+  final String id;
+  final String name;
+  const _TurmaItem({required this.id, required this.name});
+  factory _TurmaItem.fromJson(Map<String, dynamic> j) =>
+      _TurmaItem(id: j['id'] as String, name: j['name'] as String);
+}
+
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
+
+final _turmasProvider = FutureProvider.autoDispose<List<_TurmaItem>>((ref) async {
+  final data = await ref.read(apiClientProvider).get('/academic/turmas') as List;
+  return data.map((e) => _TurmaItem.fromJson(e as Map<String, dynamic>)).toList();
+});
 
 /// All schedules for a given school year (with turma_name from server).
 final _schedulesForYearProvider =
@@ -670,23 +683,7 @@ class _RequirementsTab extends ConsumerWidget {
       ),
       data: (schedules) {
         if (schedules.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.list_alt_outlined,
-                    size: 56, color: Colors.grey.shade300),
-                const SizedBox(height: 12),
-                const Text('Nenhuma turma tem horário lectivo neste ano.'),
-                const SizedBox(height: 6),
-                Text(
-                  'Vá a Académico → Turmas para criar horários lectivos.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          );
+          return _NoSchedulesSetup(yearId: yearId, canEdit: canEdit);
         }
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
@@ -698,6 +695,154 @@ class _RequirementsTab extends ConsumerWidget {
         );
       },
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// No-schedules setup: list turmas + bulk-create schedules for the year
+// ---------------------------------------------------------------------------
+
+class _NoSchedulesSetup extends ConsumerStatefulWidget {
+  final String yearId;
+  final bool canEdit;
+  const _NoSchedulesSetup({required this.yearId, required this.canEdit});
+
+  @override
+  ConsumerState<_NoSchedulesSetup> createState() => _NoSchedulesSetupState();
+}
+
+class _NoSchedulesSetupState extends ConsumerState<_NoSchedulesSetup> {
+  bool _creating = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    final turmasAsync = ref.watch(_turmasProvider);
+
+    return Center(
+      child: turmasAsync.when(
+        loading: () => const CircularProgressIndicator(),
+        error: (e, _) => Text('Erro ao carregar turmas: $e',
+            style: const TextStyle(color: AppTheme.danger)),
+        data: (turmas) {
+          if (turmas.isEmpty) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.group_outlined,
+                    size: 56, color: Colors.grey.shade300),
+                const SizedBox(height: 12),
+                const Text('Nenhuma turma criada.'),
+                const SizedBox(height: 6),
+                Text(
+                  'Crie turmas primeiro em Académico → Turmas.',
+                  style:
+                      TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                ),
+              ],
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.table_chart_outlined,
+                    size: 56, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhuma turma tem horário lectivo para este ano.',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Crie os horários lectivos para as ${turmas.length} turma(s) de uma só vez:',
+                  style:
+                      TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                // Turma list preview
+                Container(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade200),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: turmas
+                        .map((t) => ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.class_outlined,
+                                  size: 18),
+                              title: Text(t.name),
+                            ))
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_error != null) ...[
+                  Text(_error!,
+                      style: const TextStyle(color: AppTheme.danger)),
+                  const SizedBox(height: 12),
+                ],
+                if (widget.canEdit)
+                  FilledButton.icon(
+                    onPressed: _creating
+                        ? null
+                        : () => _createAll(turmas),
+                    icon: _creating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.add_chart),
+                    label: Text(
+                        'Criar Horários para ${turmas.length} Turma(s)'),
+                  )
+                else
+                  Text(
+                    'Contacte um administrador para criar os horários.',
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _createAll(List<_TurmaItem> turmas) async {
+    setState(() {
+      _creating = true;
+      _error = null;
+    });
+    final api = ref.read(apiClientProvider);
+    int created = 0;
+    for (final turma in turmas) {
+      try {
+        await api.post('/academic/schedules', data: {
+          'turma_id': turma.id,
+          'school_year_id': widget.yearId,
+        });
+        created++;
+      } catch (_) {
+        // Ignore duplicates (409) — schedule may already exist
+      }
+    }
+    if (mounted) {
+      if (created == 0) {
+        setState(() {
+          _error = 'Não foi possível criar nenhum horário. Tente novamente.';
+          _creating = false;
+        });
+      } else {
+        ref.invalidate(_schedulesForYearProvider(widget.yearId));
+      }
+    }
   }
 }
 
