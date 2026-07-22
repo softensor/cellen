@@ -1,6 +1,7 @@
 """K-12 lesson-level attendance (livro de ponto)."""
 import uuid
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, select
@@ -219,19 +220,20 @@ async def turma_summary(
 
 @router.get("/today", response_model=list[TodaySession])
 async def today_sessions(
+    date: Optional[date] = Query(None, description="Date to query (defaults to today)"),
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
     user: object = Depends(require_teacher),
 ):
     from datetime import date as date_cls
-    today = date_cls.today()
+    target_date = date or date_cls.today()
 
     employee_id = getattr(user, "employee_id", None)
     if not employee_id:
         return []
 
-    # Find timetable cells assigned to this teacher today (day_of_week = weekday)
-    day_of_week = today.weekday()  # 0=Mon..4=Fri
+    # Find timetable cells assigned to this teacher on the target day
+    day_of_week = target_date.weekday()  # 0=Mon..4=Fri
     slots_q = (
         select(ScheduleSlot)
         .join(TimetablePeriod, TimetablePeriod.id == ScheduleSlot.period_id)
@@ -258,11 +260,11 @@ async def today_sessions(
         count_result = await db.execute(count_q)
         student_count = count_result.scalar() or 0
 
-        # Check if any attendance record exists for this session today
+        # Check if any attendance record exists for this session on target_date
         taken_q = select(func.count(LessonAttendance.id)).where(
             LessonAttendance.schedule_id == slot.schedule_id,
             LessonAttendance.subject_id == slot.subject_id,
-            LessonAttendance.date == today,
+            LessonAttendance.date == target_date,
             LessonAttendance.period_id == slot.period_id,
             LessonAttendance.school_id == school_id,
         )

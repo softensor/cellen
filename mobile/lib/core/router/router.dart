@@ -705,6 +705,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 periodId: extra['periodId'] ?? '',
                 turmaName: extra['turmaName'] ?? '',
                 subjectName: extra['subjectName'] ?? '',
+                date: extra['date'],
               );
             },
           ),

@@ -10,7 +10,7 @@ import '../../../core/theme/app_theme.dart';
 // Models
 // ---------------------------------------------------------------------------
 
-class _TodaySession {
+class TodaySession {
   final String scheduleId;
   final String turmaName;
   final String subjectId;
@@ -22,7 +22,7 @@ class _TodaySession {
   final bool attendanceTaken;
   final int studentCount;
 
-  const _TodaySession({
+  const TodaySession({
     required this.scheduleId,
     required this.turmaName,
     required this.subjectId,
@@ -35,7 +35,7 @@ class _TodaySession {
     required this.studentCount,
   });
 
-  factory _TodaySession.fromJson(Map<String, dynamic> j) => _TodaySession(
+  factory TodaySession.fromJson(Map<String, dynamic> j) => TodaySession(
         scheduleId: j['schedule_id'] as String,
         turmaName: j['turma_name'] as String? ?? '',
         subjectId: j['subject_id'] as String,
@@ -74,11 +74,11 @@ class _Student {
 // Providers
 // ---------------------------------------------------------------------------
 
-final _todaySessionsProvider =
-    FutureProvider.autoDispose<List<_TodaySession>>((ref) async {
-  final data = await ref.read(apiClientProvider).get('/lesson-attendance/today') as List;
+final sessionsForDateProvider =
+    FutureProvider.autoDispose.family<List<TodaySession>, String>((ref, dateStr) async {
+  final data = await ref.read(apiClientProvider).get('/lesson-attendance/today?date=$dateStr') as List;
   return data
-      .map((e) => _TodaySession.fromJson(e as Map<String, dynamic>))
+      .map((e) => TodaySession.fromJson(e as Map<String, dynamic>))
       .toList();
 });
 
@@ -100,16 +100,68 @@ final _sessionStudentsProvider = FutureProvider.autoDispose
 });
 
 // ---------------------------------------------------------------------------
-// Today Sessions Screen (entry point for teacher)
+// Today Sessions Screen (entry point for teacher) — with week navigation
 // ---------------------------------------------------------------------------
 
-class LessonAttendanceTodayScreen extends ConsumerWidget {
+class LessonAttendanceTodayScreen extends ConsumerStatefulWidget {
   const LessonAttendanceTodayScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sessionsAsync = ref.watch(_todaySessionsProvider);
-    final today = DateFormat('EEEE, d MMM yyyy', 'pt').format(DateTime.now());
+  ConsumerState<LessonAttendanceTodayScreen> createState() =>
+      _LessonAttendanceTodayScreenState();
+}
+
+class _LessonAttendanceTodayScreenState
+    extends ConsumerState<LessonAttendanceTodayScreen> {
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = _nearestWeekday(DateTime.now());
+  }
+
+  /// Snap to nearest weekday (if today is weekend, go to last Friday)
+  static DateTime _nearestWeekday(DateTime d) {
+    if (d.weekday == DateTime.saturday) return d.subtract(const Duration(days: 1));
+    if (d.weekday == DateTime.sunday) return d.subtract(const Duration(days: 2));
+    return d;
+  }
+
+  String get _dateStr =>
+      DateFormat('yyyy-MM-dd').format(_selectedDate);
+
+  bool get _isToday {
+    final now = DateTime.now();
+    return _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
+  }
+
+  bool get _isPast => _selectedDate.isBefore(
+        DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+      );
+
+  void _prevDay() {
+    setState(() {
+      var d = _selectedDate.subtract(const Duration(days: 1));
+      while (d.weekday > 5) d = d.subtract(const Duration(days: 1));
+      _selectedDate = d;
+    });
+  }
+
+  void _nextDay() {
+    setState(() {
+      var d = _selectedDate.add(const Duration(days: 1));
+      while (d.weekday > 5) d = d.add(const Duration(days: 1));
+      _selectedDate = d;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessionsAsync = ref.watch(sessionsForDateProvider(_dateStr));
+    final dayLabel = DateFormat('EEEE, d MMM', 'pt').format(_selectedDate);
 
     return Scaffold(
       appBar: AppBar(
@@ -117,44 +169,107 @@ class LessonAttendanceTodayScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Livro de Ponto'),
-            Text(today, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
+            Text(dayLabel,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Dia anterior',
+            onPressed: _prevDay,
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.today_outlined,
+              color: _isToday ? AppTheme.primary : null,
+            ),
+            tooltip: 'Hoje',
+            onPressed: _isToday
+                ? null
+                : () => setState(
+                    () => _selectedDate = _nearestWeekday(DateTime.now())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Dia seguinte',
+            onPressed: _nextDay,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
+            onPressed: () => ref.invalidate(sessionsForDateProvider(_dateStr)),
+          ),
+        ],
       ),
-      body: sessionsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erro: $e')),
-        data: (sessions) {
-          if (sessions.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      body: Column(
+        children: [
+          // Past-day banner
+          if (_isPast)
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              color: Colors.orange.shade50,
+              child: Row(
                 children: [
-                  Icon(Icons.event_busy_outlined,
-                      size: 64, color: Colors.grey.shade400),
-                  const SizedBox(height: 16),
-                  Text('Sem aulas hoje',
+                  Icon(Icons.edit_calendar_outlined,
+                      size: 18, color: Colors.orange.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Dia anterior — modificações ficam registadas com a data original.',
                       style: TextStyle(
-                          fontSize: 18, color: Colors.grey.shade600)),
+                          fontSize: 12, color: Colors.orange.shade800),
+                    ),
+                  ),
                 ],
               ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: sessions.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (_, i) => _SessionCard(session: sessions[i]),
-          );
-        },
+            ),
+          Expanded(
+            child: sessionsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Erro: $e')),
+              data: (sessions) {
+                if (sessions.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event_busy_outlined,
+                            size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isToday
+                              ? 'Sem aulas hoje'
+                              : 'Sem aulas neste dia',
+                          style: TextStyle(
+                              fontSize: 18, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: sessions.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (_, i) => _SessionCard(
+                    session: sessions[i],
+                    date: _dateStr,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _SessionCard extends StatelessWidget {
-  final _TodaySession session;
-  const _SessionCard({required this.session});
+  final TodaySession session;
+  final String date;
+  const _SessionCard({required this.session, required this.date});
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +297,7 @@ class _SessionCard extends StatelessWidget {
             'periodId': session.periodId,
             'turmaName': session.turmaName,
             'subjectName': session.subjectName,
+            'date': date,
           },
         ),
         child: Padding(
@@ -253,6 +369,7 @@ class LessonAttendanceSessionScreen extends ConsumerStatefulWidget {
   final String periodId;
   final String turmaName;
   final String subjectName;
+  final String? date; // null = today
 
   const LessonAttendanceSessionScreen({
     super.key,
@@ -261,6 +378,7 @@ class LessonAttendanceSessionScreen extends ConsumerStatefulWidget {
     required this.periodId,
     required this.turmaName,
     required this.subjectName,
+    this.date,
   });
 
   @override
@@ -270,14 +388,22 @@ class LessonAttendanceSessionScreen extends ConsumerStatefulWidget {
 
 class _LessonAttendanceSessionScreenState
     extends ConsumerState<LessonAttendanceSessionScreen> {
-  final _today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  late final String _dateStr =
+      widget.date ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
   List<_Student>? _students;
   bool _saving = false;
+
+  bool get _isPast {
+    final d = DateTime.tryParse(_dateStr);
+    if (d == null) return false;
+    final today = DateTime.now();
+    return d.isBefore(DateTime(today.year, today.month, today.day));
+  }
 
   Map<String, String> get _params => {
         'schedule_id': widget.scheduleId,
         'subject_id': widget.subjectId,
-        'date': _today,
+        'date': _dateStr,
         'period_id': widget.periodId,
       };
 
@@ -305,7 +431,7 @@ class _LessonAttendanceSessionScreenState
       await ref.read(apiClientProvider).post('/lesson-attendance/session/bulk', data: {
         'schedule_id': widget.scheduleId,
         'subject_id': widget.subjectId,
-        'date': _today,
+        'date': _dateStr,
         'period_id': widget.periodId,
         'records': records,
       });
@@ -316,8 +442,8 @@ class _LessonAttendanceSessionScreenState
               content: Text('Presenças guardadas'),
               backgroundColor: Colors.green),
         );
-        // Invalidate today sessions so the card updates
-        ref.invalidate(_todaySessionsProvider);
+        // Invalidate sessions list so the card updates
+        ref.invalidate(sessionsForDateProvider(_dateStr));
         if (context.canPop()) context.pop();
       }
     } catch (e) {
@@ -343,7 +469,7 @@ class _LessonAttendanceSessionScreenState
           children: [
             Text(widget.subjectName),
             Text(
-              '${widget.turmaName} · ${DateFormat('d MMM', 'pt').format(DateTime.now())}',
+              '${widget.turmaName} · ${DateFormat('d MMM', 'pt').format(DateTime.tryParse(_dateStr) ?? DateTime.now())}',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
             ),
           ],
@@ -360,7 +486,29 @@ class _LessonAttendanceSessionScreenState
             ),
         ],
       ),
-      body: studentsAsync.when(
+      body: Column(
+        children: [
+          if (_isPast)
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              color: Colors.orange.shade50,
+              child: Row(
+                children: [
+                  Icon(Icons.edit_calendar_outlined,
+                      size: 18, color: Colors.orange.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'A modificar presença de dia anterior (${_dateStr}). O registo original ficará substituído.',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.orange.shade800),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: studentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Erro: $e')),
         data: (students) {
@@ -393,6 +541,9 @@ class _LessonAttendanceSessionScreenState
             ],
           );
         },
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

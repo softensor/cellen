@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_school_id, require_school_admin, require_teacher
+from app.core.dependencies import get_current_user, get_school_id, require_school_admin, require_teacher
 from app.models.academic import (
     Activity, Enrollment, Schedule, ScheduleSlot, ScheduleTeacher, SchoolYear, Turma
 )
@@ -29,7 +29,7 @@ async def list_turmas(
     limit: int = 50,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(get_current_user),
 ):
     result = await db.execute(
         select(Turma).where(Turma.school_id == school_id).offset(skip).limit(limit)
@@ -218,7 +218,7 @@ async def list_schedules(
     school_year_id: Optional[uuid.UUID] = None,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(get_current_user),
 ):
     query = select(Schedule).where(Schedule.school_id == school_id)
     if turma_id:

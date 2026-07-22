@@ -97,15 +97,6 @@ final _turmasProvider = FutureProvider.autoDispose<List<_Turma>>((ref) async {
   return data.map((e) => _Turma.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-// For teachers: set of turma IDs where they have assigned subjects.
-final _teacherTurmaIdsProvider =
-    FutureProvider.autoDispose.family<Set<String>, String>((ref, teacherId) async {
-  final api = ref.read(apiClientProvider);
-  final data = await api.get('/grades/turma-subjects?teacher_id=$teacherId') as List;
-  return data
-      .map((e) => (e as Map<String, dynamic>)['turma_id'] as String)
-      .toSet();
-});
 
 typedef _SubjectsKey = ({String turmaId, String? teacherId});
 
@@ -195,19 +186,7 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
     final isTeacher = auth.hasRole(UserRole.teacher) && !auth.hasRole(UserRole.schoolAdmin);
     final teacherId = isTeacher ? auth.employeeId : null;
 
-    final allTurmasAsync = ref.watch(_turmasProvider);
-    final teacherTurmaIdsAsync = teacherId != null
-        ? ref.watch(_teacherTurmaIdsProvider(teacherId))
-        : null;
-
-    // Filter turma list to only those the teacher teaches
-    final turmasAsync = teacherTurmaIdsAsync != null
-        ? allTurmasAsync.whenData((all) {
-            final ids = teacherTurmaIdsAsync.valueOrNull;
-            if (ids == null) return all;
-            return all.where((t) => ids.contains(t.id)).toList();
-          })
-        : allTurmasAsync;
+    final turmasAsync = ref.watch(_turmasProvider);
 
     final subjectsAsync = _selectedTurma != null
         ? ref.watch(_turmaSubjectsProvider((turmaId: _selectedTurma!.id, teacherId: teacherId)))

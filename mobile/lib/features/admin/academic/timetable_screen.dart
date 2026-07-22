@@ -379,12 +379,22 @@ class TimetableScreen extends ConsumerStatefulWidget {
 class _TimetableScreenState extends ConsumerState<TimetableScreen>
     with SingleTickerProviderStateMixin {
   _SchoolYear? _selectedYear;
-  late final TabController _tabController;
+  late TabController _tabController;
+  bool? _lastCanEdit;
+
+  bool get _isAdmin {
+    final auth = ref.read(authProvider);
+    return auth.hasAnyRole([UserRole.schoolAdmin, UserRole.coordinator]);
+  }
+
+  bool get _canEdit => _isAdmin;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    final admin = _isAdmin;
+    _lastCanEdit = admin;
+    _tabController = TabController(length: admin ? 2 : 1, vsync: this);
   }
 
   @override
@@ -393,13 +403,16 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
     super.dispose();
   }
 
-  bool get _canEdit {
-    final auth = ref.read(authProvider);
-    return auth.hasAnyRole([UserRole.schoolAdmin, UserRole.coordinator]);
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Rebuild TabController if role changed (edge case: role switch without remount)
+    final admin = _isAdmin;
+    if (_lastCanEdit != admin) {
+      _tabController.dispose();
+      _tabController = TabController(length: admin ? 2 : 1, vsync: this);
+      _lastCanEdit = admin;
+    }
+
     final yearsAsync = ref.watch(_schoolYearsProvider);
 
     // Auto-select active year on first load
@@ -421,25 +434,28 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Horário Lectivo'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.list_alt_outlined, size: 18), text: 'Requisitos'),
-            Tab(icon: Icon(Icons.table_chart_outlined, size: 18), text: 'Horário'),
-          ],
-        ),
+        bottom: admin
+            ? TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(icon: Icon(Icons.list_alt_outlined, size: 18), text: 'Requisitos'),
+                  Tab(icon: Icon(Icons.table_chart_outlined, size: 18), text: 'Horário'),
+                ],
+              )
+            : null,
         actions: [
-          if (_selectedYear != null && _canEdit)
+          if (_selectedYear != null && admin)
             IconButton(
               icon: const Icon(Icons.auto_fix_high),
               tooltip: 'Gerar horário para todas as turmas do ano',
               onPressed: _generateForYear,
             ),
-          IconButton(
-            icon: const Icon(Icons.access_time_outlined),
-            tooltip: 'Períodos lectivos',
-            onPressed: _showPeriodsDialog,
-          ),
+          if (admin)
+            IconButton(
+              icon: const Icon(Icons.access_time_outlined),
+              tooltip: 'Períodos lectivos',
+              onPressed: _showPeriodsDialog,
+            ),
         ],
       ),
       body: Column(
@@ -499,19 +515,24 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen>
           Expanded(
             child: _selectedYear == null
                 ? const Center(child: CircularProgressIndicator())
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _RequirementsTab(
+                : admin
+                    ? TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _RequirementsTab(
+                            yearId: _selectedYear!.id,
+                            canEdit: true,
+                          ),
+                          _GridTab(
+                            yearId: _selectedYear!.id,
+                            canEdit: true,
+                          ),
+                        ],
+                      )
+                    : _GridTab(
                         yearId: _selectedYear!.id,
-                        canEdit: _canEdit,
+                        canEdit: false,
                       ),
-                      _GridTab(
-                        yearId: _selectedYear!.id,
-                        canEdit: _canEdit,
-                      ),
-                    ],
-                  ),
           ),
         ],
       ),

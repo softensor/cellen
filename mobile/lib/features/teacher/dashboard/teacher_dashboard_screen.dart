@@ -12,6 +12,7 @@ import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_stat_card.dart';
+import '../attendance/lesson_attendance_screen.dart' show TodaySession, sessionsForDateProvider;
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -100,6 +101,10 @@ class _TeacherDashboardScreenState
     final hasCheckin = school?.hasFeature('checkin') ?? true;
     final hasCaderneta = school?.hasFeature('caderneta') ?? true;
     final hasMessages = school?.hasFeature('messages') ?? true;
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todaySessionsAsync = terms.isK12
+        ? ref.watch(sessionsForDateProvider(todayStr))
+        : null;
     final theme = Theme.of(context);
     final isWide = MediaQuery.of(context).size.width >= 900;
 
@@ -118,6 +123,7 @@ class _TeacherDashboardScreenState
       ref.invalidate(teacherRecentCadernetsProvider);
       ref.invalidate(teacherChildrenProvider);
       ref.invalidate(teacherUnreadMsgProvider);
+      ref.invalidate(sessionsForDateProvider);
     }
 
     return RefreshIndicator(
@@ -165,8 +171,102 @@ class _TeacherDashboardScreenState
             ),
             const SizedBox(height: 24),
 
-            // ── Stat cards (checkin only) ──
-            if (hasCheckin) ...[
+            // ── K-12: Today's classes ──
+            if (terms.isK12 && todaySessionsAsync != null) ...[
+              const Text(
+                'Aulas de Hoje',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              todaySessionsAsync.when(
+                loading: () => const LinearProgressIndicator(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (sessions) {
+                  if (sessions.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: const Center(
+                        child: Text('Sem aulas hoje',
+                            style: TextStyle(color: AppTheme.textSecondary)),
+                      ),
+                    );
+                  }
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Column(
+                      children: sessions.asMap().entries.map((entry) {
+                        final isLast = entry.key == sessions.length - 1;
+                        final s = entry.value;
+                        final taken = s.attendanceTaken;
+                        final turma = s.turmaName;
+                        final subject = s.subjectName;
+                        final time = s.slotTime != null
+                            ? s.slotTime!.substring(0, 5)
+                            : (s.periodName ?? '');
+                        return Column(
+                          children: [
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              leading: Container(
+                                width: 40, height: 40,
+                                decoration: BoxDecoration(
+                                  color: (taken ? AppTheme.success : Colors.orange).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  taken ? Icons.check_circle_outline : Icons.pending_outlined,
+                                  color: taken ? AppTheme.success : Colors.orange,
+                                  size: 20,
+                                ),
+                              ),
+                              title: Text(subject,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                              subtitle: Text('$turma · $time',
+                                  style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                              trailing: taken
+                                  ? const Text('Registado',
+                                      style: TextStyle(color: AppTheme.success, fontSize: 12))
+                                  : const Text('Por registar',
+                                      style: TextStyle(color: Colors.orange, fontSize: 12)),
+                              onTap: () => context.go('/lesson-attendance'),
+                            ),
+                            if (!isLast) const Divider(height: 1, color: AppTheme.border),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.go('/lesson-attendance'),
+                  icon: const Icon(Icons.fact_check_outlined, size: 18),
+                  label: const Text('Livro de Ponto'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+            ],
+
+            // ── Stat cards (checkin only, preschool) ──
+            if (hasCheckin && !terms.isK12) ...[
               const Text(
                 'Presenças de Hoje',
                 style: TextStyle(
@@ -262,9 +362,35 @@ class _TeacherDashboardScreenState
               ),
             ),
             const SizedBox(height: 12),
+            if (terms.isK12) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuickLinkTile(
+                      icon: Icons.grade_outlined,
+                      label: 'Notas',
+                      subtitle: 'Lançar notas',
+                      color: const Color(0xFF0369A1),
+                      onTap: () => context.go('/teacher/grades'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _QuickLinkTile(
+                      icon: Icons.table_chart_outlined,
+                      label: 'Horário',
+                      subtitle: 'Ver horário',
+                      color: const Color(0xFF059669),
+                      onTap: () => context.go('/timetable'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
-                if (hasCaderneta) ...[
+                if (hasCaderneta && !terms.isK12) ...[
                   Expanded(
                     child: _QuickLinkTile(
                       icon: Icons.menu_book_outlined,
@@ -309,10 +435,11 @@ class _TeacherDashboardScreenState
 
             const SizedBox(height: 28),
 
-            // ── My Children / Students ──
+            // ── My Children (preschool only) ──
+            if (!terms.isK12) ...[
             Text(
-              terms.isK12 ? 'Os Meus Alunos' : 'As Minhas Crianças',
-              style: TextStyle(
+              'As Minhas Crianças',
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary,
@@ -396,10 +523,11 @@ class _TeacherDashboardScreenState
                 );
               },
             ),
-
             const SizedBox(height: 28),
+            ], // end if (!terms.isK12)
 
-            // ── Recent cadernetas ──
+            // ── Recent cadernetas (preschool only) ──
+            if (!terms.isK12) ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -505,6 +633,7 @@ class _TeacherDashboardScreenState
                 );
               },
             ),
+            ], // end if (!terms.isK12) caderneta
           ],
         ),
       ),

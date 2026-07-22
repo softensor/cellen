@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_school_id, require_school_admin
+from app.core.dependencies import get_current_user, get_school_id, require_school_admin, require_teacher
 from app.core.security import hash_password
 from app.models.academic import Enrollment, SchoolYear
 from app.models.employee import Employee
@@ -327,7 +327,7 @@ async def list_school_years(
     limit: int = 50,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_school_admin),
+    _=Depends(get_current_user),
 ):
     result = await db.execute(
         select(SchoolYear).where(SchoolYear.school_id == school_id).offset(skip).limit(limit)

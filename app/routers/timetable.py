@@ -84,7 +84,7 @@ def _cell_to_response(slot: ScheduleSlot) -> TimetableCellResponse:
 async def list_periods(
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(get_current_user),
 ):
     result = await db.execute(
         select(TimetablePeriod)
@@ -161,7 +161,7 @@ async def get_timetable_grid(
     schedule_id: uuid.UUID = Query(...),
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_teacher),
+    _=Depends(get_current_user),
 ):
     # Load schedule
     sched_result = await db.execute(
