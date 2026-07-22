@@ -10,6 +10,7 @@ from app.core.dependencies import get_current_user, get_school_id, require_schoo
 from app.models.academic import (
     Activity, Enrollment, Schedule, ScheduleSlot, ScheduleTeacher, SchoolYear, Turma
 )
+from app.models.finance import Invoice
 from app.schemas.academic import (
     ActivityCreate, ActivityResponse, ActivityUpdate,
     EnrollmentCreate, EnrollmentResponse, EnrollmentUpdate,
@@ -573,6 +574,22 @@ async def list_enrollments(
         select(SchoolYear.id, SchoolYear.year_label).where(SchoolYear.id.in_(year_ids))
     )
     year_map = {row[0]: row[1] for row in year_res.all()}
+
+    # Retroactively activate enrollments whose fee invoice is already paid
+    pending_with_invoice = [e for e in enrollments if e.status == "pending" and e.fee_invoice_id]
+    if pending_with_invoice:
+        inv_ids = [e.fee_invoice_id for e in pending_with_invoice]
+        inv_res = await db.execute(
+            select(Invoice.id, Invoice.status).where(Invoice.id.in_(inv_ids))
+        )
+        paid_ids = {row[0] for row in inv_res.all() if row[1] == "paid"}
+        dirty = False
+        for e in pending_with_invoice:
+            if e.fee_invoice_id in paid_ids:
+                e.status = "active"
+                dirty = True
+        if dirty:
+            await db.commit()
 
     output = []
     for e in enrollments:
