@@ -30,10 +30,10 @@ class _SubjectRow {
   factory _SubjectRow.fromJson(Map<String, dynamic> j) => _SubjectRow(
         subjectName: j['subject_name'] as String,
         subjectCode: j['subject_code'] as String?,
-        t1Final: (j['t1_final'] as num?)?.toDouble(),
-        t2Final: (j['t2_final'] as num?)?.toDouble(),
-        t3Final: (j['t3_final'] as num?)?.toDouble(),
-        annualAverage: (j['annual_average'] as num?)?.toDouble(),
+        t1Final: _n(j['t1_final']),
+        t2Final: _n(j['t2_final']),
+        t3Final: _n(j['t3_final']),
+        annualAverage: _n(j['annual_average']),
         passed: j['passed'] as bool?,
       );
 }
@@ -62,9 +62,16 @@ class _ReportCard {
         subjects: (j['subjects'] as List? ?? [])
             .map((e) => _SubjectRow.fromJson(e as Map<String, dynamic>))
             .toList(),
-        overallAverage: (j['overall_average'] as num?)?.toDouble(),
+        overallAverage: _n(j['overall_average']),
         promoted: j['promoted'] as bool?,
       );
+}
+
+// Handles Decimal-as-string from backend (e.g. "14.0" or 14.0)
+double? _n(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
 }
 
 // ---------------------------------------------------------------------------
