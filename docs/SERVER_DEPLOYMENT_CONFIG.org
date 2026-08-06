@@ -1,0 +1,98 @@
+#+TITLE: Cellen Production Server Configuration
+#+DATE: 2026-08-06
+#+STARTUP: overview
+
+* Purpose
+
+This file records the sanitized production topology verified directly by the
+operator on 2026-08-06.  It intentionally contains no passwords, tokens,
+database URLs, private keys, or other secret values.  Verify the live system
+before any destructive or fiscal operation because infrastructure can change.
+
+* Host
+
+| Item | Value |
+|------+-------|
+| Hostname | =jorgehel-vps= |
+| Public address | =167.235.158.77= |
+| Operating system | Ubuntu, Linux 6.8 x86_64 |
+| Memory | approximately 3.7 GiB |
+| Root filesystem | approximately 38 GiB |
+| Swap at audit time | none; add 2 GiB before installing Finreg |
+| Reverse proxy | Nginx on ports 80 and 443 |
+| Container runtime | Docker was not installed at audit time |
+
+* Cellen backend
+
+| Item | Value |
+|------+-------|
+| Source/install directory | =/var/www/cellen= |
+| Git remote | =https://github.com/softensor/cellen.git= |
+| Integration branch | =integration/finreg-school-billing= |
+| Integration commit at delivery | =2373e26= |
+| Service manager | systemd |
+| Unit | =cellen-api.service= |
+| Service user | =jorgehel= |
+| Working directory | =/var/www/cellen= |
+| Environment file | =/var/www/cellen/.env= |
+| Python environment | =/var/www/cellen/.venv= |
+| Uvicorn address | =127.0.0.1:8001= |
+| Workers | 2 |
+| Alembic target | =0025= |
+| Media directory | =/var/www/cellen/media= |
+
+The public Cellen API is currently served by Nginx at
+=https://167.235.158.77.nip.io= and proxied to =127.0.0.1:8001=.  The Flutter
+client's compiled API base uses =https://167.235.158.77.nip.io/api/v1=.
+
+* Other occupied services
+
+Port =8002= belongs to Condo Manager and must not be reused.  Its public host
+is =condo.167.235.158.77.nip.io=.  Ports 80 and 443 belong to Nginx.
+
+* Finreg connection target
+
+Finreg was not installed on this VPS at audit time.  The approved planned
+allocation is:
+
+| Item | Planned value |
+|------+---------------|
+| Source directory | =/var/www/finreg= |
+| API address | =127.0.0.1:8003= |
+| Public host | =https://finreg.167.235.158.77.nip.io= |
+| Cellen base URL | =https://finreg.167.235.158.77.nip.io/api/v1= |
+| Services | =finreg-api=, =finreg-worker=, exactly one =finreg-beat= |
+
+Required Cellen environment variable names are =FINREG_BASE_URL=,
+=FINREG_CLIENT_ID=, =FINREG_CLIENT_SECRET_FILE=,
+=FINREG_TIMEOUT_SECONDS=, =FINREG_VERIFY_TLS=, optional
+=FINREG_TLS_CA_FILE=, and =FINREG_INTEGRATION_ENABLED=.  Secret values must be
+mounted or stored outside Git.
+
+* Safe deployment order
+
+1. Back up the Cellen PostgreSQL database and the existing environment file.
+2. Confirm the Git worktree is clean, fetch the integration branch, install
+   requirements, and migrate through =0025=.
+3. Keep =FINREG_INTEGRATION_ENABLED=false= until the Finreg API and TLS health
+   checks pass.
+4. Install Finreg separately on port 8003 and provision a company-scoped,
+   initially non-fiscal integration client.
+5. Store its secret through =FINREG_CLIENT_SECRET_FILE=, enable the connector,
+   restart =cellen-api=, and begin in =fake= then =shadow= mode.
+6. Do not enable =pilot= or =live= without reconciliation and the documented
+   accounting/AGT approvals.
+
+* Verification commands
+
+#+BEGIN_SRC sh
+systemctl status cellen-api --no-pager
+ss -ltnp | grep -E ':8001|:8002|:8003'
+curl -fsS http://127.0.0.1:8001/health
+cd /var/www/cellen
+./.venv/bin/alembic current
+./.venv/bin/alembic heads
+#+END_SRC
+
+Never print or commit the contents of =/var/www/cellen/.env= or the Finreg
+client-secret file.
