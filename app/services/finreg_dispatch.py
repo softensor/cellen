@@ -8,6 +8,7 @@ from app.models.finreg_integration import (
     FinregBillingInstruction,
     FinregSchoolConnection,
 )
+from app.core.config import settings
 from app.services.finreg import (
     FakeFinregAdapter,
     FinregError,
@@ -18,6 +19,8 @@ from app.services.finreg import (
 
 
 async def integration_mode(db: AsyncSession, school_id) -> str:
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        return "disabled"
     connection = (await db.execute(select(FinregSchoolConnection).where(
         FinregSchoolConnection.school_id == school_id
     ))).scalar_one_or_none()
@@ -79,6 +82,8 @@ async def enqueue_contract_instruction(
 
 
 async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstruction, *, adapter=None):
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        raise FinregError("integration_disabled", "Finreg integration is globally disabled")
     connection = (await db.execute(select(FinregSchoolConnection).where(
         FinregSchoolConnection.school_id == instruction.school_id
     ))).scalar_one_or_none()

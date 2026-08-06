@@ -27,7 +27,7 @@ before any destructive or fiscal operation because infrastructure can change.
 | Item | Value |
 |------+-------|
 | Source/install directory | =/var/www/cellen= |
-| Git remote | =https://github.com/softensor/cellen.git= |
+| Git remote | =git@github.com:softensor/cellen.git= |
 | Integration branch | =integration/finreg-school-billing= |
 | Integration commit at delivery | =2373e26= |
 | Service manager | systemd |
@@ -38,7 +38,7 @@ before any destructive or fiscal operation because infrastructure can change.
 | Python environment | =/var/www/cellen/.venv= |
 | Uvicorn address | =127.0.0.1:8001= |
 | Workers | 2 |
-| Alembic target | =0025= |
+| Alembic target | =cf47f07b691e= (production-history/Finreg merge head) |
 | Media directory | =/var/www/cellen/media= |
 
 The public Cellen API is currently served by Nginx at
@@ -78,8 +78,8 @@ mounted or stored outside Git.
 
 1. DONE: Back up the Cellen PostgreSQL database before integration deployment
    (a backup was observed under =$HOME/backups=).
-2. VERIFY/COMPLETE: Confirm the Git worktree is clean, fetch the integration branch, install
-   requirements, and migrate through =0025=.
+2. DONE: Production migration history was preserved in commit =acac3a9= and
+   migrated through the single merge head =cf47f07b691e=.
 3. DONE: Finreg API and TLS health checks pass independently while Cellen
    remains healthy on port 8001.
 4. DONE/NEXT: Finreg is installed on port 8003; company and initially
@@ -88,6 +88,10 @@ mounted or stored outside Git.
    restart =cellen-api=, and begin in =fake= then =shadow= mode.
 6. Do not enable =pilot= or =live= without reconciliation and the documented
    accounting/AGT approvals.
+
+The exact remaining procedure and hard gates are recorded in
+=docs/RAINHA_NJINGA_FINREG_ROLLOUT.org=.  The guarded provisioning entry point
+is =deploy/provision_finreg_pilot.sh=.
 
 * Verification commands
 

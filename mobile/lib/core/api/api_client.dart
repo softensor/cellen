@@ -27,7 +27,12 @@ class AuthInterceptor extends Interceptor {
   final FlutterSecureStorage _storage;
 
   bool _isRefreshing = false;
-  final List<({RequestOptions options, ErrorInterceptorHandler handler, DioException error})> _queue = [];
+  final List<
+      ({
+        RequestOptions options,
+        ErrorInterceptorHandler handler,
+        DioException error
+      })> _queue = [];
 
   AuthInterceptor(this._dio, this._storage);
 
@@ -119,9 +124,9 @@ class AuthInterceptor extends Interceptor {
       if (newToken != null) {
         item.options.headers['Authorization'] = 'Bearer $newToken';
         _dio.fetch(item.options).then(
-          (resp) => item.handler.resolve(resp),
-          onError: (_) => item.handler.next(item.error),
-        );
+              (resp) => item.handler.resolve(resp),
+              onError: (_) => item.handler.next(item.error),
+            );
       } else {
         item.handler.next(item.error);
       }
@@ -161,6 +166,18 @@ class ApiClient {
         queryParameters: queryParameters,
       );
       return response.data;
+    } on DioException catch (e) {
+      throw _mapException(e);
+    }
+  }
+
+  Future<Uint8List> getBytes(String path) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const <int>[]);
     } on DioException catch (e) {
       throw _mapException(e);
     }
@@ -249,7 +266,8 @@ class ApiClient {
   }
 
   /// Post multipart/form-data with a pre-built map (may contain MultipartFile entries).
-  Future<dynamic> postForm(String path, {required Map<String, dynamic> data}) async {
+  Future<dynamic> postForm(String path,
+      {required Map<String, dynamic> data}) async {
     try {
       final formData = FormData.fromMap(data);
       final response = await _dio.post(path, data: formData);
@@ -276,8 +294,7 @@ class ApiClient {
       final data = e.response!.data;
       String message;
       if (data is Map) {
-        message =
-            data['detail']?.toString() ??
+        message = data['detail']?.toString() ??
             data['message']?.toString() ??
             e.message ??
             'Unknown error';
@@ -290,9 +307,11 @@ class ApiClient {
     } else if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.sendTimeout) {
-      return const ApiException(message: 'Tempo de ligação esgotado. Verifique a sua conexão.');
+      return const ApiException(
+          message: 'Tempo de ligação esgotado. Verifique a sua conexão.');
     } else if (e.type == DioExceptionType.connectionError) {
-      return const ApiException(message: 'Sem ligação ao servidor. Verifique o endereço e a rede.');
+      return const ApiException(
+          message: 'Sem ligação ao servidor. Verifique o endereço e a rede.');
     } else {
       return ApiException(message: e.message ?? 'Erro desconhecido');
     }

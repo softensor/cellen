@@ -1,0 +1,132 @@
+#+TITLE: Rainha Njinga — Cellen/Finreg Production Rollout
+#+DATE: 2026-08-06
+#+STARTUP: overview
+
+* Fixed pilot identity
+
+| Item | Value |
+|------+-------|
+| Cellen school | Rainha Njinga |
+| Cellen school ID | =65794af5-2831-4709-9b53-437bb5d50515= |
+| Cellen database | =cellen= |
+| Finreg database | =finreg= |
+| Initial integration mode | =shadow= |
+
+The Cellen record currently has no verified legal name or NIF.  Those values
+must come from the school's legal/tax documents.  They must never be guessed.
+
+* Automated non-fiscal provisioning
+
+After deploying both integration branches, run only this command on the VPS:
+
+#+BEGIN_SRC sh
+cd /var/www/cellen
+sudo bash deploy/provision_finreg_pilot.sh
+#+END_SRC
+
+The script prompts for the verified legal name, NIF, administrator identity,
+and a new password; requires an explicit =PROVISION= confirmation; creates the
+Finreg company and company-bound non-fiscal client; stores the one-time secret
+at =/etc/cellen-finreg-client-secret=; updates Cellen's environment; creates the
+school connection; and restarts/health-checks Cellen.  It deliberately leaves
+the school in =shadow= and the client in =non_fiscal= mode.
+
+If registration reports that the NIF or administrator already exists, stop.
+Resolve and verify the existing company instead of creating a duplicate.
+
+* Evidence required to leave shadow
+
+All of the following are hard gates:
+
+- Verified legal name and NIF match the Finreg company.
+- Finreg capability =company_id= exactly matches
+  =finreg_school_connections.finreg_company_id=.
+- Guardian/customer and billing-item/product mappings have no conflicts.
+- Draft previews reconcile with Cellen prices, discounts, tax treatment, and
+  totals for the agreed cutover period.
+- Historical invoice, payment, receipt, correction, open-balance, credit,
+  contract, and last-billed-period counts/totals are signed off.
+- Finreg administrator confirms chart of accounts, GL mappings, branches,
+  payment methods, fiscal series, economic activity, and company settings.
+- School staff training and support/rollback contacts are recorded.
+- Finreg/AGT owner approves the controlled fiscal transaction and confirms
+  whether the backend remains in sandbox or is production-authorized.
+- A database backup exists for both =cellen= and =finreg= immediately before
+  cutover.
+
+* Controlled pilot gate
+
+Changing the integration client from =non_fiscal= and changing Cellen from
+=shadow= to =pilot= are separate actions.  Do both only during the approved
+window.  First execute an accounting-approved invoice; verify its official
+PDF and AGT state; register/allocate the approved payment; verify the official
+receipt; then issue a correction only if it is part of the approved scenario.
+
+During pilot, monitor =finreg_billing_instructions=, event cursor/lag,
+=finreg_event_receipts=, both service journals, worker/Beat health, and daily
+totals.  The Cellen kill switch stops new commands but does not invalidate any
+document already committed by Finreg.
+
+Once every shadow gate is signed, the guarded promotion entry point is:
+
+#+BEGIN_SRC sh
+cd /var/www/cellen
+sudo bash deploy/promote_finreg_pilot.sh
+#+END_SRC
+
+It verifies synchronization/mapping/unknown-command state, validates the
+selected AGT channel, creates both database backups, requires a company-ID
+confirmation, enables the company-bound client, changes only Rainha Njinga to
+=pilot=, restarts and health-checks services, and records the approval reference
+in a root-only rollout log.  On an error after credential promotion it restores
+the client to non-fiscal mode.
+
+* Live gate
+
+Promote to =live= only after one complete billing and settlement cycle has
+been reconciled and signed off.  Finreg remains the sole fiscal issuer for all
+new operations after the cutover boundary.  Cellen's legacy history remains a
+labelled read-only archive unless an accountant approves a specific import.
+
+After that sign-off, the guarded live entry point is:
+
+#+BEGIN_SRC sh
+cd /var/www/cellen
+sudo bash deploy/promote_finreg_live.sh
+#+END_SRC
+
+* Rollback invariant
+
+Set the Cellen connection kill switch before investigation.  Reconcile every
+unknown result by its idempotency key and Finreg event feed.  Never retry using
+a new key and never reactivate Cellen's legacy issuer for the same fiscal
+period without explicit accounting approval.
+
+* Inputs intentionally left to the operator
+
+- Legal name and NIF from primary documents.
+- Named administrator and secret password.
+- AGT taxpayer identity, certificate/private key, production credentials,
+  software validation number, and approved fiscal series.
+- Accounting approval, historical reconciliation signature, pilot date, and
+  go-live authorization.
+
+These are legal, fiscal, or human approvals; repository automation cannot
+safely manufacture them.
+
+* Delivery validation
+
+The repository delivery was validated on 2026-08-06 with:
+
+- Cellen backend: 296 passed, 2 skipped, using an isolated PostgreSQL database
+  that was removed after the run.
+- Finreg backend: 288 passed, 9 skipped.
+- Finreg integration contract: 7 passed.
+- Cellen Finreg unit/event synchronization slice: 6 passed.
+- =finreg_client_sdk=: 2 Dart tests passed.
+- =finreg_sales_ui=: Dart static analysis reported no issues.
+- Changed Cellen Flutter files: static analysis reported no errors; remaining
+  notices are pre-existing style/deprecation diagnostics in the parent screen.
+- Both Python trees compile, all deployment scripts pass =bash -n=, both
+  OpenAPI integration surfaces contain the required routes, and both staged
+  diffs pass =git diff --check=.

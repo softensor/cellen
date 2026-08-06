@@ -5,6 +5,7 @@ import 'package:finreg_client_sdk/finreg_client_sdk.dart';
 import 'package:finreg_sales_ui/finreg_sales_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
 import 'invoices_screen.dart';
 
@@ -22,7 +23,11 @@ class FinregSalesHostScreen extends ConsumerWidget {
             return const InvoicesScreen();
           }
           final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
-          return FinregSalesWorkspace(repository: adapter, host: adapter);
+          return FinregSalesWorkspace(
+              repository: adapter,
+              host: adapter,
+              onOfficialDocument: (name, bytes) =>
+                  Printing.sharePdf(bytes: bytes, filename: name));
         },
       );
 }
@@ -37,6 +42,7 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
     final value =
         Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
     return FinregCapabilities(
+        companyId: value['company_id']?.toString(),
         apiVersion: value['api_version'] as String,
         schemaVersion: value['schema_version'] as String,
         vertical: value['vertical'] as String,
@@ -136,6 +142,7 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
     return FiscalDocument(
         id: (v['finreg_document_id'] ?? v['id']).toString(),
         status: v['status'].toString(),
+        externalReference: draft.externalReference,
         grossTotal: lastPreview?.grossTotal ?? 0);
   }
 
@@ -144,9 +151,78 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
       String entityType, String externalId, String finregId) async {}
   @override
   Future<Uint8List> downloadOfficialDocument(String documentId) =>
-      throw const FinregException('not_available', 'Use document detail');
+      api.getBytes('/finreg/documents/$documentId/pdf');
   @override
   Future<PaymentResult> registerPayment(RegisterPayment command,
-          {required String idempotencyKey}) =>
-      throw const FinregException('not_available', 'Use payments workspace');
+      {required String idempotencyKey}) async {
+    final value =
+        Map<String, dynamic>.from(await api.post('/finreg/payments', data: {
+      'document_id': command.documentId,
+      'amount': command.amount,
+      'method': command.method,
+      'external_reference': command.externalReference,
+    }) as Map);
+    return PaymentResult(
+        id: value['id'].toString(),
+        status: value['status'].toString(),
+        receiptId: value['receipt_id']?.toString(),
+        receiptExternalReference: command.externalReference);
+  }
+
+  @override
+  Future<List<FinregInstruction>> listInstructions() async {
+    final rows = await api.get('/finreg/instructions') as List;
+    return rows.map((raw) {
+      final value = Map<String, dynamic>.from(raw as Map);
+      return FinregInstruction(
+          externalReference: value['id'].toString(),
+          status: value['status'].toString(),
+          createdAt: DateTime.parse(value['created_at'].toString()),
+          documentId: value['finreg_document_id']?.toString(),
+          errorCode: value['error_code']?.toString(),
+          errorDetail: value['error_detail']?.toString());
+    }).toList();
+  }
+
+  @override
+  Future<JsonMap> documentDetail(String externalReference) async =>
+      Map<String, Object?>.from(
+          await api.get('/finreg/documents/$externalReference') as Map);
+
+  @override
+  Future<JsonMap> correctDocument(CorrectDocument command,
+          {required String idempotencyKey}) async =>
+      Map<String, Object?>.from(await api.post(
+          '/finreg/documents/${command.documentExternalReference}/corrections',
+          data: {
+            'external_reference': command.correctionExternalReference,
+            'reason': command.reason
+          }) as Map);
+
+  @override
+  Future<Uint8List> downloadReceipt(String paymentExternalReference) =>
+      api.getBytes('/finreg/receipts/$paymentExternalReference/pdf');
+
+  String _date(DateTime value) => value.toIso8601String().split('T').first;
+
+  @override
+  Future<JsonMap> customerStatement(String customerExternalId,
+          {required DateTime from, required DateTime to}) async =>
+      Map<String, Object?>.from(await api.get(
+              '/finreg/customers/$customerExternalId/statement',
+              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
+          as Map);
+
+  @override
+  Future<JsonMap> salesSummary(
+          {required DateTime from, required DateTime to}) async =>
+      Map<String, Object?>.from(await api.get('/finreg/reports/sales-summary',
+              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
+          as Map);
+
+  @override
+  Future<JsonMap> delinquentReport({DateTime? asOf}) async =>
+      Map<String, Object?>.from(await api.get('/finreg/reports/delinquent',
+              queryParameters: asOf == null ? null : {'as_of': _date(asOf)})
+          as Map);
 }

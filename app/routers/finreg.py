@@ -3,14 +3,17 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.dependencies import (
     get_school_id,
     require_finance_access,
+    require_parent,
     require_school_admin,
 )
 from app.models.finance import BillingItem
@@ -20,7 +23,7 @@ from app.models.finreg_integration import (
     FinregSchoolConnection,
 )
 from app.models.person import Child, Guardian
-from app.services.finreg import FinregError, HttpFinregAdapter
+from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
 
 router = APIRouter(prefix="/finreg", tags=["Finreg Integration"])
@@ -48,6 +51,18 @@ class SalesDraft(BaseModel):
     billing_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     due_date: date | None = None
     lines: list[SalesLine] = Field(min_length=1)
+
+
+class PaymentDraft(BaseModel):
+    document_id: uuid.UUID
+    amount: Decimal = Field(gt=0)
+    method: str = Field(pattern="^(cash|transfer|card|check|mobile|other)$")
+    external_reference: uuid.UUID
+
+
+class CorrectionDraft(BaseModel):
+    external_reference: uuid.UUID
+    reason: str = Field(min_length=3, max_length=250)
 
 
 async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
@@ -100,7 +115,9 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
 async def connection(school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db), _=Depends(require_finance_access)):
     value = (await db.execute(select(FinregSchoolConnection).where(FinregSchoolConnection.school_id == school_id))).scalar_one_or_none()
     if not value: return {"mode": "disabled", "configured": False, "kill_switch": False}
-    return {"mode": value.mode, "configured": True, "kill_switch": value.kill_switch,
+    effective_mode = value.mode if settings.FINREG_INTEGRATION_ENABLED else "disabled"
+    return {"mode": effective_mode, "configured": True, "kill_switch": value.kill_switch,
+            "configured_mode": value.mode, "globally_enabled": settings.FINREG_INTEGRATION_ENABLED,
             "finreg_company_id": str(value.finreg_company_id), "last_sync_at": value.last_sync_at,
             "last_event_sequence": value.last_event_sequence}
 
@@ -117,8 +134,27 @@ async def update_connection(body: ConnectionUpdate, school_id=Depends(get_school
 
 
 @router.get("/capabilities")
-async def capabilities(user=Depends(require_finance_access), school_id=Depends(get_school_id)):
-    try: return await HttpFinregAdapter().capabilities(str(user.id))
+async def capabilities(user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        raise HTTPException(status_code=409, detail="Finreg integration is globally disabled")
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if connection is None:
+        raise HTTPException(status_code=409, detail="Finreg is not configured for this school")
+    if connection.mode == "fake":
+        manifest = await FakeFinregAdapter().capabilities(str(user.id))
+        return {**manifest, "company_id": str(connection.finreg_company_id),
+                "terminology": {"customer": "guardian", "beneficiary": "pupil"},
+                "enabled_modules": ["billing"], "supported_entity_types": []}
+    try:
+        manifest = await HttpFinregAdapter().capabilities(str(user.id))
+        if str(manifest.get("company_id")) != str(connection.finreg_company_id):
+            raise HTTPException(status_code=409, detail={
+                "code": "company_mismatch",
+                "message": "The configured Finreg credential belongs to another company",
+            })
+        return manifest
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
 
 
@@ -155,6 +191,19 @@ async def mappings(school_id=Depends(get_school_id), db: AsyncSession = Depends(
 @router.post("/sales/preview")
 async def sales_preview(body: SalesDraft, user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
     payload = await _sales_payload(body, school_id, db, str(user.id))
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if connection and connection.mode == "fake":
+        net = tax = Decimal("0")
+        for line in payload["draft"]["document"]["lines"]:
+            base = Decimal(line["quantity"]) * Decimal(line["unit_price"])
+            line_net = base * (Decimal("1") - Decimal(line["discount_pct"]) / 100)
+            net += line_net
+            tax += line_net * Decimal(line["tax_rate"]) / 100
+        return {"currency_code": "AOA", "net_total": float(net),
+                "tax_total": float(tax), "gross_total": float(net + tax),
+                "schema_version": "school/v1"}
     try:
         return await HttpFinregAdapter().request(
             "POST", "preview", payload["draft"], actor_reference=str(user.id)
@@ -166,6 +215,8 @@ async def sales_preview(body: SalesDraft, user=Depends(require_finance_access), 
 
 @router.post("/sales/issue", status_code=201)
 async def sales_issue(body: SalesDraft, user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        raise HTTPException(status_code=409, detail="Finreg integration is globally disabled")
     connection = (await db.execute(select(FinregSchoolConnection).where(
         FinregSchoolConnection.school_id == school_id
     ))).scalar_one_or_none()
@@ -192,3 +243,189 @@ async def sales_issue(body: SalesDraft, user=Depends(require_finance_access), sc
             raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.detail})
     return {"id": str(instruction.id), "status": instruction.status,
             "finreg_document_id": str(instruction.finreg_document_id) if instruction.finreg_document_id else None}
+
+
+async def _writable_connection(school_id, db):
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        raise HTTPException(status_code=409, detail="Finreg integration is globally disabled")
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if not connection or connection.mode not in {"pilot", "live"} or connection.kill_switch:
+        raise HTTPException(status_code=409, detail="Finreg fiscal writes are not enabled for this school")
+    return connection
+
+
+@router.get("/documents/{external_reference}")
+async def document_detail(external_reference: uuid.UUID, user=Depends(require_finance_access), school_id=Depends(get_school_id)):
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", f"documents/{external_reference}", None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/documents/{external_reference}/pdf")
+async def document_pdf(external_reference: uuid.UUID, user=Depends(require_finance_access), school_id=Depends(get_school_id)):
+    try:
+        content = await HttpFinregAdapter().download(
+            f"documents/{external_reference}/pdf", actor_reference=str(user.id)
+        )
+        return Response(content=content, media_type="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="finreg-{external_reference}.pdf"'
+        })
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.post("/payments", status_code=201)
+async def register_payment(body: PaymentDraft, user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
+    await _writable_connection(school_id, db)
+    adapter = HttpFinregAdapter()
+    key = f"cellen-payment-{body.external_reference}"
+    payload = {"payment": {
+        "document_id": str(body.document_id), "payment_method": body.method,
+        "amount": str(body.amount), "payment_date": date.today().isoformat(),
+        "reference": str(body.external_reference),
+    }}
+    try:
+        payment = await adapter.request(
+            "POST", f"payments/{body.external_reference}", payload,
+            idempotency_key=key, correlation_id=str(body.external_reference), actor_reference=str(user.id),
+        )
+        receipt = await adapter.request(
+            "POST", f"payments/{body.external_reference}/receipt", {},
+            idempotency_key=f"{key}:receipt", correlation_id=str(body.external_reference), actor_reference=str(user.id),
+        )
+        return {"id": payment["id"], "status": "confirmed",
+                "receipt_id": receipt.get("receipt_document_id"), "receipt": receipt}
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.post("/documents/{external_reference}/corrections", status_code=201)
+async def correct_document(external_reference: uuid.UUID, body: CorrectionDraft, user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
+    await _writable_connection(school_id, db)
+    try:
+        return await HttpFinregAdapter().request(
+            "POST", f"documents/{external_reference}/corrections",
+            {"external_id": str(body.external_reference), "reason": body.reason},
+            idempotency_key=f"cellen-correction-{body.external_reference}",
+            correlation_id=str(body.external_reference), actor_reference=str(user.id),
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/receipts/{payment_reference}/pdf")
+async def receipt_pdf(payment_reference: uuid.UUID, user=Depends(require_finance_access), school_id=Depends(get_school_id)):
+    try:
+        content = await HttpFinregAdapter().download(
+            f"receipts/{payment_reference}/pdf", actor_reference=str(user.id)
+        )
+        return Response(content=content, media_type="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="finreg-receipt-{payment_reference}.pdf"'
+        })
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/customers/{guardian_id}/statement")
+async def customer_statement(guardian_id: uuid.UUID, date_from: date, date_to: date,
+                             user=Depends(require_finance_access), school_id=Depends(get_school_id),
+                             db: AsyncSession = Depends(get_db)):
+    # Tenant ownership is checked locally before the company-scoped Finreg call.
+    guardian = (await db.execute(select(Guardian).where(
+        Guardian.id == guardian_id, Guardian.school_id == school_id
+    ))).scalar_one_or_none()
+    if guardian is None:
+        raise HTTPException(status_code=404, detail="Guardian not found")
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", f"customers/{guardian_id}/statement?date_from={date_from}&date_to={date_to}",
+            None, actor_reference=str(user.id),
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/reports/sales-summary")
+async def sales_summary(date_from: date, date_to: date, user=Depends(require_finance_access), school_id=Depends(get_school_id)):
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", f"reports/sales-summary?date_from={date_from}&date_to={date_to}",
+            None, actor_reference=str(user.id),
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/reports/delinquent")
+async def delinquent_report(as_of: date | None = None, user=Depends(require_finance_access), school_id=Depends(get_school_id)):
+    suffix = f"?as_of={as_of}" if as_of else ""
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", f"reports/delinquent{suffix}", None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+async def _parent_instruction(instruction_id, current_user, db):
+    guardian_id = getattr(current_user, "guardian_id", None)
+    school_id = getattr(current_user, "_school_id", None)
+    if guardian_id is None or school_id is None:
+        raise HTTPException(status_code=403, detail="Guardian and school context required")
+    item = await db.get(FinregBillingInstruction, instruction_id)
+    if item is None or item.school_id != school_id:
+        raise HTTPException(status_code=404, detail="Finreg document not found")
+    if str((item.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
+        raise HTTPException(status_code=403, detail="This document does not belong to the guardian")
+    return item
+
+
+@router.get("/parent/documents")
+async def parent_documents(current_user=Depends(require_parent), db: AsyncSession = Depends(get_db)):
+    guardian_id = getattr(current_user, "guardian_id", None)
+    school_id = getattr(current_user, "_school_id", None)
+    if guardian_id is None or school_id is None:
+        raise HTTPException(status_code=403, detail="Guardian and school context required")
+    rows = (await db.execute(select(FinregBillingInstruction).where(
+        FinregBillingInstruction.school_id == school_id,
+        FinregBillingInstruction.status == "confirmed",
+    ).order_by(FinregBillingInstruction.created_at.desc()))).scalars().all()
+    output = []
+    for item in rows:
+        if str((item.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
+            continue
+        context = ((item.payload.get("draft") or {}).get("context") or {})
+        document = item.result_snapshot or {}
+        total = document.get("gross_total", 0)
+        output.append({
+            "id": str(item.id), "finreg": True,
+            "child_id": context.get("pupil_id"),
+            "child_name": context.get("pupil_name") or "—",
+            "document_type": document.get("document_type", "invoice"),
+            "full_document_number": document.get("full_document_number") or document.get("document_number") or "Finreg",
+            "reference_month": f'{context["billing_period"]}-01' if context.get("billing_period") else None,
+            "gross_total": total, "status": document.get("status", "issued"),
+            "due_date": document.get("due_date"),
+            "amount_paid": document.get("amount_paid", 0),
+            "balance": document.get("balance", total),
+        })
+    return output
+
+
+@router.get("/parent/documents/{instruction_id}/pdf")
+async def parent_document_pdf(instruction_id: uuid.UUID, current_user=Depends(require_parent), db: AsyncSession = Depends(get_db)):
+    item = await _parent_instruction(instruction_id, current_user, db)
+    try:
+        content = await HttpFinregAdapter().download(
+            f"documents/{item.id}/pdf", actor_reference=str(current_user.id)
+        )
+        return Response(content=content, media_type="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="finreg-{item.id}.pdf"'
+        })
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})

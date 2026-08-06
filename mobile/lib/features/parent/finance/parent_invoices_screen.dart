@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/currency_provider.dart';
@@ -25,6 +26,7 @@ class ParentInvoice {
   final double balance;
   final String? proofStatus; // pending_review | approved | rejected | null
   final String? rejectionReason;
+  final bool isFinreg;
 
   const ParentInvoice({
     required this.id,
@@ -40,6 +42,7 @@ class ParentInvoice {
     required this.balance,
     this.proofStatus,
     this.rejectionReason,
+    this.isFinreg = false,
   });
 
   factory ParentInvoice.fromJson(Map<String, dynamic> json) {
@@ -54,7 +57,9 @@ class ParentInvoice {
         final notes = lastProof['notes'] as String? ?? '';
         rejectionReason = notes.startsWith('[REJEITADO] ')
             ? notes.substring('[REJEITADO] '.length)
-            : notes.isNotEmpty ? notes : null;
+            : notes.isNotEmpty
+                ? notes
+                : null;
       }
     }
     return ParentInvoice(
@@ -62,10 +67,12 @@ class ParentInvoice {
       childId: json['child_id']?.toString() ?? '',
       childName: json['child_name'] as String? ?? 'Desconhecido',
       referenceMonth: json['reference_month'] != null
-          ? DateTime.tryParse(json['reference_month'] as String) ?? DateTime.now()
+          ? DateTime.tryParse(json['reference_month'] as String) ??
+              DateTime.now()
           : DateTime.now(),
       totalAmount: (json['gross_total'] as num?)?.toDouble() ??
-          (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+          (json['total_amount'] as num?)?.toDouble() ??
+          0.0,
       status: json['status'] as String? ?? 'pending',
       dueDate: json['due_date'] != null
           ? DateTime.tryParse(json['due_date'] as String)
@@ -76,6 +83,7 @@ class ParentInvoice {
       balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
       proofStatus: proofStatus,
       rejectionReason: rejectionReason,
+      isFinreg: json['finreg'] as bool? ?? false,
     );
   }
 
@@ -119,31 +127,37 @@ class ParentInvoice {
 final parentInvoicesProvider =
     FutureProvider.autoDispose<List<ParentInvoice>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/finance/parent/invoices') as List;
-  return data
+  final legacy = await api.get('/finance/parent/invoices') as List;
+  final finreg = await api.get('/finreg/parent/documents') as List;
+  return [...legacy, ...finreg]
       .map((e) => ParentInvoice.fromJson(e as Map<String, dynamic>))
-      .toList();
+      .toList()
+    ..sort((a, b) => b.referenceMonth.compareTo(a.referenceMonth));
 });
 
-final _parentCreditProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+final _parentCreditProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/finance/parent/credits');
   return (data as Map<String, dynamic>?) ?? {};
 });
 
-final _parentPaymentRefsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final _parentPaymentRefsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/finance/parent/payment-references') as List;
   return data.cast<Map<String, dynamic>>();
 });
 
-final _parentReceiptsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final _parentReceiptsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/finance/parent/receipts') as List;
   return data.cast<Map<String, dynamic>>();
 });
 
-final _parentStatementProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final _parentStatementProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final api = ref.read(apiClientProvider);
   try {
     final data = await api.get('/finance/parent/statement');
@@ -154,7 +168,8 @@ final _parentStatementProvider = FutureProvider.autoDispose<Map<String, dynamic>
 });
 
 // Fetch guardian profile to check NIF (spec 20.26.2)
-final _parentProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final _parentProfileProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final api = ref.read(apiClientProvider);
   try {
     final data = await api.get('/guardians/me');
@@ -239,23 +254,37 @@ class _ParentInvoicesScreenState extends ConsumerState<ParentInvoicesScreen>
               ),
               Expanded(
                 child: invoicesAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(parentInvoicesProvider)),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => AppErrorWidget(
+                      error: e,
+                      onRetry: () => ref.invalidate(parentInvoicesProvider)),
                   data: (invoices) {
                     final filtered = _statusFilter == 'all'
                         ? invoices
-                        : invoices.where((i) => i.status == _statusFilter).toList();
+                        : invoices
+                            .where((i) => i.status == _statusFilter)
+                            .toList();
 
                     if (filtered.isEmpty) {
                       return Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.receipt_long, size: 64, color: Theme.of(context).colorScheme.outlineVariant),
+                            Icon(Icons.receipt_long,
+                                size: 64,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant),
                             const SizedBox(height: 16),
                             Text('Nenhuma fatura encontrada',
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant)),
                           ],
                         ),
                       );
@@ -272,7 +301,8 @@ class _ParentInvoicesScreenState extends ConsumerState<ParentInvoicesScreen>
                         itemBuilder: (context, i) => _InvoiceCard(
                           invoice: filtered[i],
                           currency: currency,
-                          onPaymentSubmitted: () => ref.invalidate(parentInvoicesProvider),
+                          onPaymentSubmitted: () =>
+                              ref.invalidate(parentInvoicesProvider),
                         ),
                       ),
                     );
@@ -287,7 +317,6 @@ class _ParentInvoicesScreenState extends ConsumerState<ParentInvoicesScreen>
 
           // ── Tab 2: Recibos ─────────────────────────────────────────────
           _ReceiptsTab(currency: currency),
-
         ],
       ),
     );
@@ -317,7 +346,8 @@ class _NifPromptBanner extends ConsumerWidget {
       data: (profile) {
         if (profile == null) return const SizedBox.shrink();
         final nif = profile['nif'] as String?;
-        if (nif != null && nif.trim().isNotEmpty) return const SizedBox.shrink();
+        if (nif != null && nif.trim().isNotEmpty)
+          return const SizedBox.shrink();
         return Container(
           margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -334,8 +364,14 @@ class _NifPromptBanner extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('NIF não registado', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.orange)),
-                    Text('Para emissão de facturas em seu nome, actualize o seu NIF no perfil.', style: TextStyle(fontSize: 11, color: Colors.orange)),
+                    Text('NIF não registado',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: Colors.orange)),
+                    Text(
+                        'Para emissão de facturas em seu nome, actualize o seu NIF no perfil.',
+                        style: TextStyle(fontSize: 11, color: Colors.orange)),
                   ],
                 ),
               ),
@@ -367,7 +403,8 @@ class _ActiveRefsBanner extends ConsumerWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF005B9A).withOpacity(0.06),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF005B9A).withOpacity(0.25)),
+            border:
+                Border.all(color: const Color(0xFF005B9A).withOpacity(0.25)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,22 +413,39 @@ class _ActiveRefsBanner extends ConsumerWidget {
                 children: [
                   Icon(Icons.payment, color: Color(0xFF005B9A), size: 16),
                   SizedBox(width: 6),
-                  Text('Referências Multicaixa Activas', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF005B9A))),
+                  Text('Referências Multicaixa Activas',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          color: Color(0xFF005B9A))),
                 ],
               ),
               const SizedBox(height: 8),
               ...active.map((r) {
-                final entity = r['entity'] as String? ?? r['multicaixa_entity'] as String? ?? '—';
-                final refNum = r['reference'] as String? ?? r['multicaixa_ref'] as String? ?? '—';
+                final entity = r['entity'] as String? ??
+                    r['multicaixa_entity'] as String? ??
+                    '—';
+                final refNum = r['reference'] as String? ??
+                    r['multicaixa_ref'] as String? ??
+                    '—';
                 final amount = (r['amount'] as num?)?.toDouble();
                 final expires = r['expires_at'] as String? ?? '';
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
                     children: [
-                      Expanded(child: Text('Entidade $entity · Ref $refNum', style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
-                      if (amount != null) Text(currency.format(amount), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      if (expires.isNotEmpty) Text(' · Exp $expires', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      Expanded(
+                          child: Text('Entidade $entity · Ref $refNum',
+                              style: const TextStyle(
+                                  fontSize: 12, fontFamily: 'monospace'))),
+                      if (amount != null)
+                        Text(currency.format(amount),
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold)),
+                      if (expires.isNotEmpty)
+                        Text(' · Exp $expires',
+                            style: const TextStyle(
+                                fontSize: 10, color: Colors.grey)),
                     ],
                   ),
                 );
@@ -434,8 +488,12 @@ class _CreditBalanceBanner extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Crédito Disponível', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text(currency.format(balance), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    const Text('Crédito Disponível',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(currency.format(balance),
+                        style: const TextStyle(
+                            color: Colors.green, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -457,7 +515,8 @@ class _StatementTab extends ConsumerWidget {
     final statementAsync = ref.watch(_parentStatementProvider);
     return statementAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(_parentStatementProvider)),
+      error: (e, _) => AppErrorWidget(
+          error: e, onRetry: () => ref.invalidate(_parentStatementProvider)),
       data: (statement) {
         if (statement == null) {
           return const Center(
@@ -466,16 +525,21 @@ class _StatementTab extends ConsumerWidget {
               children: [
                 Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey),
                 SizedBox(height: 12),
-                Text('Extrato não disponível', style: TextStyle(color: Colors.grey)),
+                Text('Extrato não disponível',
+                    style: TextStyle(color: Colors.grey)),
               ],
             ),
           );
         }
-        final totalInvoiced = (statement['total_invoiced'] as num?)?.toDouble() ?? 0;
-        final totalSettled = (statement['total_settled'] as num?)?.toDouble() ?? 0;
+        final totalInvoiced =
+            (statement['total_invoiced'] as num?)?.toDouble() ?? 0;
+        final totalSettled =
+            (statement['total_settled'] as num?)?.toDouble() ?? 0;
         final balance = (statement['current_balance'] as num?)?.toDouble() ?? 0;
-        final creditBalance = (statement['credit_balance'] as num?)?.toDouble() ?? 0;
-        final movements = (statement['movements'] as List? ?? []).cast<Map<String, dynamic>>();
+        final creditBalance =
+            (statement['credit_balance'] as num?)?.toDouble() ?? 0;
+        final movements = (statement['movements'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(_parentStatementProvider),
           child: ListView(
@@ -490,36 +554,61 @@ class _StatementTab extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Resumo da Conta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('Resumo da Conta',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
-                    _summaryRow(context, 'Total Facturado', currency.format(totalInvoiced), Colors.blue),
-                    _summaryRow(context, 'Total Pago', currency.format(totalSettled), Colors.green),
-                    _summaryRow(context, 'Saldo em Dívida', currency.format(balance), balance > 0 ? Colors.red : Colors.green),
-                    if (creditBalance > 0) _summaryRow(context, 'Crédito Disponível', currency.format(creditBalance), Colors.green),
+                    _summaryRow(context, 'Total Facturado',
+                        currency.format(totalInvoiced), Colors.blue),
+                    _summaryRow(context, 'Total Pago',
+                        currency.format(totalSettled), Colors.green),
+                    _summaryRow(
+                        context,
+                        'Saldo em Dívida',
+                        currency.format(balance),
+                        balance > 0 ? Colors.red : Colors.green),
+                    if (creditBalance > 0)
+                      _summaryRow(context, 'Crédito Disponível',
+                          currency.format(creditBalance), Colors.green),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Movimentos', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: Colors.grey)),
+              Text('Movimentos',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700, color: Colors.grey)),
               const SizedBox(height: 8),
               if (movements.isEmpty)
-                const Text('Sem movimentos', style: TextStyle(color: Colors.grey))
+                const Text('Sem movimentos',
+                    style: TextStyle(color: Colors.grey))
               else
                 ...movements.map((m) {
                   final type = m['type'] as String? ?? '';
                   final desc = m['description'] as String? ?? type;
                   final date = m['date'] as String? ?? '';
-                  double _safeNum(dynamic v) => v == null ? 0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0);
+                  double _safeNum(dynamic v) => v == null
+                      ? 0
+                      : (v is num
+                          ? v.toDouble()
+                          : double.tryParse(v.toString()) ?? 0);
                   final debit = _safeNum(m['debit']);
                   final credit = _safeNum(m['credit']);
-                  final runningBalance = m['running_balance'] != null ? _safeNum(m['running_balance']) : null;
+                  final runningBalance = m['running_balance'] != null
+                      ? _safeNum(m['running_balance'])
+                      : null;
                   final isDebit = debit > 0;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      border: Border(left: BorderSide(width: 3, color: isDebit ? Colors.red : Colors.green)),
-                      color: isDebit ? Colors.red.withOpacity(0.03) : Colors.green.withOpacity(0.03),
+                      border: Border(
+                          left: BorderSide(
+                              width: 3,
+                              color: isDebit ? Colors.red : Colors.green)),
+                      color: isDebit
+                          ? Colors.red.withOpacity(0.03)
+                          : Colors.green.withOpacity(0.03),
                     ),
                     child: Row(
                       children: [
@@ -527,8 +616,13 @@ class _StatementTab extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(desc, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                              Text(date, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              Text(desc,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13)),
+                              Text(date,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
                             ],
                           ),
                         ),
@@ -536,11 +630,18 @@ class _StatementTab extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              isDebit ? '+${currency.format(debit)}' : '-${currency.format(credit)}',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDebit ? Colors.red : Colors.green),
+                              isDebit
+                                  ? '+${currency.format(debit)}'
+                                  : '-${currency.format(credit)}',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: isDebit ? Colors.red : Colors.green),
                             ),
                             if (runningBalance != null)
-                              Text('Saldo: ${currency.format(runningBalance)}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                              Text('Saldo: ${currency.format(runningBalance)}',
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Colors.grey)),
                           ],
                         ),
                       ],
@@ -554,32 +655,40 @@ class _StatementTab extends ConsumerWidget {
     );
   }
 
-  Widget _summaryRow(BuildContext context, String label, String value, Color color) {
+  Widget _summaryRow(
+      BuildContext context, String label, String value, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 13)),
+          Text(value,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: color, fontSize: 13)),
         ],
       ),
     );
   }
 }
 
-void _showReceiptDetail(BuildContext context, Map<String, dynamic> r, NumberFormat currency) {
+void _showReceiptDetail(
+    BuildContext context, Map<String, dynamic> r, NumberFormat currency) {
   final docNum = r['full_document_number'] as String? ?? '—';
-  final rawDate = r['invoice_date'] as String? ?? r['system_entry_date'] as String? ?? '';
+  final rawDate =
+      r['invoice_date'] as String? ?? r['system_entry_date'] as String? ?? '';
   String dateLabel = rawDate;
-  try { dateLabel = rawDate.isNotEmpty ? rawDate.substring(0, 10) : ''; } catch (_) {}
+  try {
+    dateLabel = rawDate.isNotEmpty ? rawDate.substring(0, 10) : '';
+  } catch (_) {}
   final amount = (r['gross_total'] as num?)?.toDouble() ?? 0;
   final customerName = r['customer_name'] as String?;
   final customerNif = r['customer_nif'] as String?;
   final status = r['status'] as String? ?? '';
   showModalBottomSheet(
     context: context,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
     builder: (_) => Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: Column(
@@ -587,15 +696,27 @@ void _showReceiptDetail(BuildContext context, Map<String, dynamic> r, NumberForm
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Icon(Icons.receipt_long_outlined, color: Colors.green, size: 28),
+            const Icon(Icons.receipt_long_outlined,
+                color: Colors.green, size: 28),
             const SizedBox(width: 10),
-            Text(docNum, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'monospace')),
+            Text(docNum,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    fontFamily: 'monospace')),
             const Spacer(),
-            if (status.isNotEmpty) Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-              child: Text(status.toUpperCase(), style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
-            ),
+            if (status.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20)),
+                child: Text(status.toUpperCase(),
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold)),
+              ),
           ]),
           const Divider(height: 20),
           if (customerName != null) _detailRow('Cliente', customerName),
@@ -609,15 +730,17 @@ void _showReceiptDetail(BuildContext context, Map<String, dynamic> r, NumberForm
 }
 
 Widget _detailRow(String label, String value) => Padding(
-  padding: const EdgeInsets.symmetric(vertical: 4),
-  child: Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-    ],
-  ),
-);
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(value,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ],
+      ),
+    );
 
 // Receipts tab
 class _ReceiptsTab extends ConsumerWidget {
@@ -629,7 +752,8 @@ class _ReceiptsTab extends ConsumerWidget {
     final receiptsAsync = ref.watch(_parentReceiptsProvider);
     return receiptsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(_parentReceiptsProvider)),
+      error: (e, _) => AppErrorWidget(
+          error: e, onRetry: () => ref.invalidate(_parentReceiptsProvider)),
       data: (receipts) {
         if (receipts.isEmpty) {
           return const Center(
@@ -638,7 +762,8 @@ class _ReceiptsTab extends ConsumerWidget {
               children: [
                 Icon(Icons.receipt_outlined, size: 56, color: Colors.grey),
                 SizedBox(height: 12),
-                Text('Nenhum recibo disponível', style: TextStyle(color: Colors.grey)),
+                Text('Nenhum recibo disponível',
+                    style: TextStyle(color: Colors.grey)),
               ],
             ),
           );
@@ -650,13 +775,18 @@ class _ReceiptsTab extends ConsumerWidget {
             itemCount: receipts.length,
             itemBuilder: (_, i) {
               final r = receipts[i];
-              final docNum = r['full_document_number'] as String? ?? r['document_number'] as String? ?? '—';
-              final rawDate = r['invoice_date'] as String? ?? r['system_entry_date'] as String? ?? '';
+              final docNum = r['full_document_number'] as String? ??
+                  r['document_number'] as String? ??
+                  '—';
+              final rawDate = r['invoice_date'] as String? ??
+                  r['system_entry_date'] as String? ??
+                  '';
               String dateLabel = rawDate;
-              try { dateLabel = rawDate.isNotEmpty ? rawDate.substring(0, 10) : ''; } catch (_) {}
+              try {
+                dateLabel = rawDate.isNotEmpty ? rawDate.substring(0, 10) : '';
+              } catch (_) {}
               final amount = (r['gross_total'] as num?)?.toDouble() ?? 0;
               final customerName = r['customer_name'] as String?;
-              final status = r['status'] as String? ?? '';
               return Card(
                 margin: const EdgeInsets.only(bottom: 6),
                 elevation: 0,
@@ -667,10 +797,21 @@ class _ReceiptsTab extends ConsumerWidget {
                 child: ListTile(
                   dense: true,
                   onTap: () => _showReceiptDetail(context, r, currency),
-                  leading: const Icon(Icons.receipt_long_outlined, color: Colors.green),
-                  title: Text(docNum, style: const TextStyle(fontWeight: FontWeight.w700, fontFamily: 'monospace', fontSize: 13)),
-                  subtitle: Text(customerName != null ? '$customerName · $dateLabel' : dateLabel, style: const TextStyle(fontSize: 11)),
-                  trailing: Text(currency.format(amount), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                  leading: const Icon(Icons.receipt_long_outlined,
+                      color: Colors.green),
+                  title: Text(docNum,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'monospace',
+                          fontSize: 13)),
+                  subtitle: Text(
+                      customerName != null
+                          ? '$customerName · $dateLabel'
+                          : dateLabel,
+                      style: const TextStyle(fontSize: 11)),
+                  trailing: Text(currency.format(amount),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.green)),
                 ),
               );
             },
@@ -701,7 +842,9 @@ class _InvoiceCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final monthLabel =
         DateFormat('MMMM yyyy', 'pt_PT').format(invoice.referenceMonth);
-    final canPay = invoice.status != 'paid' && invoice.status != 'cancelled';
+    final canPay = !invoice.isFinreg &&
+        invoice.status != 'paid' &&
+        invoice.status != 'cancelled';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -720,8 +863,8 @@ class _InvoiceCard extends ConsumerWidget {
                     children: [
                       Text(
                         invoice.childName,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -733,8 +876,7 @@ class _InvoiceCard extends ConsumerWidget {
                   ),
                 ),
                 _StatusBadge(
-                    label: invoice.statusLabel,
-                    color: invoice.statusColor),
+                    label: invoice.statusLabel, color: invoice.statusColor),
               ],
             ),
 
@@ -745,8 +887,8 @@ class _InvoiceCard extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Valor total',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                 Text(
                   currency.format(invoice.totalAmount),
                   style: theme.textTheme.bodyLarge
@@ -761,8 +903,8 @@ class _InvoiceCard extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Em falta',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.orange)),
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: Colors.orange)),
                   Text(
                     currency.format(invoice.balance),
                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -783,9 +925,7 @@ class _InvoiceCard extends ConsumerWidget {
                   Text(
                     DateFormat('dd/MM/yyyy').format(invoice.dueDate!),
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: invoice.status == 'overdue'
-                          ? Colors.red
-                          : null,
+                      color: invoice.status == 'overdue' ? Colors.red : null,
                     ),
                   ),
                 ],
@@ -822,14 +962,13 @@ class _InvoiceCard extends ConsumerWidget {
               Row(
                 children: [
                   Icon(Icons.info_outline,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant),
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'Referência de pagamento não disponível',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -839,10 +978,29 @@ class _InvoiceCard extends ConsumerWidget {
             // Proof status indicator
             if (invoice.proofStatus != null) ...[
               const SizedBox(height: 12),
-              _ProofStatusBanner(status: invoice.proofStatus!, rejectionReason: invoice.rejectionReason),
+              _ProofStatusBanner(
+                  status: invoice.proofStatus!,
+                  rejectionReason: invoice.rejectionReason),
             ],
 
             // Submit payment button
+            if (invoice.isFinreg) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final bytes = await ref
+                        .read(apiClientProvider)
+                        .getBytes('/finreg/parent/documents/${invoice.id}/pdf');
+                    await Printing.sharePdf(
+                        bytes: bytes, filename: 'finreg-${invoice.id}.pdf');
+                  },
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Documento fiscal oficial'),
+                ),
+              ),
+            ],
             if (canPay && invoice.proofStatus != 'pending_review') ...[
               const SizedBox(height: 16),
               SizedBox(
@@ -861,7 +1019,8 @@ class _InvoiceCard extends ConsumerWidget {
   }
 
   Future<void> _showPaymentDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog(useRootNavigator: false, 
+    await showDialog(
+      useRootNavigator: false,
       context: context,
       builder: (_) => _SubmitPaymentDialog(
         invoice: invoice,
@@ -883,10 +1042,22 @@ class _ProofStatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, icon, label) = switch (status) {
-      'pending_review' => (Colors.orange, Icons.hourglass_top_outlined, 'Comprovativo em análise'),
-      'approved'       => (Colors.green,  Icons.check_circle_outline,    'Comprovativo aprovado'),
-      'rejected'       => (Colors.red,    Icons.cancel_outlined,          'Comprovativo rejeitado — envie novo'),
-      _                => (Colors.grey,   Icons.info_outline,              status),
+      'pending_review' => (
+          Colors.orange,
+          Icons.hourglass_top_outlined,
+          'Comprovativo em análise'
+        ),
+      'approved' => (
+          Colors.green,
+          Icons.check_circle_outline,
+          'Comprovativo aprovado'
+        ),
+      'rejected' => (
+          Colors.red,
+          Icons.cancel_outlined,
+          'Comprovativo rejeitado — envie novo'
+        ),
+      _ => (Colors.grey, Icons.info_outline, status),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -902,14 +1073,22 @@ class _ProofStatusBanner extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600))),
+              Expanded(
+                  child: Text(label,
+                      style: TextStyle(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600))),
             ],
           ),
-          if (status == 'rejected' && rejectionReason != null && rejectionReason!.isNotEmpty) ...[
+          if (status == 'rejected' &&
+              rejectionReason != null &&
+              rejectionReason!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 26),
-              child: Text('Motivo: $rejectionReason', style: TextStyle(color: color, fontSize: 11)),
+              child: Text('Motivo: $rejectionReason',
+                  style: TextStyle(color: color, fontSize: 11)),
             ),
           ],
         ],
@@ -1010,8 +1189,7 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
         'amount': amount,
         'payment_method': _paymentMethod,
         if (proofUrl != null) 'receipt_proof_url': proofUrl,
-        if (_notesCtrl.text.trim().isNotEmpty)
-          'notes': _notesCtrl.text.trim(),
+        if (_notesCtrl.text.trim().isNotEmpty) 'notes': _notesCtrl.text.trim(),
       });
 
       widget.onSubmitted();
@@ -1114,8 +1292,7 @@ class _SubmitPaymentDialogState extends ConsumerState<_SubmitPaymentDialog> {
                       : _proofFile!.name,
                   style: TextStyle(
                     color: _proofFile == null ? null : Colors.green,
-                    fontWeight:
-                        _proofFile != null ? FontWeight.w600 : null,
+                    fontWeight: _proofFile != null ? FontWeight.w600 : null,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1214,8 +1391,8 @@ class _MulticaixaReceiptBox extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 'ATM / Multicaixa Express',
-                style: theme.textTheme.labelMedium?.copyWith(
-                    color: borderColor, fontWeight: FontWeight.bold),
+                style: theme.textTheme.labelMedium
+                    ?.copyWith(color: borderColor, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1252,8 +1429,8 @@ class _ReceiptRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         Text(
           value,
@@ -1288,8 +1465,8 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }

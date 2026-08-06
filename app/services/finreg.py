@@ -89,6 +89,22 @@ class HttpFinregAdapter:
             raise FinregError("unavailable", "Finreg is unavailable", retryable=True) from exc
         return self._decode(response)
 
+    async def download(self, operation: str, *, actor_reference: str) -> bytes:
+        headers = await self._headers(actor_reference)
+        try:
+            verify = settings.FINREG_TLS_CA_FILE or settings.FINREG_VERIFY_TLS
+            async with httpx.AsyncClient(timeout=settings.FINREG_TIMEOUT_SECONDS, verify=verify) as client:
+                response = await client.get(
+                    f"{settings.FINREG_BASE_URL}/integrations/{operation}", headers=headers
+                )
+        except httpx.TimeoutException as exc:
+            raise FinregError("timeout", "Finreg download timed out", retryable=True) from exc
+        except httpx.TransportError as exc:
+            raise FinregError("unavailable", "Finreg is unavailable", retryable=True) from exc
+        if response.status_code >= 400:
+            self._decode(response)
+        return response.content
+
     @staticmethod
     def _decode(response: httpx.Response) -> dict:
         if response.status_code >= 400:
