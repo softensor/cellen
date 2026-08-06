@@ -158,3 +158,18 @@ async def run_scheduled_tasks():
         await _daily_overdue_sweep()
         await _daily_expire_payment_references()
         await _daily_breach_payment_plans()
+
+
+async def run_finreg_dispatcher():
+    """Continuously drain the transactional Finreg outbox with safe retries."""
+    from app.services.finreg_dispatch import dispatch_pending
+
+    while True:
+        async with AsyncSessionLocal() as db:
+            try:
+                confirmed, failed = await dispatch_pending(db)
+                if confirmed or failed:
+                    logger.info("Finreg outbox: confirmed=%d failed=%d", confirmed, failed)
+            except Exception:
+                logger.exception("Finreg outbox dispatch failed")
+        await asyncio.sleep(30)

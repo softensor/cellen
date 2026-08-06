@@ -1,0 +1,40 @@
+#+TITLE: Cellen–Finreg Sales and Billing Integration
+#+DATE: 2026-08-06
+#+STARTUP: overview
+#+OPTIONS: toc:nil num:nil
+
+* Status
+
+- Cellen branch: =integration/finreg-school-billing=
+- Finreg branch: =integration/cellen-school-vertical=
+- Finreg checkout: =/workspace/finreg=
+- Phase: verified first-pass architecture and contract discovery
+
+* Decision
+
+Finreg remains an independent product, deployment, backend, database, and the
+sole fiscal system intended for AGT certification. Cellen retains its school
+domain and embeds an adapted Finreg sales/billing user interface. Cellen calls
+Finreg through a secure integration boundary; it does not copy Finreg backend
+logic or maintain a second fiscal ledger.
+
+* Documents
+
+- [[file:FINREG_CELLEN_ARCHITECTURE_SPEC.org][Architecture and Integration Specification]]
+- [[file:FINREG_CELLEN_IMPLEMENTATION_PLAN.org][Implementation Plan and Work Breakdown]]
+- [[file:CELLEN_NIX_DOCKER_SPEC.org][Cellen Nix and Docker Build Specification]]
+- [[file:FINREG_CELLEN_TEST_ROLLOUT_SPEC.org][Testing, Single-Backend Safety, Migration, and Rollout]]
+
+* Governing rule
+
+If these documents conflict, the architecture specification owns system
+boundaries, the test/rollout specification owns production safety, and an
+approved Architecture Decision Record must resolve the conflict before code
+is merged.
+
+* Immediate gate
+
+Review =/workspace/finreg/docs/CELLEN_SCHOOL_VERTICAL_SPEC.org=. Confirm
+integration authentication, external mappings, school document context,
+uniform payment/receipt idempotency, and the single-backend safe-test policy
+before implementing fiscal writes.

@@ -1,0 +1,453 @@
+#+TITLE: Finreg Finance Integration Plan for Cellen
+#+AUTHOR: Cellen
+#+DATE: 2026-08-05
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:t
+
+* Purpose
+
+Bring the robustness and completeness of Finreg's financial module into
+Cellen without losing Cellen's school-management behavior and data.
+
+The target is a production-ready, AGT-compatible financial system in which a
+school can issue, print, share, settle, correct, report, and audit fiscal
+documents. School concepts such as pupils, guardians, enrolments, school
+years, tuition, meals, transport, and recurring contracts must remain native
+parts of the workflow.
+
+* Current assessment
+
+Cellen is not starting from zero. Its backend already contains a substantial
+accounts-receivable and AGT-oriented foundation. The principal problem is that
+many capabilities are incomplete, weakly validated, or not exposed through a
+usable client workflow.
+
+The complete Finreg-to-Cellen comparison is still pending because the Finreg
+checkout was not available during the first audit. Before implementation,
+make the repository readable at =~/projects/finreg= or another agreed path and
+complete the field-by-field comparison described in this document.
+
+** Existing Cellen capabilities
+
+- School-scoped fiscal document series and sequential numbering.
+- FT, FR, ND, NC, and RC document records.
+- Invoice lines with quantity, price, discount, IVA, and exemption data.
+- Billing-item/service catalogue and prices per school year.
+- Recurring school contracts and bulk monthly invoicing.
+- Full and partial payments with invoice allocations.
+- Receipts, credit notes, reversals, guardian credits, and refunds.
+- Cash sessions, payment plans, reminders, and payment references.
+- Expense registration and basic financial reports.
+- SAF-T XML export.
+- Hash-chain fields and signature excerpts.
+- Links to schools, children, guardians, enrolments, and school years.
+
+** Principal client-facing gaps
+
+- No printable invoice, receipt, credit-note, or debit-note document.
+- No PDF rendering or document download endpoint.
+- No print, download, share, or email actions for fiscal documents.
+- Invoice creation is hard-coded to =Mensalidade= and =Outras taxas=.
+- The invoice form does not consume the existing billing-item catalogue.
+- Users cannot add, remove, reorder, or edit arbitrary invoice lines.
+- Receipt and credit-note screens expose only summary information.
+- Billing items are services rather than a complete product and inventory
+  domain.
+- No supplier, purchasing, inventory, warehouse, or cost-of-goods workflow.
+- No complete general ledger, chart of accounts, journal, accounts payable,
+  bank reconciliation, or treasury subsystem.
+- SAF-T and fiscal signing require comparison with Finreg and validation
+  against current AGT requirements.
+- Fiscal immutability and numbering concurrency require stronger database
+  guarantees and tests.
+
+* Integration principles
+
+1. Do not replace Cellen finance wholesale.
+2. Import or adapt Finreg's generic financial core beneath Cellen's school
+   billing layer.
+3. Preserve existing Cellen data, identifiers, document numbers, hashes, and
+   audit history.
+4. Retain =school_id= isolation on every financial entity and query.
+5. Treat issued fiscal documents as immutable; use correction documents and
+   reversals instead of destructive edits.
+6. Use forward-only, reversible database migrations where practical.
+7. Deliver complete vertical workflows rather than isolated screens or
+   tables.
+8. Validate AGT compliance with schemas, representative fiscal scenarios,
+   and production-like exports.
+
+* Domain mapping
+
+| Cellen school concept          | Generic financial-core concept          |
+|--------------------------------+------------------------------------------|
+| School                         | Tenant / company                         |
+| Guardian                       | Customer / billing party                 |
+| Child                          | Beneficiary / document dimension         |
+| School year                    | Business and reporting dimension         |
+| Tuition, transport, meals      | Products or services                     |
+| Uniforms, books, supplies      | Stocked products                         |
+| School contract               | Recurring billing agreement              |
+| Enrolment fee                  | Invoice source                           |
+| Parent payment                 | Customer payment / receipt               |
+| Scholarship or sibling benefit| Discount or pricing rule                 |
+
+The generic customer must be the party responsible for payment, normally the
+guardian. The child remains an optional beneficiary/reference on documents
+and lines. A single guardian must be able to settle documents for multiple
+children without losing per-child reporting.
+
+* Required comparative audit
+
+Before porting code, compare Finreg and Cellen in the following areas.
+
+** Data model
+
+- Fiscal documents, lines, series, numbering, hashes, and corrections.
+- Customer and address master data.
+- Product, service, tax, unit, price, stock, and warehouse data.
+- Payments, allocations, receipts, cash, banks, and reconciliation.
+- Suppliers, purchases, accounts payable, and withholding taxes.
+- Chart of accounts, journals, posting rules, periods, and balances.
+- SAF-T master files, source documents, and tax tables.
+- Audit history, idempotency, tenant isolation, and soft deletion.
+
+** Business workflows
+
+- Draft, issue, print, email, settle, correct, cancel, and reprint.
+- FT, FR, NC, ND, RC, pro-forma, quotation, and other supported documents.
+- Partial payments, overpayments, credit use, refunds, and reversals.
+- Cash opening, closing, variance, and approval.
+- Purchasing, receiving, supplier invoicing, and supplier payments.
+- Inventory movements and cost calculation.
+- Accounting posting and period closing.
+- AGT transmission, retries, rejection handling, and SAF-T export.
+
+** Technical comparison deliverable
+
+Produce a matrix for every relevant Finreg component with one of these
+decisions:
+
+- =REUSE=: can be copied with minimal adaptation.
+- =ADAPT=: reusable after tenant or school integration changes.
+- =MERGE=: both implementations contain behavior that must be preserved.
+- =KEEP CELLEN=: school-specific implementation remains authoritative.
+- =REBUILD=: neither implementation is safe or complete enough.
+- =DEFER=: valuable but outside the first production milestone.
+
+For each decision record source files, target files, schema changes,
+dependencies, migration rules, tests, and risks.
+
+* Delivery phases
+
+** Phase 0: baseline and safety
+
+*** Tasks
+
+- Make the Finreg repository available for read-only comparison.
+- Record current migration heads and production schema versions.
+- Run the complete Cellen backend and Flutter test suites.
+- Create representative anonymized finance fixtures.
+- Inventory existing fiscal document numbers and hash chains.
+- Document current API contracts used by the parent and administrator apps.
+- Establish backup and rollback procedures for financial data migrations.
+- Create the Finreg-to-Cellen comparison matrix.
+
+*** Exit criteria
+
+- Both repositories and schemas are understood.
+- Existing school-specific behavior is explicitly catalogued.
+- The migration path does not renumber or discard issued documents.
+- Baseline tests and known failures are recorded.
+
+** Phase 1: printable fiscal documents
+
+This is the highest-priority client milestone.
+
+*** Tasks
+
+- Implement a server-side fiscal document rendering service.
+- Produce professional A4 PDFs for FT, FR, ND, NC, and RC.
+- Add optional receipt/thermal layouts where required.
+- Add authenticated PDF preview and download endpoints.
+- Add print, download, share, and email actions in the Flutter application.
+- Allow parents to download their own invoices and receipts.
+- Support safe reprints without issuing a new fiscal document.
+- Mark copies/duplicates according to the applicable fiscal rules.
+
+*** Required document content
+
+- School/company legal name, NIF, address, contacts, and logo.
+- Document type, number, series, issue date, and due date.
+- Customer name, NIF, address, and final-consumer indication.
+- Child/reference information without replacing the legal customer.
+- Product/service code, description, quantity, unit, unit price, discount,
+  tax rate, exemption reason, and line total.
+- Net, tax, and gross totals.
+- Payment method and settled-document references where applicable.
+- Correction reason and original-document reference for NC and ND.
+- Hash/signature excerpt and required AGT wording.
+- Page numbering and document-copy indication.
+
+*** Exit criteria
+
+- An administrator can issue and print every supported fiscal document.
+- A guardian can download their invoices and receipts.
+- Rendered totals exactly match stored immutable totals.
+- PDF golden tests cover taxable, exempt, discounted, partial-payment, and
+  correction scenarios.
+
+** Phase 2: complete invoice editor and catalogue integration
+
+*** Tasks
+
+- Replace the hard-coded tuition form with a dynamic line editor.
+- Search and select catalogue products and services.
+- Add, remove, reorder, and duplicate lines.
+- Support quantity, unit, price, discount, IVA, and exemption reason.
+- Inherit defaults from the selected product while allowing authorized
+  overrides.
+- Add customer/guardian selection and optional child association.
+- Support FT, FR, and ND workflows with appropriate validation.
+- Add document preview before irreversible issuance.
+- Distinguish draft preparation from fiscal issuance.
+- Validate totals on the server; never trust client calculations.
+
+*** Exit criteria
+
+- A user can issue an invoice containing any number of products or services.
+- Catalogue price and tax settings populate automatically.
+- Invalid tax/exemption combinations are rejected.
+- School tuition remains fast to invoice through templates and contracts.
+
+** Phase 3: robust Finreg financial core
+
+Port or adapt the following after the comparative audit.
+
+*** Fiscal document core
+
+- Unified lifecycle and state transitions.
+- Database-safe series allocation with concurrency protection.
+- Immutable issued documents and controlled corrections.
+- Customer and product snapshots on issued documents.
+- Idempotent issuance and payment intake.
+- Complete audit trails.
+
+*** Receivables and treasury
+
+- Customer accounts and statements.
+- Payment allocation and unallocated credits.
+- Cash sessions and cash movements.
+- Bank accounts, deposits, transfers, and reconciliation.
+- Payment reversal and refund approval flows.
+- Ageing, collection, and delinquency reporting.
+
+*** Accounting
+
+- Chart of accounts.
+- Double-entry journals and posting rules.
+- Fiscal periods and closing controls.
+- Customer, supplier, cash, bank, tax, revenue, and expense postings.
+- Trial balance, general ledger, balance sheet, and income statement.
+
+*** Purchasing and payables
+
+- Supplier master data.
+- Purchase requisitions and purchase orders where required.
+- Goods/service receipt.
+- Supplier invoices and credit notes.
+- Accounts payable, due dates, payments, and withholding.
+
+*** Products and inventory
+
+- Product/service type distinction.
+- Units of measure and price lists.
+- Warehouses and stock movements.
+- Purchase receipt, sale issue, adjustment, and return movements.
+- Stock valuation and cost-of-goods integration.
+
+*** Exit criteria
+
+- Imported components respect Cellen tenant and authorization boundaries.
+- Financial events generate balanced and traceable accounting entries.
+- Existing Cellen receivables remain reconciled after migration.
+
+** Phase 4: school-specific integration
+
+*** Tasks
+
+- Preserve recurring contracts for tuition, transport, meals, and activities.
+- Connect enrolment fees to invoices and payment-dependent activation.
+- Support prices per school year and school segment.
+- Implement sibling, scholarship, staff, and campaign discounts.
+- Support one guardian paying for multiple children.
+- Add child and school-year dimensions to financial reporting.
+- Connect meal orders, transport, uniforms, books, and supplies to products.
+- Preserve parent-submitted payment proof and approval workflows.
+- Add parent account statements, credits, payment references, and reminders.
+- Keep school terminology configurable without changing fiscal semantics.
+
+*** Exit criteria
+
+- No existing school workflow is lost.
+- Generic finance reports reconcile with school and child-level reports.
+- Parent access remains restricted to their linked children and accounts.
+
+** Phase 5: AGT compliance and production hardening
+
+*** Tasks
+
+- Compare signing, numbering, tax, and SAF-T behavior with Finreg.
+- Validate SAF-T XML against the applicable schema.
+- Validate customer, product, tax-table, invoice, payment, and correction
+  exports.
+- Test numbering under concurrent document issuance.
+- Prevent backdating that breaks a fiscal series.
+- Add database constraints or triggers for issued-document immutability.
+- Implement AGT transmission queues, retries, and rejection handling when
+  applicable.
+- Add monitoring for numbering failures, rejected transmissions, unbalanced
+  postings, and reconciliation differences.
+- Perform authorization and tenant-isolation tests for every financial API.
+- Conduct user acceptance testing with real school workflows.
+
+*** Exit criteria
+
+- SAF-T passes technical validation for representative production periods.
+- Concurrent issuance cannot duplicate or corrupt document numbers.
+- Issued fiscal data cannot be silently edited or deleted.
+- Operational failures are observable and recoverable.
+
+* First production milestone
+
+Deliver this complete vertical workflow before attempting every accounting
+feature:
+
+#+BEGIN_EXAMPLE
+Select guardian and child
+        -> add catalogue products/services
+        -> preview and issue invoice
+        -> print/share invoice PDF
+        -> record and allocate payment
+        -> issue and print/share receipt
+        -> issue credit/debit correction when required
+#+END_EXAMPLE
+
+This milestone directly addresses current client complaints and establishes
+the document architecture required by later Finreg integration.
+
+* Data migration rules
+
+- Never renumber an existing issued document.
+- Never recompute or silently replace an existing fiscal hash.
+- Preserve original creation, issue, payment, reversal, and correction dates.
+- Preserve invoice-to-payment allocations and credit balances.
+- Map current billing items to products/services using stable identifiers.
+- Snapshot legal customer and product data on issued documents.
+- Reconcile counts and monetary totals before and after every migration.
+- Use per-school migration reports with exceptions requiring manual review.
+- Keep legacy identifiers or an explicit mapping table for traceability.
+- Do not delete legacy tables until production reconciliation and retention
+  requirements have been satisfied.
+
+* Testing strategy
+
+** Unit tests
+
+- Monetary rounding and tax calculations.
+- Discounts and exemption rules.
+- Series allocation and fiscal hashes.
+- Payment allocation, credits, refunds, and reversals.
+- Accounting posting balance.
+- School pricing and discount rules.
+
+** Integration tests
+
+- Invoice through receipt and reconciliation.
+- Partial payment and multi-invoice payment.
+- Overpayment and credit application.
+- Full and partial credit note.
+- Cash-session opening and closing.
+- Product sale and stock movement.
+- Supplier purchase and payment.
+- SAF-T generation from representative data.
+
+** End-to-end tests
+
+- Administrator fiscal workflow on web and mobile.
+- Parent invoice and receipt download.
+- Recurring tuition bulk generation.
+- Multi-child guardian statement.
+- Role and tenant isolation.
+- PDF print/share behavior.
+
+** Migration tests
+
+- Production-like database upgrade.
+- Document counts and totals before and after migration.
+- Hash and document-number preservation.
+- Rollback or forward-fix rehearsal.
+
+* Risks and mitigations
+
+| Risk                                      | Mitigation                                      |
+|-------------------------------------------+-------------------------------------------------|
+| Loss of school-specific behavior          | Explicit mapping and regression tests           |
+| Corruption of fiscal numbering            | Database locks, uniqueness, concurrency tests    |
+| Historical data mismatch                  | Per-school reconciliation reports                |
+| Incorrect AGT output                      | Schema validation and representative fixtures    |
+| Duplicate concepts from both systems      | Component decision matrix before porting         |
+| Excessive one-time merge                  | Phased vertical delivery                         |
+| Client/server total disagreement          | Server-authoritative calculations                |
+| Cross-school data exposure                | Mandatory tenant filters and isolation tests     |
+| Issued-document mutation                  | Immutable states and database enforcement        |
+| UI exposes incomplete backend operations  | End-to-end acceptance criteria per workflow      |
+
+* Definition of done
+
+The integration is complete when:
+
+- Schools can create invoices containing arbitrary products and services.
+- All fiscal documents can be previewed, printed, downloaded, shared, and
+  safely reprinted.
+- Guardians can access their invoices, receipts, statements, and credits.
+- Payments, allocations, corrections, reversals, and refunds are fully
+  traceable.
+- School-specific contracts and enrolment workflows continue to work.
+- Financial records are tenant-isolated and issued documents are immutable.
+- Accounting entries are balanced and reconcile to operational documents.
+- SAF-T exports pass the agreed AGT validation process.
+- Existing Cellen financial history has been migrated without loss or
+  renumbering.
+- Automated tests cover the complete critical workflow.
+
+* Relevant Cellen files
+
+- =app/models/finance.py=
+- =app/routers/finance.py=
+- =app/services/finance.py=
+- =app/schemas/finance.py=
+- =app/utils/agt.py=
+- =mobile/lib/features/admin/finance/invoices_screen.dart=
+- =mobile/lib/features/admin/finance/billing_items_screen.dart=
+- =mobile/lib/features/finance/receipts_screen.dart=
+- =mobile/lib/features/finance/credit_notes_screen.dart=
+- =mobile/lib/features/parent/finance/parent_invoices_screen.dart=
+- =alembic/versions/0016_finance_agt_compliance_rebuild.py=
+- =alembic/versions/0017_finance_spec_alignment.py=
+- =tests/test_finance.py=
+- =tests/test_finance_spec.py=
+
+* Next action
+
+Make the Finreg repository available and complete the comparative audit. The
+first implementation work item after that audit should be Phase 1 plus the
+minimum Phase 2 functionality necessary to create and print a real
+multi-product invoice and its corresponding receipt.
+
+* SUPERSEDED
+
+This early import-oriented plan is retained only as historical context. It is
+not the implementation authority. The approved direction keeps Finreg as an
+independent backend and sole fiscal authority. Start at
+[[file:FINREG_CELLEN_INDEX.org][Cellen–Finreg Sales and Billing Integration]].

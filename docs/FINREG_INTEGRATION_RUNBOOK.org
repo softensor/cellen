@@ -1,0 +1,46 @@
+#+TITLE: Cellen to Finreg Integration Runbook
+#+DATE: 2026-08-06
+
+* Runtime modes
+
+- =disabled=: no Finreg work; legacy Cellen invoices remain available only for
+  pre-cutover behavior.
+- =fake=: exercise the durable outbox and UI with deterministic fake results.
+- =shadow=: retain legacy generation while sending comparable Finreg work for
+  reconciliation; Finreg is not presented as the issued fiscal result.
+- =pilot=: Finreg owns new documents for selected controlled use.
+- =live=: Finreg owns all new school commercial/fiscal documents.
+
+The connection kill switch overrides every enabled mode.  Switching modes
+does not delete outbox rows, mappings, or event receipts.
+
+* Configuration and deployment
+
+Run Alembic through =0025=, mount the client secret outside the repository,
+and configure =FINREG_BASE_URL=, =FINREG_CLIENT_ID=,
+=FINREG_CLIENT_SECRET_FILE=, =FINREG_VERIFY_TLS=, optional =FINREG_CA_BUNDLE=,
+and =FINREG_TIMEOUT_SECONDS=.  Backend and frontend production images are
+=Dockerfile.backend= and =Dockerfile.frontend=.  The frontend build context is
+the common parent directory because it consumes the sibling Finreg packages.
+
+Set a connection for each Cellen tenant through the administrator gateway.
+Confirm Finreg =/capabilities= before enabling it.  Customer, product and
+document identifiers are persisted in mapping tables; do not edit them by
+hand.
+
+* Operations
+
+The dispatcher drains pending billing instructions and uses the same stable
+UUID for each retry.  Inspect instruction status, attempt count and last error
+through the admin integration endpoints.  Transport failures use exponential
+backoff.  A manual retry keeps the original identity and is therefore safe.
+
+For an incident, turn on the kill switch, preserve the outbox, check TLS/token
+configuration and Finreg health, then retry.  An uncertain timeout must never
+be worked around by creating a replacement instruction.  Use its correlation
+and idempotency identifiers to retrieve the existing Finreg result.
+
+Before =pilot= or =live=, retain the test/build evidence, mapping and totals
+reconciliation, representative-school UAT, accounting/AGT approval, backup
+restore evidence, monitoring owner, and rollback sign-off described in the
+Finreg integration operations policy.

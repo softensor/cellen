@@ -1,0 +1,166 @@
+#+TITLE: Cellen–Finreg Implementation Plan
+#+DATE: 2026-08-06
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:t
+
+* Branch strategy
+
+** Cellen
+
+- Working branch: =integration/finreg-school-billing=
+- Keep commits small by concern: specifications, build, gateway, mappings,
+  frontend host, school automation, migration, rollout.
+- Do not mix unrelated Cellen work into the integration branch.
+
+** Finreg
+
+- Proposed branch: =integration/cellen-school-vertical=
+- Create only after the Finreg repository is available.
+- Finreg branch owns SDK/UI extraction, vertical manifest, extension fields,
+  authentication/API changes, events, and contract fixtures.
+- Do not fork the production backend. Changes merge through normal Finreg
+  review and deployment after compatibility testing.
+
+* Phase 0: discovery and contract freeze
+
+** Finreg inspection
+
+- Read all repository instructions and Nix/Container configuration.
+- Inventory backend APIs, authentication, companies/tenancy, permissions,
+  customers, products, documents, payments, PDFs, reports, and SAF-T.
+- Map Flutter feature folders, providers, router, API client, themes, and
+  dependencies.
+- Identify existing external IDs, metadata, idempotency, events/webhooks, and
+  API versioning.
+- Identify production deployment and safe test-company support.
+
+** Deliverables
+
+- Evidence-backed Finreg capability matrix.
+- API gap list.
+- UI extraction dependency graph.
+- Approved ownership matrix for every Cellen finance capability.
+- Updated architecture spec without =TBD-FINREG= items.
+
+** Gate
+
+No fiscal integration implementation before discovery is reviewed.
+
+* Phase 1: Cellen reproducible build
+
+- Replace the mutable development Dockerfile with pinned build/runtime stages.
+- Add backend and Flutter Web production images.
+- Add health checks, non-root runtime, configuration validation, and
+  =.dockerignore=.
+- Add Nix flake and lock file for exact Python/Flutter/Dart/tooling versions.
+- Provide =devShell=, backend/frontend packages, checks, and conventional
+  Docker build dependencies.
+- Keep non-Docker development and deployment supported during transition.
+- Defer Nix-generated OCI images until conventional images are stable.
+
+* Phase 2: integration foundation in Cellen
+
+- Add configuration for Finreg URL, timeouts, TLS, client identity, feature
+  flags, and safe test company.
+- Add mapping/projection/outbox schema and migrations.
+- Define typed gateway interfaces and structured error model.
+- Implement correlation IDs, idempotency keys, retries, circuit protection,
+  logging, and metrics.
+- Implement a fake adapter and contract fixtures before live calls.
+- Add per-school feature flag: =legacy=, =shadow=, =pilot=, =finreg=.
+
+* Phase 3: Finreg reusable surface
+
+- Extract =finreg_client_sdk= without application-global dependencies.
+- Extract =finreg_sales_ui= with injected repository, host adapter, router
+  callbacks, theme, locale, and capabilities.
+- Implement generic vertical manifest/metadata extension.
+- Implement =finreg_vertical_school_ui= only for genuinely school-specific
+  presentation.
+- Add/complete required API endpoints, idempotency, external IDs, and events.
+- Publish packages using an exact version/commit consumed by both apps.
+
+* Phase 4: master-data and identity integration
+
+- Map every Cellen school to a Finreg company.
+- Implement guardian/customer synchronization with conflict rules.
+- Implement billing item/product mapping and school-year price behavior.
+- Implement scoped identity/token mechanism chosen during discovery.
+- Prohibit arbitrary company IDs from client requests.
+- Add administrative mapping diagnostics and reconciliation.
+
+* Phase 5: vertical proof of concept
+
+Use one authorized test school/company:
+
+1. Open imported Finreg sales UI within Cellen.
+2. Select a Cellen guardian and pupil.
+3. Select mapped Finreg products/services.
+4. Preview authoritative Finreg totals.
+5. Issue one Finreg invoice with a stable external reference.
+6. Stream/display the official Finreg PDF.
+7. Register/allocate payment in Finreg.
+8. Stream/display the official receipt.
+9. Issue a correction through Finreg.
+10. Reconcile Cellen mappings and projections.
+
+* Phase 6: preserve school automation
+
+- Refactor Cellen contract billing into billing instructions/outbox commands.
+- Preserve primary-guardian resolution and missing-guardian warnings.
+- Preserve school-year pricing and contract fallback policy.
+- Preserve reference-month duplicate prevention using idempotency and Finreg
+  external references.
+- Preserve cancellation/regeneration rules after Finreg lifecycle review.
+- Activate enrolments only from confirmed settlement state.
+- Drive overdue notifications from Finreg receivables.
+- Decide ownership for payment proofs, plans, reminders, Multicaixa references,
+  and guardian credit.
+
+* Phase 7: frontend and parent experience
+
+- Replace hard-coded invoice creation with reusable Finreg editor.
+- Integrate document list/detail, products, PDFs, payments, receipts,
+  corrections, statements, and permitted reports.
+- Apply Cellen navigation, theme, terminology, and responsive behavior.
+- Add parent document access constrained by guardian/pupil relations.
+- Add pending/error/retry states without pretending a fiscal operation
+  succeeded.
+
+* Phase 8: history and cutover
+
+- Inventory document/payment/credit counts and totals per school.
+- Decide migrate versus read-only archive per historical class.
+- Create explicit legacy-to-Finreg mapping when importing is allowed.
+- Run shadow reconciliation before pilot.
+- Pilot one school, then expand in controlled batches.
+- Retire duplicate Cellen fiscal writes after each approved cutover.
+- Retain rollback to legacy UI only where it cannot issue conflicting new
+  fiscal documents.
+
+* Work tracking
+
+Use these states: =TODO= not started, =NEXT= ready, =WAIT= externally blocked,
+=DOING= active, =VERIFY= awaiting verification, and =DONE= accepted.
+
+** WAIT Mount/read Finreg repository
+** NEXT Complete Finreg discovery matrix
+** NEXT Replace TBD-FINREG decisions
+** TODO Stabilize Docker
+** TODO Add Nix flake and development shell
+** TODO Define gateway and contract fixtures
+** TODO Implement integration schema
+** TODO Extract Finreg client SDK and sales UI
+** TODO Implement school vertical profile
+** TODO Implement proof of concept
+** TODO Refactor school automation
+** TODO Migrate/archive history
+** TODO Pilot and roll out
+
+* Global completion criteria
+
+- All architecture acceptance criteria pass.
+- Contract, failure, security, migration, and reconciliation tests pass.
+- Finreg certification/deployment owner approves the integration surface.
+- No duplicate fiscal issuer remains enabled for a migrated school.
+- Documentation, runbooks, dashboards, and support diagnostics exist.

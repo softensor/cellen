@@ -37,6 +37,7 @@ from app.routers import (
     grades,
     timetable,
     lesson_attendance,
+    finreg,
 )
 
 app = FastAPI(
@@ -97,6 +98,7 @@ app.include_router(reports.router, prefix="/api/v1")
 app.include_router(grades.router, prefix="/api/v1")
 app.include_router(timetable.router, prefix="/api/v1")
 app.include_router(lesson_attendance.router, prefix="/api/v1")
+app.include_router(finreg.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files
 _media_path = Path(settings.MEDIA_DIR)
@@ -107,13 +109,14 @@ app.mount("/media", StaticFiles(directory=str(_media_path)), name="media")
 @app.on_event("startup")
 async def startup_event():
     import asyncio
-    from app.services.scheduled_tasks import run_scheduled_tasks
+    from app.services.scheduled_tasks import run_finreg_dispatcher, run_scheduled_tasks
 
     # Create platform admin if not exists
     await _seed_platform_admin()
 
     # Launch daily scheduled tasks (overdue invoices, expire references)
     asyncio.create_task(run_scheduled_tasks())
+    asyncio.create_task(run_finreg_dispatcher())
 
 
 async def _seed_platform_admin():

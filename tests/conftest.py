@@ -50,6 +50,7 @@ import app.models.billing_item  # noqa: F401
 import app.models.caderneta  # noqa: F401
 import app.models.employee  # noqa: F401
 import app.models.finance  # noqa: F401
+import app.models.finreg_integration  # noqa: F401
 import app.models.food  # noqa: F401
 import app.models.immunization  # noqa: F401
 import app.models.modern  # noqa: F401

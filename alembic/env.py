@@ -48,6 +48,10 @@ from app.models.website import (  # noqa: F401
     WebsiteSetting, WebsitePage, WebsiteSection, WebsiteMedia,
     WebsiteContactSubmission,
 )
+from app.models.finreg_integration import (  # noqa: F401
+    FinregBillingInstruction, FinregEntityMapping, FinregEventReceipt,
+    FinregSchoolConnection,
+)
 
 target_metadata = Base.metadata
 

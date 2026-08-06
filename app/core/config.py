@@ -11,6 +11,17 @@ class Settings(BaseSettings):
     PLATFORM_ADMIN_EMAIL: str
     PLATFORM_ADMIN_PASSWORD: str
 
+    # Finreg is the sole issuer for schools explicitly placed in pilot/live.
+    # Credentials remain server-side and are never returned to Flutter.
+    FINREG_BASE_URL: str = "http://localhost:8001/api/v1"
+    FINREG_CLIENT_ID: str | None = None
+    FINREG_CLIENT_SECRET: str | None = None
+    FINREG_CLIENT_SECRET_FILE: str | None = None
+    FINREG_TIMEOUT_SECONDS: float = 15.0
+    FINREG_VERIFY_TLS: bool = True
+    FINREG_TLS_CA_FILE: str | None = None
+    FINREG_INTEGRATION_ENABLED: bool = False
+
     # Public website contact-form delivery. Gmail uses smtp.gmail.com:587 with
     # STARTTLS and an App Password (never the account's normal password).
     SMTP_HOST: str = "smtp.gmail.com"
