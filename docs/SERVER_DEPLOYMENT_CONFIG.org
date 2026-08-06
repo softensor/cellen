@@ -52,16 +52,21 @@ is =condo.167.235.158.77.nip.io=.  Ports 80 and 443 belong to Nginx.
 
 * Finreg connection target
 
-Finreg was not installed on this VPS at audit time.  The approved planned
-allocation is:
+Finreg was absent at the initial audit and was installed successfully on
+2026-08-06.  Its verified allocation is:
 
-| Item | Planned value |
+| Item | Verified value |
 |------+---------------|
 | Source directory | =/var/www/finreg= |
 | API address | =127.0.0.1:8003= |
 | Public host | =https://finreg.167.235.158.77.nip.io= |
 | Cellen base URL | =https://finreg.167.235.158.77.nip.io/api/v1= |
 | Services | =finreg-api=, =finreg-worker=, exactly one =finreg-beat= |
+| Database | dedicated PostgreSQL =finreg= role/database |
+| Migration | =f9c2a7e4d1b8 (head)= |
+| Runtime | Python virtual environment plus systemd; Docker is not used |
+| Health | public HTTPS =/health= and =/ready= both return HTTP 200 |
+| TLS | Let's Encrypt, automatic renewal; initial expiry 2026-11-04 |
 
 Required Cellen environment variable names are =FINREG_BASE_URL=,
 =FINREG_CLIENT_ID=, =FINREG_CLIENT_SECRET_FILE=,
@@ -69,16 +74,17 @@ Required Cellen environment variable names are =FINREG_BASE_URL=,
 =FINREG_TLS_CA_FILE=, and =FINREG_INTEGRATION_ENABLED=.  Secret values must be
 mounted or stored outside Git.
 
-* Safe deployment order
+* Safe deployment order and progress
 
-1. Back up the Cellen PostgreSQL database and the existing environment file.
-2. Confirm the Git worktree is clean, fetch the integration branch, install
+1. DONE: Back up the Cellen PostgreSQL database before integration deployment
+   (a backup was observed under =$HOME/backups=).
+2. VERIFY/COMPLETE: Confirm the Git worktree is clean, fetch the integration branch, install
    requirements, and migrate through =0025=.
-3. Keep =FINREG_INTEGRATION_ENABLED=false= until the Finreg API and TLS health
-   checks pass.
-4. Install Finreg separately on port 8003 and provision a company-scoped,
-   initially non-fiscal integration client.
-5. Store its secret through =FINREG_CLIENT_SECRET_FILE=, enable the connector,
+3. DONE: Finreg API and TLS health checks pass independently while Cellen
+   remains healthy on port 8001.
+4. DONE/NEXT: Finreg is installed on port 8003; company and initially
+   non-fiscal integration-client provisioning remain next.
+5. NEXT: Store its secret through =FINREG_CLIENT_SECRET_FILE=, enable the connector,
    restart =cellen-api=, and begin in =fake= then =shadow= mode.
 6. Do not enable =pilot= or =live= without reconciliation and the documented
    accounting/AGT approvals.
@@ -96,3 +102,11 @@ cd /var/www/cellen
 
 Never print or commit the contents of =/var/www/cellen/.env= or the Finreg
 client-secret file.
+
+* Verified coexistence
+
+On 2026-08-06 all of =cellen-api=, =finreg-api=, =finreg-worker=, and
+=finreg-beat= reported active.  Cellen continued returning HTTP 200 from
+=https://167.235.158.77.nip.io/health= while Finreg returned HTTP 200 from
+=https://finreg.167.235.158.77.nip.io/health= and =/ready=.  Port 8002 remains
+reserved for Condo Manager.
