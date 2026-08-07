@@ -34,11 +34,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
-          path: finreg-source
+        run: |
+          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
+          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
@@ -88,11 +86,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
-          path: finreg-source
+        run: |
+          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
+          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
@@ -132,11 +128,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
-          path: finreg-source
+        run: |
+          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
+          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
