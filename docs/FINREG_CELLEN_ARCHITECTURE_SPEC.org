@@ -38,6 +38,20 @@ Integrate Finreg's complete sales and billing experience into Cellen while:
 
 * Non-negotiable boundaries
 
+** Finance user-interface ownership
+
+The primary Cellen Finance route MUST render the released
+=finreg_sales_ui= module. Cellen MUST NOT present its historical invoice,
+receipt, credit-note, SAF-T, debtor, statement, audit, product, or cash-session
+screens as an alternative operational fiscal workflow.
+
+Cellen contributes school context and vertical views (pupils, guardians,
+academic years, and student billing plans) through explicit Finreg host
+adapters. Fiscal documents, corrections, receipts, tax calculation, numbering,
+reporting, and official PDFs remain Finreg-owned operations. A legacy Cellen
+finance view may exist only as a separated read-only archive and MUST NOT be
+the default Finance entry point.
+
 ** Finreg owns
 
 - Fiscal companies, customers, products/services, tax configuration, series,

@@ -51,17 +51,6 @@ import '../../features/photos/photos_screen.dart';
 import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
 import '../../features/admin/finance/student_billing_plans_screen.dart';
-import '../../features/finance/receipts_screen.dart';
-import '../../features/finance/credit_notes_screen.dart';
-import '../../features/finance/saft_screen.dart';
-import '../../features/finance/delinquent_screen.dart';
-import '../../features/admin/finance/billing_items_screen.dart';
-import '../../features/admin/finance/credit_balances_screen.dart';
-import '../../features/admin/finance/payment_plans_screen.dart';
-import '../../features/admin/finance/reminders_screen.dart';
-import '../../features/admin/finance/statement_screen.dart';
-import '../../features/admin/finance/audit_log_screen.dart';
-import '../../features/admin/finance/payment_references_screen.dart';
 import '../../features/announcements/announcements_screen.dart';
 import '../../features/documents/documents_screen.dart';
 import '../../features/appointments/appointments_screen.dart';
@@ -77,7 +66,6 @@ import '../../features/admin/food/food_hub_screen.dart';
 import '../../features/trip_authorizations/trip_authorizations_screen.dart';
 import '../../features/pickup/pickup_authorizations_screen.dart';
 import '../../features/pickup/meal_orders_screen.dart';
-import '../../features/admin/finance/cash_sessions_screen.dart';
 import '../../features/teacher/attendance/attendance_history_screen.dart';
 import '../../features/teacher/attendance/lesson_attendance_screen.dart';
 import '../../features/teacher/attendance/lesson_attendance_summary_screen.dart';
@@ -665,22 +653,23 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/school-profile',       builder: (_, __) => const SchoolProfileScreen()),
           GoRoute(path: '/admin/food-hub',             builder: (_, __) => const FoodHubScreen()),
           GoRoute(path: '/admin/food',                 builder: (_, __) => const AdminFoodScreen()),
-          GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
+          GoRoute(path: '/admin/finance',              builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(path: '/admin/finance/expenses',     builder: (_, __) => const ExpensesScreen()),
           GoRoute(path: '/admin/finance/contracts',    builder: (_, __) => const StudentBillingPlansScreen()),
-          GoRoute(path: '/admin/finance/receipts',     builder: (_, __) => const ReceiptsScreen()),
-          GoRoute(path: '/admin/finance/credit-notes',       builder: (_, __) => const CreditNotesScreen()),
-          GoRoute(path: '/admin/finance/saft',               builder: (_, __) => const SaftScreen()),
-          GoRoute(path: '/admin/finance/delinquent',         builder: (_, __) => const DelinquentScreen()),
-          GoRoute(path: '/admin/finance/billing-items',      builder: (_, __) => const BillingItemsScreen()),
-          GoRoute(path: '/admin/finance/credits',            builder: (_, __) => const CreditBalancesScreen()),
-          GoRoute(path: '/admin/finance/payment-plans',      builder: (_, __) => const PaymentPlansScreen()),
-          GoRoute(path: '/admin/finance/reminders',          builder: (_, __) => const RemindersScreen()),
-          GoRoute(path: '/admin/finance/statement',          builder: (_, __) => const StatementScreen()),
-          GoRoute(path: '/admin/finance/audit-log',          builder: (_, __) => const AuditLogScreen()),
-          GoRoute(path: '/admin/finance/payment-references', builder: (_, __) => const PaymentReferencesScreen()),
-          GoRoute(path: '/admin/finance/cash-sessions',    builder: (_, __) => const CashSessionsScreen()),
+          GoRoute(path: '/admin/finance/receipts',     builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/credit-notes',       builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/saft',               builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/delinquent',         builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/billing-items',      builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/credits',            builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/payment-plans',      builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/reminders',          builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/statement',          builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/audit-log',          builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/payment-references', builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/cash-sessions',    builder: (_, __) => const FinregSalesHostScreen()),
+          GoRoute(path: '/admin/finance/legacy',           builder: (_, __) => const FinanceDashboardScreen()),
           GoRoute(path: '/admin/reports/med',             builder: (_, __) => const MedReportScreen()),
           GoRoute(path: '/admin/academic/subjects',       builder: (_, __) => const SubjectsScreen()),
           GoRoute(path: '/admin/academic/turma-subjects', builder: (_, __) => const TurmaSubjectsScreen()),

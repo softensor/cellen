@@ -1,7 +1,9 @@
 import uuid
+from pathlib import Path
 
 import pytest
 
+from app.models.finreg_integration import FinregSchoolConnection
 from app.services.finreg import (
     FakeFinregAdapter,
     FinregError,
@@ -9,7 +11,16 @@ from app.services.finreg import (
     school_context,
 )
 from app.services.finreg_events import synchronize_connection
-from app.models.finreg_integration import FinregSchoolConnection
+
+
+def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
+    root = Path(__file__).resolve().parents[1]
+    router = (root / "mobile/lib/core/router/router.dart").read_text()
+    host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+
+    assert "path: '/admin/finance',              builder: (_, __) => const FinregSalesHostScreen()" in router
+    assert "FinregSchoolBillingModule(" in host
+    assert "return const InvoicesScreen()" not in host
 
 
 def test_billing_key_is_stable_and_period_scoped():
