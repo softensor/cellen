@@ -1,3 +1,5 @@
+import hashlib
+import json
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -63,6 +65,32 @@ class PaymentDraft(BaseModel):
 class CorrectionDraft(BaseModel):
     external_reference: uuid.UUID
     reason: str = Field(min_length=3, max_length=250)
+
+
+class BillingPlanLineDraft(BaseModel):
+    billing_item_id: uuid.UUID
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    discount_pct: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+
+class BillingPlanDraft(BaseModel):
+    external_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    guardian_id: uuid.UUID
+    pupil_id: uuid.UUID
+    academic_year_id: uuid.UUID | None = None
+    academic_year_label: str | None = None
+    frequency: str = Field(pattern="^(weekly|monthly|quarterly|annual)$")
+    interval_count: int = Field(default=1, ge=1, le=120)
+    due_days: int = Field(default=10, ge=0, le=365)
+    next_run_date: date
+    end_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+    lines: list[BillingPlanLineDraft] = Field(min_length=1)
+
+
+class BillingPlanStateDraft(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+    next_run_date: date | None = None
 
 
 async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
@@ -186,6 +214,126 @@ async def mappings(school_id=Depends(get_school_id), db: AsyncSession = Depends(
     rows = (await db.execute(select(FinregEntityMapping).where(FinregEntityMapping.school_id == school_id))).scalars().all()
     return [{"entity_type": x.entity_type, "cellen_id": str(x.cellen_id), "finreg_id": str(x.finreg_id),
              "status": x.status, "last_error_code": x.last_error_code} for x in rows]
+
+
+async def _writable_or_shadow_connection(school_id, db):
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        raise HTTPException(status_code=409, detail="Finreg integration is globally disabled")
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if not connection or connection.mode not in {"shadow", "pilot", "live"} or connection.kill_switch:
+        raise HTTPException(status_code=409, detail="Finreg billing plans are not enabled for this school")
+    return connection
+
+
+@router.get("/billing-plans")
+async def billing_plans(user=Depends(require_finance_access), school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db)):
+    await _writable_or_shadow_connection(school_id, db)
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", "billing-plans", None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422,
+                            detail={"code": exc.code, "message": exc.detail})
+
+
+@router.put("/billing-plans/{external_id}")
+async def upsert_billing_plan(
+    external_id: uuid.UUID, body: BillingPlanDraft,
+    user=Depends(require_school_admin), school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.external_id != external_id:
+        raise HTTPException(status_code=422, detail="Billing plan external ID must match the URL")
+    connection = await _writable_or_shadow_connection(school_id, db)
+    guardian = (await db.execute(select(Guardian).where(
+        Guardian.id == body.guardian_id, Guardian.school_id == school_id
+    ))).scalar_one_or_none()
+    child = (await db.execute(select(Child).where(
+        Child.id == body.pupil_id, Child.school_id == school_id
+    ))).scalar_one_or_none()
+    if guardian is None or child is None:
+        raise HTTPException(status_code=404, detail="Guardian or pupil not found")
+    item_ids = [line.billing_item_id for line in body.lines]
+    items = (await db.execute(select(BillingItem).where(
+        BillingItem.id.in_(item_ids), BillingItem.school_id == school_id,
+        BillingItem.is_active.is_(True),
+    ))).scalars().all()
+    by_id = {item.id: item for item in items}
+    if len(by_id) != len(set(item_ids)):
+        raise HTTPException(status_code=422, detail="Billing item not found or inactive")
+    adapter = HttpFinregAdapter()
+    actor = str(user.id)
+    correlation = str(uuid.uuid4())
+    revision = hashlib.sha256(json.dumps(body.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()[:16]
+    key = f"cellen-plan-{external_id}-{revision}"
+    try:
+        customer = await adapter.request("PUT", f"customers/{guardian.id}", {"customer": {
+            "tax_id": guardian.nif, "name": f"{guardian.first_name} {guardian.last_name}",
+            "email": guardian.email, "phone": guardian.mobile_first,
+            "address": guardian.street, "city": guardian.city, "country": "AO", "is_company": False,
+        }}, idempotency_key=f"{key}:customer", correlation_id=correlation, actor_reference=actor)
+        finreg_products = {}
+        for item in items:
+            product = await adapter.request("PUT", f"products/{item.id}", {"product": {
+                "sku": item.code, "name": item.name, "description": item.description,
+                "unit_price": str(item.unit_price), "tax_rate": str(item.iva_rate),
+                "tax_exemption_reason": item.iva_exemption_reason, "is_service": True,
+            }}, idempotency_key=f"{key}:product:{item.id}", correlation_id=correlation,
+               actor_reference=actor)
+            finreg_products[item.id] = product["id"]
+        context = {
+            "schema": "school/v1", "source_system": "cellen",
+            "source_reference": str(external_id), "school_id": str(school_id),
+            "pupil_id": str(child.id), "pupil_name": f"{child.first_name} {child.last_name}",
+            "academic_year_id": str(body.academic_year_id) if body.academic_year_id else None,
+            "academic_year_label": body.academic_year_label,
+        }
+        payload = {"template": {
+            "customer_id": customer["id"], "document_type": "invoice",
+            "frequency": body.frequency, "interval_count": body.interval_count,
+            "due_days": body.due_days,
+            "next_run_date": body.next_run_date.isoformat(),
+            "end_date": body.end_date.isoformat() if body.end_date else None,
+            "generation_mode": "draft" if connection.mode == "shadow" else "finalize",
+            "notes": body.notes,
+            "lines": [{
+                "product_id": finreg_products[line.billing_item_id],
+                "description": by_id[line.billing_item_id].name,
+                "quantity": str(line.quantity), "unit": "un",
+                "unit_price": str(by_id[line.billing_item_id].unit_price),
+                "discount_pct": str(line.discount_pct),
+                "tax_rate": str(by_id[line.billing_item_id].iva_rate),
+                "tax_exemption_reason": by_id[line.billing_item_id].iva_exemption_reason,
+            } for line in body.lines],
+        }, "context": context, "external_version": "student-billing-plan/v1"}
+        return await adapter.request("PUT", f"billing-plans/{external_id}", payload,
+                                     idempotency_key=f"{key}:upsert", correlation_id=correlation,
+                                     actor_reference=actor)
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422,
+                            detail={"code": exc.code, "message": exc.detail})
+
+
+@router.post("/billing-plans/{external_id}/{action}")
+async def change_billing_plan_state(
+    external_id: uuid.UUID, action: str, body: BillingPlanStateDraft,
+    user=Depends(require_school_admin), school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    if action not in {"pause", "resume"}:
+        raise HTTPException(status_code=404, detail="Unsupported billing-plan action")
+    await _writable_or_shadow_connection(school_id, db)
+    try:
+        return await HttpFinregAdapter().request("POST", f"billing-plans/{external_id}/{action}", {
+            "reason": body.reason,
+            "next_run_date": body.next_run_date.isoformat() if body.next_run_date else None,
+        }, actor_reference=str(user.id))
+    except FinregError as exc:
+        raise HTTPException(status_code=503 if exc.retryable else 422,
+                            detail={"code": exc.code, "message": exc.detail})
 
 
 @router.post("/sales/preview")

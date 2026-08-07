@@ -106,7 +106,13 @@ Use one authorized test school/company:
 
 * Phase 6: preserve school automation
 
-- Refactor Cellen contract billing into billing instructions/outbox commands.
+- Retire =Contract= as a writable product concept and label preserved rows as
+  legacy recurring-charge records.
+- Add =Student Billing Plan= APIs and UI backed by Finreg recurring templates.
+- Support multiple mapped product lines, explicit payer, pupil, academic year,
+  recurrence, effective dates, and pause/resume reason.
+- Make Finreg the sole recurrence executor; remove Cellen's competing automatic
+  invoice claims and controls after cutover.
 - Preserve primary-guardian resolution and missing-guardian warnings.
 - Preserve school-year pricing and contract fallback policy.
 - Preserve reference-month duplicate prevention using idempotency and Finreg
@@ -153,7 +159,21 @@ Use these states: =TODO= not started, =NEXT= ready, =WAIT= externally blocked,
 ** TODO Extract Finreg client SDK and sales UI
 ** TODO Implement school vertical profile
 ** TODO Implement proof of concept
-** TODO Refactor school automation
+** DONE Replace legacy contracts with Finreg-owned student billing plans
+
+Delivered in the integration branches:
+
+- Finreg integration endpoints for idempotent plan upsert, list, pause, and
+  resume.
+- Multi-line plans backed by the existing Finreg recurring engine and its
+  occurrence uniqueness guard.
+- Versioned school context propagated from the plan to generated documents.
+- Additive integration-client scopes and a repeatable VPS deployment script.
+- Cellen =Planos de Cobrança= interface with explicit pupil, payer, services,
+  cadence, first run, state, and Finreg totals.
+- Legacy contract writes and bulk generation blocked after Finreg cutover.
+- Shadow mode uses the reusable Finreg workspace and disables issue, payment,
+  and correction actions.
 ** TODO Migrate/archive history
 ** TODO Pilot and roll out
 

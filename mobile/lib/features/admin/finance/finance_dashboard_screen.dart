@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'student_billing_plans_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
@@ -249,7 +250,6 @@ class _FinanceDashboardScreenState extends ConsumerState<FinanceDashboardScreen>
 
   // Keys to call methods on tab children
   final _invoicesTabKey = GlobalKey<_InvoicesTabState>();
-  final _contractsTabKey = GlobalKey<_ContractsTabState>();
   final _expensesTabKey = GlobalKey<_ExpensesTabState>();
 
   @override
@@ -281,11 +281,7 @@ class _FinanceDashboardScreenState extends ConsumerState<FinanceDashboardScreen>
           label: const Text('Nova Factura'),
         );
       case 2:
-        return FloatingActionButton.extended(
-          onPressed: () => _contractsTabKey.currentState?._showCreateContract(context),
-          icon: const Icon(Icons.add),
-          label: const Text('Novo Contrato'),
-        );
+        return null;
       case 3:
         return FloatingActionButton.extended(
           onPressed: () => _expensesTabKey.currentState?._showAddExpense(context),
@@ -315,7 +311,7 @@ class _FinanceDashboardScreenState extends ConsumerState<FinanceDashboardScreen>
           tabs: const [
             Tab(icon: Icon(Icons.dashboard_outlined, size: 20), text: 'Geral'),
             Tab(icon: Icon(Icons.receipt_long_outlined, size: 20), text: 'Facturas'),
-            Tab(icon: Icon(Icons.description_outlined, size: 20), text: 'Contratos'),
+            Tab(icon: Icon(Icons.event_repeat_outlined, size: 20), text: 'Planos'),
             Tab(icon: Icon(Icons.trending_down_outlined, size: 20), text: 'Despesas'),
           ],
         ),
@@ -326,11 +322,7 @@ class _FinanceDashboardScreenState extends ConsumerState<FinanceDashboardScreen>
         children: [
           _OverviewTab(onNavigate: (i) => _tab.animateTo(i)),
           _InvoicesTab(key: _invoicesTabKey, onRefreshSummary: () => ref.invalidate(_summaryProvider)),
-          _ContractsTab(key: _contractsTabKey, onInvoiceGenerated: () {
-            ref.invalidate(_allInvoicesProvider);
-            ref.invalidate(_summaryProvider);
-            _tab.animateTo(1);
-          }),
+          const StudentBillingPlansScreen(embedded: true),
           _ExpensesTab(key: _expensesTabKey),
         ],
       ),
@@ -865,7 +857,7 @@ class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
 
 class _ContractsTab extends ConsumerStatefulWidget {
   final VoidCallback onInvoiceGenerated;
-  const _ContractsTab({super.key, required this.onInvoiceGenerated});
+  const _ContractsTab({required this.onInvoiceGenerated});
 
   @override
   ConsumerState<_ContractsTab> createState() => _ContractsTabState();
