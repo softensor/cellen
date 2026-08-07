@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
-import 'invoices_screen.dart';
+import 'student_billing_plans_screen.dart';
 
 class FinregSalesHostScreen extends ConsumerWidget {
   const FinregSalesHostScreen({super.key});
@@ -15,17 +15,36 @@ class FinregSalesHostScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => FutureBuilder<dynamic>(
         future: ref.read(apiClientProvider).get('/finreg/connection'),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Não foi possível abrir o Finreg: ${snapshot.error}',
+                    textAlign: TextAlign.center),
+              ),
+            );
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           final value = Map<String, dynamic>.from(snapshot.data as Map);
           if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
-            return const InvoicesScreen();
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'A faturação Finreg ainda não está configurada para esta escola. '
+                  'Contacte o administrador da plataforma.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
           }
           final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
-          return FinregSalesWorkspace(
+          return FinregSchoolBillingModule(
               repository: adapter,
               host: adapter,
+              billingPlansBuilder: (_) => const StudentBillingPlansScreen(),
               onOfficialDocument: (name, bytes) =>
                   Printing.sharePdf(bytes: bytes, filename: name));
         },
