@@ -51,8 +51,8 @@ Integrate Finreg's complete sales and billing experience into Cellen while:
 
 - Schools, pupils, guardians, guardian/pupil relationships, classes,
   enrolments, and academic years.
-- School contracts, billing schedules, school-year pricing policies, sibling
-  or scholarship policy, and school operational notifications.
+- Pupil enrolment, academic eligibility, school-year context, sibling or
+  scholarship policy, and school operational notifications.
 - The decision that a school event should create a charge.
 - Authorization to see or initiate school-related financial activity.
 - References linking a Finreg result to a pupil, enrolment, school year, and
@@ -115,7 +115,8 @@ against the same school profile.
 | Enrolment                        | Structured source reference            |
 | Tuition/transport/meals          | Product or service                     |
 | Uniform/book/supplies            | Product, stocked if applicable         |
-| School contract                  | Cellen billing instruction/source      |
+| Student billing plan             | Finreg recurring invoice template      |
+| Signed school agreement          | Separate Cellen legal document         |
 | Parent payment                   | Finreg payment and allocation          |
 
 The guardian is normally the fiscal customer. A pupil must not silently
@@ -142,15 +143,56 @@ inspection of its current model:
 Only approved fields may appear on official documents. Finreg decides what is
 fiscal content, printable reference, internal metadata, or report dimension.
 
+* Student billing-plan model
+
+The legacy Cellen =Contract= record is not a legal contract. It is a
+single-line recurring-charge configuration and MUST NOT be presented to users
+as an enforceable agreement. The product term is =Student Billing Plan=
+(Portuguese: =Plano de Cobrança do Aluno=).
+
+Finreg is authoritative for the plan, its multiple billable lines, price and
+tax snapshots, recurrence, next run, pause/resume state, generated documents,
+payments, and corrections. Cellen supplies and validates school context:
+pupil, payer/guardian, enrolment, academic year, and eligibility changes.
+
+A plan contains one payer, one pupil context, an effective period, recurrence,
+due-date policy, and one or more Finreg product/price lines. Tuition, transport,
+meals, and enrolment fees are lines of one plan; they are not separate legal
+contracts. If the school needs a signed agreement, Cellen stores it separately
+with parties, version, acceptance/signature, and effective dates, and may link
+it to the Finreg plan.
+
+There is exactly one recurrence executor: Finreg. Cellen creates, updates,
+pauses, or resumes the authoritative Finreg template when enrolment or
+eligibility changes. Cellen MUST NOT run a competing monthly invoice scheduler.
+
+Price and IVA come from mapped Finreg products/prices. A deliberate override
+requires a reason and effective date; document occurrences retain immutable
+snapshots. Cellen catalogue and legacy contract data become migration inputs or
+read-only projections after cutover, never a second commercial source of truth.
+
+** Lifecycle
+
+1. Cellen resolves the pupil and responsible guardian.
+2. Cellen maps selected school services to Finreg products.
+3. Finreg creates an idempotent, multi-line recurring template in draft mode.
+4. Finreg's scheduler creates one occurrence per due period with duplicate
+   protection.
+5. Authorized fiscal mode may finalize that occurrence; shadow mode keeps it a
+   non-fiscal draft.
+6. Finreg events update Cellen projections and school workflows.
+7. Withdrawal or ineligibility pauses the template; it never silently deletes
+   issued history.
+
 * Cellen behavior to preserve
 
 ** Retained school-domain capabilities
 
-- Contracts per pupil and optionally explicit billing guardian.
+- Billing plans per pupil with an explicit responsible guardian.
 - Fallback to the pupil's primary-contact guardian.
-- Billing item and price per school year with contract fallback.
-- Billing cycle, day of month, start/end date, quantity, and school discounts.
-- Automatic invoicing flag and reference-month duplicate prevention.
+- Academic-year eligibility and school discount/waiver decisions.
+- Start/end dates and enrolment-driven pause/resume decisions.
+- Reference-month duplicate prevention, executed authoritatively by Finreg.
 - Bulk-generation warnings for missing billing guardians.
 - Regeneration after an earlier charge is legitimately cancelled.
 - Parent payment-proof submission and school approval workflow where required.
@@ -162,8 +204,8 @@ fiscal content, printable reference, internal metadata, or report dimension.
 
 ** Required refactoring
 
-- A Cellen contract creates an idempotent billing instruction, not a local
-  fiscal invoice.
+- Cellen manages a Finreg recurring template through an idempotent integration
+  command; it does not create a parallel local recurring contract.
 - Finreg confirmation updates a Cellen projection and mappings.
 - Enrolment activation consumes a confirmed Finreg settlement event/status.
 - Overdue notifications consume authoritative Finreg receivable state.

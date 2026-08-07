@@ -34,6 +34,24 @@ the school in =shadow= and the client in =non_fiscal= mode.
 If registration reports that the NIF or administrator already exists, stop.
 Resolve and verify the existing company instead of creating a duplicate.
 
+** Student Billing Plan cutover
+
+After both updated integration branches are deployed, run:
+
+#+BEGIN_SRC sh
+cd /var/www/cellen
+sudo bash deploy/deploy_student_billing_plans.sh
+#+END_SRC
+
+The script applies Finreg migration =a1d3f6b8c2e4=, grants the existing
+=cellen-rainha-njinga= client =billing_plans:read= and
+=billing_plans:write=, and restarts and health-checks both services. It does
+not promote shadow mode or activate fiscal finalization.
+
+Legacy Cellen contracts and bulk invoice generation become read-only for a
+connected school. New recurring activity is created in =Planos de Cobrança=
+and executed only by Finreg.
+
 * Evidence required to leave shadow
 
 All of the following are hard gates:

@@ -349,6 +349,11 @@ async def create_contract(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_school_admin),
 ):
+    if await integration_mode(db, school_id) in {"shadow", "pilot", "live"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Legacy contracts are read-only after Finreg cutover; create a Student Billing Plan",
+        )
     if body.discount_percent > 0 and body.discount_amount > 0:
         raise HTTPException(status_code=422, detail="Only one of discount_percent or discount_amount may be set")
     data = body.model_dump()
@@ -397,6 +402,11 @@ async def generate_contract_invoice(
     current_user=Depends(require_finance_access),
 ):
     """Generate a single invoice for a specific contract for the current month."""
+    if await integration_mode(db, school_id) in {"shadow", "pilot", "live"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Legacy contract generation is disabled; Finreg executes Student Billing Plans",
+        )
     if body is None:
         body = {}
     result = await db.execute(
@@ -522,6 +532,8 @@ async def update_contract(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_school_admin),
 ):
+    if await integration_mode(db, school_id) in {"shadow", "pilot", "live"}:
+        raise HTTPException(status_code=409, detail="Legacy contracts are read-only after Finreg cutover")
     result = await db.execute(
         select(Contract).where(Contract.id == contract_id, Contract.school_id == school_id)
     )
@@ -823,6 +835,11 @@ async def bulk_create_invoices(
     current_user=Depends(require_school_admin),
 ):
     """Auto-generate invoices from active contracts for a reference month."""
+    if await integration_mode(db, school_id) in {"shadow", "pilot", "live"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Legacy bulk generation is disabled; Finreg is the recurring billing scheduler",
+        )
     from app.models.person import ChildGuardian
 
     today = today_luanda()

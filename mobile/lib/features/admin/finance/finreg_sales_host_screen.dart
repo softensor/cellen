@@ -19,7 +19,7 @@ class FinregSalesHostScreen extends ConsumerWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final value = Map<String, dynamic>.from(snapshot.data as Map);
-          if (!{'fake', 'pilot', 'live'}.contains(value['mode'])) {
+          if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
             return const InvoicesScreen();
           }
           final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));

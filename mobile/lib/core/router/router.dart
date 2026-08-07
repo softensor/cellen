@@ -50,7 +50,7 @@ import '../../features/messages/thread_screen.dart';
 import '../../features/photos/photos_screen.dart';
 import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
-import '../../features/finance/contracts_screen.dart';
+import '../../features/admin/finance/student_billing_plans_screen.dart';
 import '../../features/finance/receipts_screen.dart';
 import '../../features/finance/credit_notes_screen.dart';
 import '../../features/finance/saft_screen.dart';
@@ -668,7 +668,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
           GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(path: '/admin/finance/expenses',     builder: (_, __) => const ExpensesScreen()),
-          GoRoute(path: '/admin/finance/contracts',    builder: (_, __) => const ContractsScreen()),
+          GoRoute(path: '/admin/finance/contracts',    builder: (_, __) => const StudentBillingPlansScreen()),
           GoRoute(path: '/admin/finance/receipts',     builder: (_, __) => const ReceiptsScreen()),
           GoRoute(path: '/admin/finance/credit-notes',       builder: (_, __) => const CreditNotesScreen()),
           GoRoute(path: '/admin/finance/saft',               builder: (_, __) => const SaftScreen()),
