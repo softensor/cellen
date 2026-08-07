@@ -101,6 +101,17 @@ gates learned during this rollout.
 
 * Verification commands
 
+For the unified Finreg school-finance and parent-collection release, after both
+repositories have been merged and pulled, use the idempotent entry point:
+
+#+BEGIN_SRC sh
+sudo bash /var/www/cellen/deploy/deploy_finreg_school_finance.sh
+#+END_SRC
+
+It applies both Alembic histories, restores all required integration scopes,
+restarts the API/worker/Beat services, and checks readiness. It deliberately
+does not promote a school from shadow or pilot to live.
+
 #+BEGIN_SRC sh
 systemctl status cellen-api --no-pager
 ss -ltnp | grep -E ':8001|:8002|:8003'

@@ -305,6 +305,8 @@ class PaymentResponse(BaseModel):
     received_by: Optional[uuid.UUID] = None
     idempotency_key: Optional[str] = None
     payment_reference_id: Optional[uuid.UUID] = None
+    finreg_document_external_reference: Optional[uuid.UUID] = None
+    finreg_payment_external_reference: Optional[uuid.UUID] = None
     created_at: datetime
     allocated_invoices: List[dict] = []
     guardian_name: Optional[str] = None

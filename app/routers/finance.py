@@ -61,6 +61,7 @@ from app.models.finance import (
     ReminderLog,
 )
 from app.models.person import Child, Guardian
+from app.models.finreg_integration import FinregBillingInstruction, FinregSchoolConnection
 from app.schemas.finance import (
     AccountStatementResponse,
     BillingItemCreate,
@@ -1261,6 +1262,70 @@ async def approve_payment(
     if payment.status != "pending_review":
         raise HTTPException(status_code=400, detail="Payment is not pending review")
 
+    # Parent proofs for Finreg documents stay in Cellen for school review, but
+    # approval is settled exclusively by Finreg. Cellen must not emit a second
+    # receipt or maintain a parallel allocation for these documents.
+    if payment.finreg_document_external_reference is not None:
+        from app.core.config import settings
+        from app.services.finreg import FinregError, HttpFinregAdapter
+
+        connection = (await db.execute(select(FinregSchoolConnection).where(
+            FinregSchoolConnection.school_id == school_id
+        ))).scalar_one_or_none()
+        if (not settings.FINREG_INTEGRATION_ENABLED or connection is None or
+                connection.mode not in {"pilot", "live"} or connection.kill_switch):
+            raise HTTPException(
+                status_code=409,
+                detail="Finreg fiscal payments are not enabled for this school",
+            )
+        adapter = HttpFinregAdapter()
+        reference = payment.id
+        key = f"cellen-parent-payment-{reference}"
+        instruction = (await db.execute(select(FinregBillingInstruction).where(
+            FinregBillingInstruction.id == payment.finreg_document_external_reference,
+            FinregBillingInstruction.school_id == school_id,
+            FinregBillingInstruction.status == "confirmed",
+        ))).scalar_one_or_none()
+        if instruction is None or instruction.finreg_document_id is None:
+            raise HTTPException(status_code=409, detail="Finreg document is not confirmed")
+        method = {
+            "multicaixa_ref": "mobile",
+            "multicaixa_express": "mobile",
+            "bank_transfer": "transfer",
+        }.get(payment.payment_method, payment.payment_method)
+        payload = {"payment": {
+            "document_id": str(instruction.finreg_document_id),
+            "payment_method": method,
+            "amount": str(payment.amount),
+            "payment_date": payment.payment_date.isoformat(),
+            "reference": str(reference),
+        }}
+        try:
+            await adapter.request(
+                "POST", f"payments/{reference}", payload,
+                idempotency_key=key,
+                correlation_id=str(reference),
+                actor_reference=str(getattr(_, "id", "school-finance")),
+            )
+            await adapter.request(
+                "POST", f"payments/{reference}/receipt", {},
+                idempotency_key=f"{key}:receipt",
+                correlation_id=str(reference),
+                actor_reference=str(getattr(_, "id", "school-finance")),
+            )
+        except FinregError as exc:
+            raise HTTPException(
+                status_code=503 if exc.retryable else 422,
+                detail={"code": exc.code, "message": exc.detail},
+            )
+        payment.status = "normal"
+        payment.finreg_payment_external_reference = reference
+        await db.commit()
+        await db.refresh(payment)
+        data = PaymentResponse.model_validate(payment)
+        data.allocated_invoices = []
+        return data
+
     # Load allocations and cap each to the real invoice balance (computed before approval)
     alloc_result = await db.execute(
         select(PaymentAllocation).where(PaymentAllocation.payment_id == payment_id)
@@ -2271,16 +2336,29 @@ async def parent_submit_payment(
 
     receipt_proof_url = body.get("receipt_proof_url")
 
-    # Verify invoice belongs to this guardian (direct billing or via child linkage)
-    inv_result = await db.execute(
-        select(Invoice).where(Invoice.id == uuid.UUID(invoice_id))
-    )
-    invoice = inv_result.scalar_one_or_none()
-    if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    try:
+        requested_id = uuid.UUID(invoice_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid invoice_id")
 
-    is_billing_guardian = invoice.billing_guardian_id and str(invoice.billing_guardian_id) == str(guardian_id)
-    if not is_billing_guardian:
+    # A parent can pay either a historical Cellen invoice or a Finreg document.
+    inv_result = await db.execute(select(Invoice).where(Invoice.id == requested_id))
+    invoice = inv_result.scalar_one_or_none()
+    finreg_instruction = None
+    if invoice is None:
+        school_id = getattr(current_user, "_school_id", None)
+        finreg_instruction = (await db.execute(select(FinregBillingInstruction).where(
+            FinregBillingInstruction.id == requested_id,
+            FinregBillingInstruction.school_id == school_id,
+            FinregBillingInstruction.status == "confirmed",
+        ))).scalar_one_or_none()
+        if finreg_instruction is None:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        if str((finreg_instruction.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
+            raise HTTPException(status_code=403, detail="Not your invoice")
+
+    is_billing_guardian = invoice is not None and invoice.billing_guardian_id and str(invoice.billing_guardian_id) == str(guardian_id)
+    if invoice is not None and not is_billing_guardian:
         # Check if invoice belongs to one of this guardian's children
         child_ids_r = await db.execute(
             select(ChildGuardian.child_id).where(ChildGuardian.guardian_id == guardian_id)
@@ -2290,22 +2368,34 @@ async def parent_submit_payment(
             raise HTTPException(status_code=403, detail="Not your invoice")
 
     # Block duplicate pending_review submissions for the same invoice
-    existing_pending = await db.execute(
-        select(Payment.id)
-        .join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id)
-        .where(
-            PaymentAllocation.invoice_id == invoice.id,
+    if finreg_instruction is not None:
+        duplicate_statement = select(Payment.id).where(
+            Payment.finreg_document_external_reference == requested_id,
             Payment.billing_guardian_id == guardian_id,
             Payment.status == "pending_review",
         )
-    )
+    else:
+        duplicate_statement = (
+            select(Payment.id)
+            .join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id)
+            .where(
+                PaymentAllocation.invoice_id == requested_id,
+                Payment.billing_guardian_id == guardian_id,
+                Payment.status == "pending_review",
+            )
+        )
+    existing_pending = await db.execute(duplicate_statement)
     if existing_pending.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Já existe um comprovativo em análise para esta factura")
 
     # Create a pending-review payment
-    amount = Decimal(str(body.get("amount", invoice.gross_total)))
+    finreg_result = (finreg_instruction.result_snapshot or {}) if finreg_instruction else {}
+    default_amount = invoice.gross_total if invoice is not None else finreg_result.get("balance", finreg_result.get("gross_total", 0))
+    amount = Decimal(str(body.get("amount", default_amount)))
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="amount must be greater than zero")
     payment = Payment(
-        school_id=invoice.school_id,
+        school_id=invoice.school_id if invoice is not None else finreg_instruction.school_id,
         billing_guardian_id=guardian_id,
         payment_date=today_luanda(),
         amount=amount,
@@ -2313,17 +2403,21 @@ async def parent_submit_payment(
         receipt_proof_url=receipt_proof_url,
         notes=body.get("notes") or "Submetido pelo encarregado",
         status="pending_review",
+        finreg_document_external_reference=(
+            finreg_instruction.id if finreg_instruction is not None else None
+        ),
     )
     db.add(payment)
     await db.flush()  # get payment.id before allocation
 
     # Link payment to the specific invoice via allocation so admin can match it
-    allocation = PaymentAllocation(
-        payment_id=payment.id,
-        invoice_id=invoice.id,
-        amount_applied=amount,
-    )
-    db.add(allocation)
+    if invoice is not None:
+        allocation = PaymentAllocation(
+            payment_id=payment.id,
+            invoice_id=invoice.id,
+            amount_applied=amount,
+        )
+        db.add(allocation)
 
     await db.commit()
     await db.refresh(payment)

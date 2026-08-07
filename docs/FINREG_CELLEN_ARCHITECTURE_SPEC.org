@@ -52,6 +52,42 @@ reporting, and official PDFs remain Finreg-owned operations. A legacy Cellen
 finance view may exist only as a separated read-only archive and MUST NOT be
 the default Finance entry point.
 
+** Reusable vertical-extension rule
+
+Every host-specific capability MUST enter the shared Finreg interface through
+a typed module-extension descriptor containing a stable identifier, label,
+icon, and builder. Finreg renders core and vertical destinations in one
+horizontal module navigation; this avoids nesting a second vertical menu inside
+Cellen's application navigation.
+
+An extension MAY manage contextual operations that are not fiscal acts, such
+as pupil billing plans, school services, parent payment-proof review, payment
+references, instalment arrangements, reminders, and guardian communication.
+It MUST NOT calculate authoritative tax, assign fiscal numbering, issue or
+reverse official documents, produce SAF-T, or maintain a second authoritative
+balance. Those actions always cross the Finreg API boundary.
+
+The host constructs the extension list from the authenticated role. Absence
+from the interface is not authorization: every Cellen and Finreg endpoint MUST
+independently enforce tenant ownership, guardian ownership, and role/scope
+requirements.
+
+The same contract applies to future verticals. A clinic may contribute patient
+and insurer workflows, hospitality may contribute stays and folios, and a
+professional-services host may contribute matters and retainers; none may fork
+or replace the Finreg fiscal engine.
+
+** Parent collection workflow
+
+Parents retain their Cellen account and guardian-scoped permissions. They can
+view only their linked pupils' Finreg documents, download official documents,
+view their Finreg statement and receipts, and submit payment evidence. Evidence
+is retained in Cellen as a school workflow in =pending_review= state. Rejection
+does not mutate Finreg. Authorized approval uses an idempotent Finreg payment
+reference, registers the settlement in Finreg, requests the official receipt,
+and stores only cross-system references in Cellen. Cellen MUST NOT issue a
+parallel receipt for a Finreg document.
+
 ** Finreg owns
 
 - Fiscal companies, customers, products/services, tax configuration, series,
