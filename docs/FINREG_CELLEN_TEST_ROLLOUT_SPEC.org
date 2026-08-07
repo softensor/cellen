@@ -1,0 +1,187 @@
+#+TITLE: Cellen–Finreg Testing and Rollout Specification
+#+DATE: 2026-08-06
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:t
+
+* Constraint
+
+Finreg has one backend deployment. The project will not create a second
+Finreg backend merely for Cellen testing. This does not justify uncontrolled
+tests against real fiscal data.
+
+
+Inspection confirmed that =AGT_SANDBOX= is global for the backend deployment.
+An isolated company protects tenant data but does not independently protect
+AGT/fiscal submission. Automated tests on the production-configured backend
+are limited to authentication, master data, drafts, preview/read operations,
+and approved fixtures. Finalization, receipts, corrections, and AGT submission
+require a per-company non-fiscal mode, a scheduled sandbox window, or a
+controlled real pilot with an accounting-approved correction.
+
+* Safety model
+
+Use four layers:
+
+1. Pure Cellen tests with fake Finreg adapters.
+2. Contract tests using sanitized Finreg request/response fixtures.
+3. Read-only smoke tests against the live Finreg backend.
+4. Carefully authorized master-data and draft tests in a dedicated integration
+   company within the same backend.
+
+If Finreg cannot safely host a non-fiscal test company, automated live write
+tests are prohibited. Use manual, pre-approved pilot operations in a real
+company with explicit document/correction procedures instead.
+
+* Required Finreg safeguards
+
+- Dedicated test company/tenant flagged non-production/non-fiscal if the
+  platform and certification rules permit it.
+- Dedicated users, roles, series, products, customers, and API credentials.
+- Server-side prohibition against test credentials accessing real companies.
+- Idempotency namespace reserved for automated integration tests.
+- Clearly marked test external references and correlation IDs.
+- Rate limits and a kill switch.
+- Audit trail for every integration request.
+- Confirmed policy for deleting or retaining test data.
+
+All safeguards are =TBD-FINREG= until the backend is inspected and its owner
+approves them.
+
+* Test pyramid
+
+** Unit tests
+
+- School billing eligibility and pricing policy.
+- Primary-guardian resolution.
+- External-context mapping.
+- Idempotency-key derivation.
+- Event handling and enrolment activation.
+- Error/status translation.
+- Authorization and tenant derivation.
+
+** Adapter contract tests
+
+The same suite runs against:
+
+- fake adapter;
+- recorded/sanitized fixture adapter;
+- live adapter limited to the authorized test company.
+
+Cover manifest, authentication, customer/product mapping, preview, issue,
+retrieve, PDF, payment, receipt, correction, statements, pagination, errors,
+idempotency, and timeout recovery.
+
+** Failure tests
+
+- Connection refusal and DNS/TLS failure.
+- Timeout before and after Finreg commits.
+- Duplicate request and duplicate event.
+- Expired/insufficient token.
+- Missing or conflicting customer/product mapping.
+- Wrong-company access attempt.
+- Finreg validation/rejection.
+- Stale projection and event-order inversion.
+- Bulk job interruption and restart.
+
+** End-to-end scenarios
+
+- Multi-line tuition/service invoice and official PDF.
+- FT and FR where supported.
+- Partial payment, multi-invoice payment, and receipt.
+- Full and partial correction.
+- Guardian with multiple pupils.
+- Recurring contract idempotency for one billing month.
+- Missing primary guardian warning.
+- School-year price transition.
+- Enrolment activation after confirmed settlement.
+- Parent document authorization.
+- Statements and operational/fiscal report reconciliation.
+
+* Test doubles and fixtures
+
+- Finreg owns canonical OpenAPI/schema and contract examples.
+- Store sanitized fixtures without NIFs, names, secrets, hashes, or production
+  document identifiers.
+- Fakes must model rejection, timeout, duplicate, and delayed-event behavior;
+  they must not be happy-path-only.
+- Do not assert guessed Finreg behavior: update fixtures from an approved API
+  version and review breaking changes.
+
+* Integration modes
+
+| Mode     | Behavior                                                   |
+|----------+------------------------------------------------------------|
+| disabled | Existing Cellen behavior; no Finreg calls                  |
+| fake     | Local fake adapter for development/tests                   |
+| shadow   | Read/simulate and compare; no Finreg fiscal issuance       |
+| pilot    | Authorized school uses Finreg with close monitoring        |
+| live     | Finreg is authoritative; duplicate Cellen writes disabled  |
+
+Mode is server-side per school. Clients cannot override it.
+
+* Historical data strategy
+
+Before cutover, reconcile per school:
+
+- invoice/document count and totals;
+- payments and allocations;
+- receipts and corrections;
+- open balances and guardian credits;
+- contracts and last billed periods;
+- enrolment-fee dependencies;
+- document numbers and immutable hashes.
+
+Choose per record class:
+
+- import to Finreg using an approved legacy-import mechanism;
+- retain as a clearly labelled read-only legacy archive;
+- establish an approved opening balance/cutover position.
+
+Never silently recreate historical fiscal documents through normal issuance.
+
+* Pilot rollout
+
+1. Select one cooperative school and a reversible date boundary.
+2. Complete mappings and reconciliation.
+3. Train staff and document support contacts.
+4. Enable =shadow= and compare results.
+5. Approve the cutover checklist.
+6. Enable =pilot= for new operations.
+7. Monitor every issue/payment/receipt/correction and daily totals.
+8. Disable duplicate local fiscal writes.
+9. Review after one complete billing and settlement cycle.
+10. Promote to =live= or execute the rollback procedure.
+
+* Rollback
+
+Rollback must not issue duplicate fiscal documents.
+
+- Stop new billing commands using the integration kill switch.
+- Reconcile all commands with unknown outcomes by idempotency key before any
+  retry or alternate action.
+- Keep already issued Finreg documents authoritative.
+- Restore Cellen navigation/read access as needed, but do not reactivate its
+  issuer for the same fiscal period without explicit accounting approval.
+- Record the incident, affected companies, documents, and corrective steps.
+
+* Observability and operations
+
+- Metrics: latency, success/rejection/error, timeouts, retries, duplicates,
+  queue depth, event lag, reconciliation differences.
+- Logs: correlation ID, school ID, Finreg company ID, operation, safe external
+  reference, result code; never secrets or unnecessary personal data.
+- Alerts: sustained failure, authentication failure, unknown outcome,
+  reconciliation mismatch, event lag, and unauthorized company access.
+- Support UI: mapping status, last synchronization, safe retry, and Finreg
+  reference lookup.
+
+* Release gates
+
+- Architecture and ownership approved.
+- Finreg branch reviewed and deployed compatibly.
+- Contract tests pass for the deployed API version.
+- Safe live-test policy approved.
+- Security and tenant-isolation tests pass.
+- Historical reconciliation signed off.
+- Pilot rollback rehearsed.
+- No duplicate Cellen fiscal writer enabled at live cutover.

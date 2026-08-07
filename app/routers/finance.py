@@ -16,45 +16,118 @@ Organized by domain:
 - Expenses
 """
 import uuid
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+)
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_school_id, require_parent, require_school_admin
+from app.core.dependencies import (
+    get_current_user,
+    get_school_id,
+    require_parent,
+    require_school_admin,
+)
 from app.models.finance import (
-    BillingItem, BillingItemPrice, CashSession, Contract, CreditEntry, CreditNote,
-    CreditRefund, DocumentSeries, Expense, ExpenseCategory, FinanceAuditEntry,
-    Invoice, InvoiceLine, Payment, PaymentAllocation, PaymentPlan,
-    PaymentPlanInstallment, PaymentReference, Receipt, ReminderLog,
+    BillingItem,
+    BillingItemPrice,
+    CashSession,
+    Contract,
+    CreditEntry,
+    CreditNote,
+    CreditRefund,
+    DocumentSeries,
+    Expense,
+    ExpenseCategory,
+    FinanceAuditEntry,
+    Invoice,
+    InvoiceLine,
+    Payment,
+    PaymentAllocation,
+    PaymentPlan,
+    PaymentPlanInstallment,
+    PaymentReference,
+    Receipt,
+    ReminderLog,
 )
 from app.models.person import Child, Guardian
 from app.schemas.finance import (
     AccountStatementResponse,
-    BillingItemCreate, BillingItemPriceCreate, BillingItemPriceResponse,
-    BillingItemPriceRollRequest, BillingItemResponse, BillingItemUpdate,
-    CashFlowMonth, CashSessionClose, CashSessionOpen, CashSessionResponse,
-    ContractCreate, ContractResponse, ContractUpdate,
-    CreditApplyRequest, CreditEntryResponse, CreditNoteCreate, CreditNoteResponse,
-    CreditRefundRequest, GuardianCreditSummary,
+    BillingItemCreate,
+    BillingItemPriceCreate,
+    BillingItemPriceResponse,
+    BillingItemPriceRollRequest,
+    BillingItemResponse,
+    BillingItemUpdate,
+    CashFlowMonth,
+    CashSessionClose,
+    CashSessionOpen,
+    CashSessionResponse,
+    ContractCreate,
+    ContractResponse,
+    ContractUpdate,
+    CreditApplyRequest,
+    CreditEntryResponse,
+    CreditNoteCreate,
+    CreditNoteResponse,
+    CreditRefundRequest,
     DocumentSeriesResponse,
-    ExpenseCategoryCreate, ExpenseCategoryResponse, ExpenseCategoryUpdate,
-    ExpenseCreate, ExpenseResponse, ExpenseUpdate,
-    InvoiceBulkCreate, InvoiceCreate, InvoiceResponse, OutstandingInvoice,
-    ParentInvoiceResponse, PaymentCreate, PaymentPlanCreate, PaymentPlanResponse, PaymentPlanUpdate,
-    PaymentReferenceCreate, PaymentReferenceMarkPaid, PaymentReferenceResponse,
-    PaymentResponse, ReceiptResponse, ReminderCreate, ReminderResponse,
+    ExpenseCategoryCreate,
+    ExpenseCategoryResponse,
+    ExpenseCategoryUpdate,
+    ExpenseCreate,
+    ExpenseResponse,
+    ExpenseUpdate,
+    GuardianCreditSummary,
+    InvoiceBulkCreate,
+    InvoiceCreate,
+    InvoiceResponse,
+    OutstandingInvoice,
+    ParentInvoiceResponse,
+    PaymentCreate,
+    PaymentPlanCreate,
+    PaymentPlanResponse,
+    PaymentPlanUpdate,
+    PaymentReferenceCreate,
+    PaymentReferenceMarkPaid,
+    PaymentReferenceResponse,
+    PaymentResponse,
+    ReceiptResponse,
+    ReminderCreate,
+    ReminderResponse,
 )
 from app.services.finance import (
-    DocumentEmissionService, PaymentIntakeService,
-    apply_credit_to_invoice, generate_annual_pl, generate_monthly_pl,
-    get_account_statement, get_guardian_credit_balance, get_guardians_with_credit,
-    get_invoice_amount_paid, get_invoice_balance, get_outstanding_invoices,
-    mark_overdue_invoices, recalculate_invoice_status, resolve_unit_price, reverse_payment,
+    DocumentEmissionService,
+    PaymentIntakeService,
+    apply_credit_to_invoice,
+    generate_annual_pl,
+    generate_monthly_pl,
+    get_account_statement,
+    get_guardian_credit_balance,
+    get_guardians_with_credit,
+    get_invoice_amount_paid,
+    get_invoice_balance,
+    get_outstanding_invoices,
+    mark_overdue_invoices,
+    recalculate_invoice_status,
+    resolve_unit_price,
+    reverse_payment,
+)
+from app.services.finreg import FinregError
+from app.services.finreg_dispatch import (
+    dispatch_instruction,
+    enqueue_contract_instruction,
+    integration_mode,
 )
 from app.services.storage import save_upload
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
@@ -372,7 +445,13 @@ async def generate_contract_invoice(
     customer_name = f"{guardian.first_name} {guardian.last_name}" if guardian else None
     is_final_consumer = not customer_nif
 
-    bi_name = contract.service_name or "Mensalidade"
+    billing_item = None
+    if contract.billing_item_id:
+        billing_item = (await db.execute(select(BillingItem).where(
+            BillingItem.id == contract.billing_item_id,
+            BillingItem.school_id == school_id,
+        ))).scalar_one_or_none()
+    bi_name = contract.service_name or (billing_item.name if billing_item else "Mensalidade")
     lines_data = [{
         "billing_item_id": str(contract.billing_item_id) if contract.billing_item_id else None,
         "description": bi_name,
@@ -382,6 +461,33 @@ async def generate_contract_invoice(
         "discount_amount": float(contract.discount_amount),
         "iva_rate": float(contract.iva_rate),
     }]
+
+    mode = await integration_mode(db, school_id)
+    if mode in {"fake", "shadow", "pilot", "live"}:
+        child = (await db.execute(select(Child).where(Child.id == contract.child_id))).scalar_one()
+        school_year_label = None
+        if school_year_id_val:
+            from app.models.academic import SchoolYear
+            school_year_label = (await db.execute(select(SchoolYear.year_label).where(
+                SchoolYear.id == school_year_id_val, SchoolYear.school_id == school_id))).scalar_one_or_none()
+        instruction = await enqueue_contract_instruction(
+            db, school_id=school_id, contract_id=contract.id, guardian=guardian, child=child,
+            billing_item_id=contract.billing_item_id, description=bi_name, quantity=contract.quantity,
+            unit_price=unit_price, discount_percent=contract.discount_percent,
+            discount_amount=contract.discount_amount, tax_rate=contract.iva_rate,
+            tax_exemption_reason=(billing_item.iva_exemption_reason if billing_item else None),
+            reference_month=ref_month, due_date=due_date_val,
+            school_year_id=school_year_id_val, school_year_label=school_year_label,
+            actor_reference=str(current_user.id),
+        )
+        if mode != "shadow":
+            try:
+                await dispatch_instruction(db, instruction)
+            except FinregError as exc:
+                if not exc.retryable:
+                    raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.detail})
+            return {"billing_instruction_id": str(instruction.id), "status": instruction.status,
+                    "finreg_document_id": str(instruction.finreg_document_id) if instruction.finreg_document_id else None}
 
     emission = DocumentEmissionService(db, school_id)
     try:
@@ -722,6 +828,13 @@ async def bulk_create_invoices(
     today = today_luanda()
     ref_month = body.reference_month
     emission = DocumentEmissionService(db, school_id)
+    mode = await integration_mode(db, school_id)
+    school_year_label = None
+    if body.school_year_id:
+        from app.models.academic import SchoolYear
+        school_year_label = (await db.execute(select(SchoolYear.year_label).where(
+            SchoolYear.id == body.school_year_id, SchoolYear.school_id == school_id
+        ))).scalar_one_or_none()
 
     contracts_result = await db.execute(
         select(Contract).where(
@@ -802,7 +915,13 @@ async def bulk_create_invoices(
             customer_name = customer_name or "Consumidor Final"
 
         # Build line
-        bi_name = contract.service_name or "Mensalidade"
+        billing_item = None
+        if contract.billing_item_id:
+            billing_item = (await db.execute(select(BillingItem).where(
+                BillingItem.id == contract.billing_item_id,
+                BillingItem.school_id == school_id,
+            ))).scalar_one_or_none()
+        bi_name = contract.service_name or (billing_item.name if billing_item else "Mensalidade")
         lines_data = [{
             "billing_item_id": str(contract.billing_item_id) if contract.billing_item_id else None,
             "description": bi_name,
@@ -814,6 +933,29 @@ async def bulk_create_invoices(
         }]
 
         try:
+            if mode in {"fake", "shadow", "pilot", "live"}:
+                child = (await db.execute(select(Child).where(Child.id == contract.child_id))).scalar_one()
+                instruction = await enqueue_contract_instruction(
+                    db, school_id=school_id, contract_id=contract.id, guardian=guardian, child=child,
+                    billing_item_id=contract.billing_item_id, description=bi_name,
+                    quantity=contract.quantity, unit_price=unit_price,
+                    discount_percent=contract.discount_percent, discount_amount=contract.discount_amount,
+                    tax_rate=contract.iva_rate,
+                    tax_exemption_reason=(billing_item.iva_exemption_reason if billing_item else None),
+                    reference_month=ref_month, due_date=body.due_date,
+                    school_year_id=body.school_year_id, school_year_label=school_year_label,
+                    actor_reference=str(current_user.id),
+                )
+                if mode != "shadow":
+                    try:
+                        await dispatch_instruction(db, instruction)
+                    except FinregError as exc:
+                        warnings.append({"child_id": str(contract.child_id), "reason": exc.detail,
+                                         "code": exc.code, "billing_instruction_id": str(instruction.id)})
+                        continue
+                    created.append(instruction)
+                    contract.last_invoiced_month = ref_month
+                    continue
             invoice = await emission.emit_invoice(
                 document_type="FT",
                 invoice_date=today,
@@ -841,7 +983,8 @@ async def bulk_create_invoices(
     return {
         "created": len(created),
         "warnings": warnings,
-        "invoice_ids": [str(inv.id) for inv in created],
+        "invoice_ids": [str(inv.id) for inv in created if isinstance(inv, Invoice)],
+        "billing_instruction_ids": [str(item.id) for item in created if not isinstance(item, Invoice)],
     }
 
 

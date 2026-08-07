@@ -1,0 +1,318 @@
+#+TITLE: Cellen–Finreg Architecture and Integration Specification
+#+DATE: 2026-08-06
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:t
+
+
+* Verified Finreg findings
+
+- FastAPI/PostgreSQL tenancy derives company context from JWT identity and
+  applies it to PostgreSQL session context.
+- Feature entitlements already gate billing, customers, products, reports,
+  recurring invoices, POS, settings, and API-key capabilities.
+- The backend already has arbitrary invoice lines, fiscal documents, payments,
+  allocations, receipts, recurring invoices, PDFs, reports, SAF-T, audit,
+  accounting, treasury, and inventory.
+- Drafts support UUID =client_request_id= with a company-scoped uniqueness
+  guard; recurring occurrences also have a uniqueness guard.
+- Official PDFs use =GET /api/v1/documents/{document_id}/pdf=.
+- Current JWT login is tied to a normal Finreg user/company; delegated Cellen
+  integration identity is absent.
+- Shared packages exist, but billing pages remain coupled to Finreg's global
+  Riverpod API/auth/router and dynamic map models.
+- External-system mappings and structured school document context are absent.
+- =AGT_SANDBOX= is deployment-wide, so automated fiscal finalization is unsafe
+  on a production-configured single backend.
+- Finreg-side detail is in
+  =/workspace/finreg/docs/CELLEN_SCHOOL_VERTICAL_SPEC.org=.
+* Purpose
+
+Integrate Finreg's complete sales and billing experience into Cellen while:
+
+- keeping Finreg independent and reusable by many external applications;
+- keeping Cellen's school-management behavior intact;
+- making Finreg the sole authority for fiscal documents and balances;
+- avoiding a fork of Finreg frontend and backend behavior;
+- supporting future verticals such as schools, clinics, hospitality, retail,
+  and professional services.
+
+* Non-negotiable boundaries
+
+** Finreg owns
+
+- Fiscal companies, customers, products/services, tax configuration, series,
+  numbering, signing, hashes, rounding, and immutable document lifecycle.
+- FT, FR, NC, ND, RC and other supported commercial documents.
+- Payments, allocations, receipts, reversals, refunds, and customer credit.
+- Official PDFs, fiscal copies, SAF-T, fiscal reports, and audit history.
+- Its backend, database, releases, certification scope, and public API.
+
+** Cellen owns
+
+- Schools, pupils, guardians, guardian/pupil relationships, classes,
+  enrolments, and academic years.
+- School contracts, billing schedules, school-year pricing policies, sibling
+  or scholarship policy, and school operational notifications.
+- The decision that a school event should create a charge.
+- Authorization to see or initiate school-related financial activity.
+- References linking a Finreg result to a pupil, enrolment, school year, and
+  Cellen billing instruction.
+
+** Cellen must not own for new documents
+
+- Fiscal numbering, signing, hashes, tax calculation, official totals, PDFs,
+  SAF-T, or fiscal reporting.
+- An independent writable invoice/payment/receipt lifecycle.
+- A fallback fiscal issuer when Finreg is unavailable.
+
+* Platform layers
+
+#+BEGIN_EXAMPLE
+Finreg fiscal kernel (certified invariants)
+        |
+Finreg generic sales and billing backbone
+        |
+Finreg vertical profiles and extension API
+        |
+Reusable Finreg Flutter sales UI + client SDK
+        |
+Product connector/host adapter (Cellen, future systems)
+#+END_EXAMPLE
+
+** Fiscal kernel
+
+Cannot be overridden by a vertical: numbering, taxes, signing, corrections,
+immutability, payments, PDFs, SAF-T, and audit.
+
+** Generic commercial backbone
+
+Customers, catalogues, drafts, invoice lines, quotations where supported,
+sales documents, settlement, statements, receivables, and sales reports.
+
+** Vertical profile
+
+A profile adds terminology, structured metadata, capability configuration,
+workflow hooks, report filters, and optional UI contributions. It must not
+fork fiscal behavior. Prefer data-driven configuration to code.
+
+** Product connector
+
+The school profile is generic; the Cellen connector understands Cellen IDs,
+authorization, navigation, theme, guardian selection, pupil selection, and
+synchronization. Another school system can implement a different connector
+against the same school profile.
+
+* School profile
+
+** Concepts
+
+| School concept                   | Finreg representation                  |
+|----------------------------------+----------------------------------------|
+| School legal entity              | Company/tenant                         |
+| Guardian responsible for payment | Customer                               |
+| Pupil                            | Beneficiary/external reference         |
+| Academic year                    | Structured external dimension          |
+| Enrolment                        | Structured source reference            |
+| Tuition/transport/meals          | Product or service                     |
+| Uniform/book/supplies            | Product, stocked if applicable         |
+| School contract                  | Cellen billing instruction/source      |
+| Parent payment                   | Finreg payment and allocation          |
+
+The guardian is normally the fiscal customer. A pupil must not silently
+replace the legal customer. One guardian may pay charges for several pupils.
+
+** Structured external context
+
+Finreg needs a versioned extension field or metadata contract, subject to
+inspection of its current model:
+
+#+BEGIN_SRC json
+{
+  "vertical": "school",
+  "source_system": "cellen",
+  "source_reference": "billing-instruction-id",
+  "school": {"external_id": "..."},
+  "pupil": {"external_id": "...", "display_name": "..."},
+  "enrolment": {"external_id": "..."},
+  "academic_year": {"external_id": "...", "label": "2026/2027"},
+  "billing_period": "2026-09"
+}
+#+END_SRC
+
+Only approved fields may appear on official documents. Finreg decides what is
+fiscal content, printable reference, internal metadata, or report dimension.
+
+* Cellen behavior to preserve
+
+** Retained school-domain capabilities
+
+- Contracts per pupil and optionally explicit billing guardian.
+- Fallback to the pupil's primary-contact guardian.
+- Billing item and price per school year with contract fallback.
+- Billing cycle, day of month, start/end date, quantity, and school discounts.
+- Automatic invoicing flag and reference-month duplicate prevention.
+- Bulk-generation warnings for missing billing guardians.
+- Regeneration after an earlier charge is legitimately cancelled.
+- Parent payment-proof submission and school approval workflow where required.
+- Payment plans, reminders, overdue school notifications, and Multicaixa
+  references, after ownership comparison with Finreg.
+- Enrolment activation only after confirmed settlement of its fee.
+- Parent access constrained by guardian/pupil relationships.
+- Per-pupil and per-academic-year operational reporting.
+
+** Required refactoring
+
+- A Cellen contract creates an idempotent billing instruction, not a local
+  fiscal invoice.
+- Finreg confirmation updates a Cellen projection and mappings.
+- Enrolment activation consumes a confirmed Finreg settlement event/status.
+- Overdue notifications consume authoritative Finreg receivable state.
+- Parent statements and fiscal balances come from Finreg.
+
+* Frontend module architecture
+
+Flutter mobile code cannot be downloaded dynamically. Reuse must use
+compile-time packages plus runtime configuration.
+
+** Proposed packages in Finreg
+
+- =finreg_client_sdk=: typed API, authentication/session abstraction, errors,
+  pagination, models, idempotency, and file streaming.
+- =finreg_sales_ui=: generic catalogue, invoice editor, documents, payments,
+  receipts, statements, PDFs, and reports.
+- =finreg_vertical_school_ui=: optional pupil/guardian context widgets,
+  terminology, school filters, and school metadata form.
+
+Finreg and Cellen compile the same released packages. Cellen must not maintain
+a copied long-lived fork.
+
+** Host interfaces
+
+#+BEGIN_SRC dart
+abstract interface class FinregHostAdapter {
+  Future<FinregSession> obtainSession();
+  Future<SchoolFinanceContext> currentSchool();
+  Future<List<GuardianReference>> searchGuardians(String query);
+  Future<List<PupilReference>> searchPupils(String query);
+  Future<void> recordMapping(FinregMapping mapping);
+}
+
+abstract interface class FinregSalesRepository {
+  Future<List<FinregProduct>> searchProducts(String query);
+  Future<InvoicePreview> previewInvoice(InvoiceDraft draft);
+  Future<FiscalDocument> issueInvoice(IssueInvoice command);
+  Future<PaymentResult> registerPayment(RegisterPayment command);
+  Future<List<int>> downloadOfficialDocument(String documentId);
+}
+#+END_SRC
+
+Exact types and package boundaries are =TBD-FINREG= until code inspection.
+
+** Runtime manifest
+
+Finreg returns company capabilities and vertical configuration at runtime:
+
+- vertical/profile identifier;
+- enabled document types and modules;
+- terminology and allowed school metadata;
+- supported payment methods;
+- tax/exemption choices;
+- report availability;
+- UI schema and API versions.
+
+Runtime data changes behavior; it does not download executable Dart code.
+
+* Integration topology
+
+Recommended first topology:
+
+#+BEGIN_EXAMPLE
+Cellen Flutter -> Cellen integration gateway -> Finreg API/backend
+#+END_EXAMPLE
+
+The Cellen gateway is not a fiscal backend. It authenticates the Cellen user,
+derives the school, resolves mappings, obtains a Finreg session, forwards the
+request, streams documents, and records correlation/status data.
+
+Direct Flutter-to-Finreg calls may be introduced later if Finreg supports
+OAuth/token exchange, short-lived company-scoped tokens, CORS, and appropriate
+mobile/web security.
+
+* Identity and authorization
+
+- Never embed long-lived Finreg credentials in Flutter.
+- The browser cannot select an arbitrary Finreg company ID.
+- Cellen derives the school from its authenticated tenant context.
+- Finreg tokens are short-lived and scoped to company, actor, roles, and
+  operations.
+- Every cross-system request carries a correlation ID and actor identity.
+- Access to a fiscal document requires both Finreg company authorization and
+  the Cellen guardian/pupil relationship where applicable.
+- Add company-bound integration clients with short-lived scoped tokens and
+  delegated Cellen actor audit context. Native Finreg login remains unchanged.
+
+* Mapping and integration data in Cellen
+
+- School to Finreg company.
+- Guardian to Finreg customer.
+- Billing item to Finreg product/service.
+- Cellen user/employee to Finreg actor when required.
+- Billing instruction to Finreg draft/document.
+- Payment proof/submission to Finreg payment.
+- Finreg document/payment/receipt/correction IDs.
+- Pupil, enrolment, academic-year, and billing-period context.
+- Idempotency key, correlation ID, synchronization status, timestamps, and
+  structured error code.
+- Optional read-only projections for fast UI and offline-tolerant lists.
+
+Projections must be refreshable and must never become an alternate ledger.
+
+* API requirements
+
+Finreg must expose or confirm support for:
+
+- Company capability/vertical manifest.
+- Scoped authentication or token exchange.
+- Customer upsert by source and external ID.
+- Product upsert/mapping or catalogue lookup.
+- Draft creation/update and authoritative preview.
+- Idempotent issue of FT/FR and retrieval/search.
+- NC/ND correction referencing an original document.
+- Idempotent payment registration/allocation and receipt retrieval.
+- Official PDF streaming/download.
+- Customer statements, outstanding/ageing, and sales reports.
+- SAF-T operation/status appropriate to authorized Finreg users.
+- Webhook/event feed or updated-since polling.
+- Structured errors, pagination, API version, and correlation IDs.
+
+Existing native endpoints must be reused through common application services.
+Required additions are external-ID upserts, structured vertical context,
+scoped integration authentication, uniform payment/receipt idempotency, and a
+change feed or signed webhooks.
+
+
+* Reliability
+
+- Stable idempotency key per Cellen business action.
+- Transactional outbox for asynchronous/bulk work.
+- Safe retries after timeout, including timeout after Finreg committed.
+- Authenticated, replay-safe, idempotent event consumption.
+- Reconciliation by external ID, Finreg ID, status, and amount.
+- Explicit pending, failed, rejected, and confirmed states.
+- No local fiscal fallback during Finreg outage.
+
+* Existing data transition
+
+Each current Cellen finance component must be classified as:
+
+- =SCHOOL=: retain;
+- =GATEWAY=: replace with Finreg integration;
+- =PROJECTION=: synchronize read-only;
+- =MIGRATE=: import to Finreg if supported and legally correct;
+- =ARCHIVE=: retain read-only in Cellen;
+- =RETIRE=: disable after reconciliation.
+
+Historical documents must never be silently renumbered, re-signed, or
+reissued. No generic legacy-import contract was verified; final treatment
+requires certification/accounting review and may use a read-only Cellen archive
+plus an approved opening/cutover balance.

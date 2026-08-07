@@ -1,0 +1,143 @@
+#+TITLE: Cellen Nix and Docker Build Specification
+#+DATE: 2026-08-06
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:t
+
+* Objective
+
+Make Cellen builds reproducible without making Nix a runtime dependency or
+breaking existing non-container deployment. Finreg remains separately
+deployed and is never added to Cellen's Compose stack.
+
+* Current-state finding
+
+The current Dockerfile is a development environment based on Ubuntu 22.04. It
+clones the mutable Flutter =stable= branch, runs =flutter doctor=, does not
+build the FastAPI backend or Flutter Web artifacts, and has no production
+runtime stage. It must not be treated as a production image.
+
+* Principles
+
+- Docker/OCI is the deployment artifact.
+- Nix pins and builds dependencies; it is not installed in runtime images.
+- Introduce Nix incrementally and preserve conventional Docker builds first.
+- Pin Flutter, Dart, Python, OS bases, and application dependencies.
+- Use immutable image tags/digests in production.
+- Keep secrets outside images, Nix store, repository, and Flutter bundles.
+- Keep database and Finreg URLs runtime-configurable.
+
+* Target flake outputs
+
+#+BEGIN_EXAMPLE
+devShells.default
+packages.backend
+packages.frontend-web
+checks.backend-tests
+checks.flutter-analyze
+checks.flutter-tests
+checks.format
+dockerImages.backend          # optional after stabilization
+dockerImages.frontend         # optional after stabilization
+#+END_EXAMPLE
+
+* Repository layout
+
+#+BEGIN_EXAMPLE
+flake.nix
+flake.lock
+nix/python.nix
+nix/flutter.nix
+nix/checks.nix
+nix/images.nix
+Dockerfile.backend
+Dockerfile.frontend
+compose.dev.yml
+.dockerignore
+#+END_EXAMPLE
+
+Final names may follow Finreg conventions after its Nix files are inspected.
+
+* Backend image
+
+- Pinned slim runtime base or Nix closure.
+- Install locked runtime dependencies only.
+- Copy application and Alembic configuration.
+- Run as an unprivileged user.
+- Expose a health endpoint.
+- Use an exec-form Uvicorn/Gunicorn command appropriate to deployment.
+- Do not automatically run destructive migrations on every replica start.
+- Supply database, Finreg, storage, mail, and messaging configuration at
+  runtime.
+
+* Frontend image
+
+- Build Flutter Web with a pinned SDK.
+- Produce static release artifacts.
+- Serve through a minimal unprivileged web server.
+- Configure API origin safely; do not bake Finreg secrets into the build.
+- Support SPA fallback, cache immutable assets, and avoid caching mutable
+  bootstrap/configuration incorrectly.
+
+* Development Compose
+
+May include Cellen backend, frontend, and a disposable PostgreSQL database.
+It must not include the independent Finreg production backend. Development
+uses a fake Finreg adapter by default and the single live Finreg backend only
+through an explicitly enabled safe-test profile.
+
+* Nix adoption stages
+
+** Stage 1
+
+- Add =flake.nix= and =flake.lock=.
+- Pin Python and Flutter toolchains.
+- Provide developer shell and checks.
+- Keep conventional Dockerfiles authoritative.
+
+** Stage 2
+
+- Build backend/frontend artifacts through Nix in CI.
+- Compare outputs and runtime behavior with conventional builds.
+- Configure binary cache if build cost warrants it.
+
+** Stage 3
+
+- Evaluate Nix-built layered OCI images.
+- Adopt only if image size, security scanning, operability, and CI performance
+  are acceptable.
+
+* Configuration
+
+Expected server-only Finreg settings, names subject to discovery:
+
+#+BEGIN_EXAMPLE
+FINREG_BASE_URL=
+FINREG_AUTH_MODE=
+FINREG_CLIENT_ID=
+FINREG_CLIENT_SECRET_FILE=
+FINREG_TIMEOUT_SECONDS=
+FINREG_TLS_CA_FILE=
+FINREG_TEST_COMPANY_ID=
+FINREG_INTEGRATION_MODE=disabled|fake|shadow|pilot|live
+#+END_EXAMPLE
+
+Secrets must use files or the deployment secret manager where possible.
+
+* Verification
+
+- Nix flake evaluation and lock-file consistency.
+- Backend unit/integration tests.
+- Flutter analyze and tests.
+- Production image starts as non-root.
+- Health/readiness checks work.
+- Alembic head is explicit and controlled.
+- Images contain no secrets or development SDK in runtime layers.
+- Conventional and Nix builds pass the same application contract tests.
+- Cellen reaches the configured Finreg endpoint without assuming shared
+  container networking.
+
+* Rollback
+
+The Nix change is independently reversible: conventional Dockerfiles remain
+available until Nix-built artifacts meet all acceptance criteria. Finreg
+integration rollout must not depend on completing Stage 3.

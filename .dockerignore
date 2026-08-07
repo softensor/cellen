@@ -1,0 +1,12 @@
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+.playwright-mcp
+docs
+mobile/build
+mobile/.dart_tool
+media
+*.pdf
+*.log
+.env

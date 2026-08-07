@@ -27,6 +27,12 @@ dependencies:
   local_auth: ^2.3.0
   pdf: ^3.11.1
   printing: ^5.13.1
+  finreg_client_sdk:
+    path: ../../finreg/packages/finreg_client_sdk
+  finreg_sales_ui:
+    path: ../../finreg/packages/finreg_sales_ui
+  finreg_vertical_school_ui:
+    path: ../../finreg/packages/finreg_vertical_school_ui
 
 dev_dependencies:
   flutter_test:

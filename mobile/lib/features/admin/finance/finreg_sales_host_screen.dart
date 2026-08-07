@@ -1,0 +1,228 @@
+import 'dart:typed_data';
+
+import 'package:cellen/core/api/api_client.dart';
+import 'package:finreg_client_sdk/finreg_client_sdk.dart';
+import 'package:finreg_sales_ui/finreg_sales_ui.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
+
+import 'invoices_screen.dart';
+
+class FinregSalesHostScreen extends ConsumerWidget {
+  const FinregSalesHostScreen({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => FutureBuilder<dynamic>(
+        future: ref.read(apiClientProvider).get('/finreg/connection'),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final value = Map<String, dynamic>.from(snapshot.data as Map);
+          if (!{'fake', 'pilot', 'live'}.contains(value['mode'])) {
+            return const InvoicesScreen();
+          }
+          final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
+          return FinregSalesWorkspace(
+              repository: adapter,
+              host: adapter,
+              onOfficialDocument: (name, bytes) =>
+                  Printing.sharePdf(bytes: bytes, filename: name));
+        },
+      );
+}
+
+class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
+  _CellenFinregAdapter(this.api);
+  final ApiClient api;
+  InvoicePreview? lastPreview;
+
+  @override
+  Future<FinregCapabilities> capabilities() async {
+    final value =
+        Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
+    return FinregCapabilities(
+        companyId: value['company_id']?.toString(),
+        apiVersion: value['api_version'] as String,
+        schemaVersion: value['schema_version'] as String,
+        vertical: value['vertical'] as String,
+        terminology:
+            Map<String, String>.from(value['terminology'] as Map? ?? {}),
+        enabledModules:
+            Set<String>.from(value['enabled_modules'] as List? ?? []),
+        nonFiscal: value['non_fiscal'] as bool? ?? false);
+  }
+
+  @override
+  Future<SchoolFinanceContext> currentSchool() async {
+    final now = DateTime.now();
+    return SchoolFinanceContext(
+        schoolExternalId: 'current',
+        billingPeriod: '${now.year}-${now.month.toString().padLeft(2, '0')}');
+  }
+
+  @override
+  Future<List<ExternalReference>> searchGuardians(String query) async {
+    final rows = await api.get('/guardians') as List;
+    return rows
+        .map((raw) {
+          final v = Map<String, dynamic>.from(raw as Map);
+          return ExternalReference(
+              id: v['id'].toString(),
+              displayName: '${v['first_name']} ${v['last_name']}');
+        })
+        .where((x) => x.displayName.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  @override
+  Future<List<ExternalReference>> searchPupils(String query) async {
+    final rows = await api.get('/children') as List;
+    return rows
+        .map((raw) {
+          final v = Map<String, dynamic>.from(raw as Map);
+          return ExternalReference(
+              id: v['id'].toString(),
+              displayName: '${v['first_name']} ${v['last_name']}');
+        })
+        .where((x) => x.displayName.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  @override
+  Future<List<FinregProduct>> searchProducts(String query) async {
+    final rows = await api.get('/finance/billing-items') as List;
+    return rows
+        .map((raw) {
+          final v = Map<String, dynamic>.from(raw as Map);
+          return FinregProduct(
+              id: v['id'].toString(),
+              code: v['code'].toString(),
+              name: v['name'].toString(),
+              unitPrice: v['unit_price'] as num,
+              taxRate: v['iva_rate'] as num);
+        })
+        .where((x) =>
+            '${x.code} ${x.name}'.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+  }
+
+  Map<String, dynamic> _payload(InvoiceDraft draft) => {
+        'request_id': draft.externalReference,
+        'guardian_id': draft.customerId,
+        'pupil_id': draft.context.pupilExternalId,
+        'academic_year_id': draft.context.academicYearExternalId,
+        'academic_year_label': draft.context.academicYearLabel,
+        'billing_period': draft.context.billingPeriod,
+        'lines': draft.lines
+            .map((x) => {
+                  'billing_item_id': x.productId,
+                  'quantity': x.quantity,
+                  'unit_price': x.unitPrice,
+                  'discount_pct': 0
+                })
+            .toList(),
+      };
+
+  @override
+  Future<InvoicePreview> previewInvoice(InvoiceDraft draft) async {
+    final v = Map<String, dynamic>.from(
+        await api.post('/finreg/sales/preview', data: _payload(draft)) as Map);
+    return lastPreview = InvoicePreview(
+        netTotal: v['net_total'] as num,
+        taxTotal: v['tax_total'] as num,
+        grossTotal: v['gross_total'] as num);
+  }
+
+  @override
+  Future<FiscalDocument> issueInvoice(InvoiceDraft draft,
+      {required String idempotencyKey}) async {
+    final v = Map<String, dynamic>.from(
+        await api.post('/finreg/sales/issue', data: _payload(draft)) as Map);
+    return FiscalDocument(
+        id: (v['finreg_document_id'] ?? v['id']).toString(),
+        status: v['status'].toString(),
+        externalReference: draft.externalReference,
+        grossTotal: lastPreview?.grossTotal ?? 0);
+  }
+
+  @override
+  Future<void> recordMapping(
+      String entityType, String externalId, String finregId) async {}
+  @override
+  Future<Uint8List> downloadOfficialDocument(String documentId) =>
+      api.getBytes('/finreg/documents/$documentId/pdf');
+  @override
+  Future<PaymentResult> registerPayment(RegisterPayment command,
+      {required String idempotencyKey}) async {
+    final value =
+        Map<String, dynamic>.from(await api.post('/finreg/payments', data: {
+      'document_id': command.documentId,
+      'amount': command.amount,
+      'method': command.method,
+      'external_reference': command.externalReference,
+    }) as Map);
+    return PaymentResult(
+        id: value['id'].toString(),
+        status: value['status'].toString(),
+        receiptId: value['receipt_id']?.toString(),
+        receiptExternalReference: command.externalReference);
+  }
+
+  @override
+  Future<List<FinregInstruction>> listInstructions() async {
+    final rows = await api.get('/finreg/instructions') as List;
+    return rows.map((raw) {
+      final value = Map<String, dynamic>.from(raw as Map);
+      return FinregInstruction(
+          externalReference: value['id'].toString(),
+          status: value['status'].toString(),
+          createdAt: DateTime.parse(value['created_at'].toString()),
+          documentId: value['finreg_document_id']?.toString(),
+          errorCode: value['error_code']?.toString(),
+          errorDetail: value['error_detail']?.toString());
+    }).toList();
+  }
+
+  @override
+  Future<JsonMap> documentDetail(String externalReference) async =>
+      Map<String, Object?>.from(
+          await api.get('/finreg/documents/$externalReference') as Map);
+
+  @override
+  Future<JsonMap> correctDocument(CorrectDocument command,
+          {required String idempotencyKey}) async =>
+      Map<String, Object?>.from(await api.post(
+          '/finreg/documents/${command.documentExternalReference}/corrections',
+          data: {
+            'external_reference': command.correctionExternalReference,
+            'reason': command.reason
+          }) as Map);
+
+  @override
+  Future<Uint8List> downloadReceipt(String paymentExternalReference) =>
+      api.getBytes('/finreg/receipts/$paymentExternalReference/pdf');
+
+  String _date(DateTime value) => value.toIso8601String().split('T').first;
+
+  @override
+  Future<JsonMap> customerStatement(String customerExternalId,
+          {required DateTime from, required DateTime to}) async =>
+      Map<String, Object?>.from(await api.get(
+              '/finreg/customers/$customerExternalId/statement',
+              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
+          as Map);
+
+  @override
+  Future<JsonMap> salesSummary(
+          {required DateTime from, required DateTime to}) async =>
+      Map<String, Object?>.from(await api.get('/finreg/reports/sales-summary',
+              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
+          as Map);
+
+  @override
+  Future<JsonMap> delinquentReport({DateTime? asOf}) async =>
+      Map<String, Object?>.from(await api.get('/finreg/reports/delinquent',
+              queryParameters: asOf == null ? null : {'as_of': _date(asOf)})
+          as Map);
+}

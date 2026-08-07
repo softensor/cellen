@@ -1,0 +1,14 @@
+FROM ghcr.io/cirruslabs/flutter:3.44.6 AS build
+WORKDIR /src
+COPY finreg/packages /finreg/packages
+COPY cellen/mobile/pubspec.yaml cellen/mobile/pubspec.lock ./
+RUN flutter pub get --enforce-lockfile
+COPY cellen/mobile .
+RUN flutter build web --release
+
+FROM nginxinc/nginx-unprivileged:1.27.1-alpine
+COPY cellen/deploy/nginx-flutter.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/build/web /usr/share/nginx/html
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

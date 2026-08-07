@@ -33,6 +33,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out pinned Finreg packages
+        uses: actions/checkout@v4
+        with:
+          repository: softensor/finreg
+          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          token: ${{ secrets.FINREG_READ_TOKEN }}
+          path: finreg-source
+
+      - name: Expose Finreg sibling packages
+        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -77,6 +88,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out pinned Finreg packages
+        uses: actions/checkout@v4
+        with:
+          repository: softensor/finreg
+          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          token: ${{ secrets.FINREG_READ_TOKEN }}
+          path: finreg-source
+
+      - name: Expose Finreg sibling packages
+        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.6'
@@ -107,12 +129,20 @@ jobs:
   build-web:
     name: Web
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check out pinned Finreg packages
+        uses: actions/checkout@v4
+        with:
+          repository: softensor/finreg
+          ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          token: ${{ secrets.FINREG_READ_TOKEN }}
+          path: finreg-source
+
+      - name: Expose Finreg sibling packages
+        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -136,16 +166,25 @@ jobs:
             --base-href /${{ github.event.repository.name }}/
 
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: mobile/build/web/
 
+  deploy-web:
+    name: Deploy Web
+    if: github.event_name != 'pull_request'
+    needs: build-web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
-        # Only deploy on push to main/master, not on PRs
-        if: github.event_name != 'pull_request'
-        continue-on-error: true

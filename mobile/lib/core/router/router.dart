@@ -15,7 +15,7 @@ import '../../features/admin/children/child_form_screen.dart';
 import '../../features/admin/employees/employees_list_screen.dart';
 import '../../features/admin/employees/employee_form_screen.dart';
 import '../../features/admin/finance/finance_dashboard_screen.dart';
-import '../../features/admin/finance/invoices_screen.dart';
+import '../../features/admin/finance/finreg_sales_host_screen.dart';
 import '../../features/admin/finance/expenses_screen.dart';
 import '../../features/admin/academic/turmas_screen.dart';
 import '../../features/admin/academic/schedules_screen.dart';
@@ -50,7 +50,6 @@ import '../../features/messages/thread_screen.dart';
 import '../../features/photos/photos_screen.dart';
 import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
-import '../../features/notifications/notifications_screen.dart';
 import '../../features/finance/contracts_screen.dart';
 import '../../features/finance/receipts_screen.dart';
 import '../../features/finance/credit_notes_screen.dart';
@@ -667,7 +666,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/admin/food-hub',             builder: (_, __) => const FoodHubScreen()),
           GoRoute(path: '/admin/food',                 builder: (_, __) => const AdminFoodScreen()),
           GoRoute(path: '/admin/finance',              builder: (_, __) => const FinanceDashboardScreen()),
-          GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const InvoicesScreen()),
+          GoRoute(path: '/admin/finance/invoices',     builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(path: '/admin/finance/expenses',     builder: (_, __) => const ExpensesScreen()),
           GoRoute(path: '/admin/finance/contracts',    builder: (_, __) => const ContractsScreen()),
           GoRoute(path: '/admin/finance/receipts',     builder: (_, __) => const ReceiptsScreen()),
