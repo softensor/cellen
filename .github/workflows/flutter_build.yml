@@ -35,8 +35,10 @@ jobs:
 
       - name: Check out pinned Finreg packages
         run: |
-          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
-          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          mkdir finreg-source
+          curl --fail --location --retry 3 \
+            https://github.com/softensor/finreg/archive/06660c9a3e3a61b3315989e6c8d312bc6583d8a4.tar.gz \
+            | tar -xz --strip-components=1 -C finreg-source
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
@@ -87,8 +89,10 @@ jobs:
 
       - name: Check out pinned Finreg packages
         run: |
-          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
-          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          mkdir finreg-source
+          curl --fail --location --retry 3 \
+            https://github.com/softensor/finreg/archive/06660c9a3e3a61b3315989e6c8d312bc6583d8a4.tar.gz \
+            | tar -xz --strip-components=1 -C finreg-source
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
@@ -129,8 +133,10 @@ jobs:
 
       - name: Check out pinned Finreg packages
         run: |
-          git clone --filter=blob:none https://github.com/softensor/finreg.git finreg-source
-          git -C finreg-source checkout --detach 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+          mkdir finreg-source
+          curl --fail --location --retry 3 \
+            https://github.com/softensor/finreg/archive/06660c9a3e3a61b3315989e6c8d312bc6583d8a4.tar.gz \
+            | tar -xz --strip-components=1 -C finreg-source
 
       - name: Expose Finreg sibling packages
         run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
