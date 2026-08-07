@@ -93,6 +93,12 @@ The exact remaining procedure and hard gates are recorded in
 =docs/RAINHA_NJINGA_FINREG_ROLLOUT.org=.  The guarded provisioning entry point
 is =deploy/provision_finreg_pilot.sh=.
 
+For future integrations that consume packages from another private repository,
+follow =docs/CROSS_REPOSITORY_MODULE_RELEASE_RUNBOOK.org= before opening the
+pull request.  It records the required CI dependency topology, read-only Actions
+secret, PR-versus-Pages separation, VPS release evidence, and staged activation
+gates learned during this rollout.
+
 * Verification commands
 
 #+BEGIN_SRC sh

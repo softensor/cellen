@@ -1,0 +1,169 @@
+#+TITLE: Cross-Repository Module Integration and Release Runbook
+#+DATE: 2026-08-07
+#+STARTUP: overview
+
+* Purpose
+
+Use this runbook whenever Cellen consumes a module or package maintained in a
+different repository.  It records the release lessons from the Cellen--Finreg
+integration so that backend deployment, Flutter builds, private dependencies,
+GitHub Pages, and production activation are handled as separate, explicit
+stages.
+
+* Core release model
+
+A cross-repository integration has at least four independently deployable
+parts.  Never treat a successful push as proof that all four are live.
+
+| Part | Example | Proof of deployment |
+|------+---------+---------------------|
+| Provider source | Finreg integration branch | Exact commit exists on GitHub |
+| Consumer backend | Cellen API on VPS | VPS commit, migration head, service health |
+| Provider backend | Finreg API/worker/Beat on VPS | VPS commit, migration head, readiness |
+| Consumer frontend | Cellen Flutter/GitHub Pages | Successful build and Pages deployment from release branch |
+
+Functional activation is a fifth stage.  Code may be deployed while a tenant
+remains in =shadow= or behind a kill switch.  Deployment and activation must
+not be conflated.
+
+* Preflight before opening a pull request
+
+1. Record the exact provider and consumer commit IDs.
+2. Determine whether every referenced repository is public or private from an
+   unauthenticated environment.  A developer's credential manager is not
+   available to GitHub Actions.
+3. Inspect path dependencies in =pubspec.yaml=, package manifests, generated
+   clients, Git submodules, and build scripts.  A local sibling path such as
+   =../../finreg/packages/...= requires the same directory topology in CI.
+4. If a private provider is required, create or reuse a least-privilege token
+   with read-only =Contents= access to that provider repository.  Store it as
+   a consumer-repository Actions secret; never commit it.
+5. Pin the provider checkout to an immutable tested commit, not a moving branch.
+6. Verify that workflow path filters include the files changed by the pull
+   request and the workflow itself where appropriate.
+7. Build locally from a clean checkout that reproduces CI topology.  Do not
+   rely only on a workstation where sibling repositories already exist.
+
+* Private dependency pattern
+
+Cellen's Flutter build consumes private Finreg packages.  The supported Actions
+secret is:
+
+#+BEGIN_EXAMPLE
+FINREG_READ_TOKEN
+#+END_EXAMPLE
+
+The value may be an existing authorized PAT; the secret name is only the
+workflow's lookup key.  The token must be authorized for =softensor/finreg=
+with read-only Contents permission.  Repository-scoped =GITHUB_TOKEN= for
+Cellen cannot read a separate private repository.
+
+Use =actions/checkout= with all of the following:
+
+#+BEGIN_SRC yaml
+- name: Check out pinned Finreg packages
+  uses: actions/checkout@v4
+  with:
+    repository: softensor/finreg
+    ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+    token: ${{ secrets.FINREG_READ_TOKEN }}
+    path: finreg-source
+#+END_SRC
+
+Expose the directory expected by the consumer's path dependencies only inside
+the isolated runner:
+
+#+BEGIN_SRC sh
+ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
+#+END_SRC
+
+Do not assume that a public-looking browser page means anonymous Git/archive
+access works.  A =404= archive response or a username prompt from a noninteractive
+=git clone= is evidence that authentication is required.
+
+* Pull-request build versus production deployment
+
+Pull requests must build Android, iOS, and Web but must not deploy GitHub Pages.
+The build job must not declare the protected =github-pages= environment.
+Instead:
+
+1. Build Web for both pull requests and release-branch pushes.
+2. Configure and upload the Pages artifact only outside pull requests.
+3. Put =environment: github-pages= on a separate deploy job.
+4. Gate that job with =if: github.event_name != 'pull_request'= and make it
+   depend on the successful Web build.
+
+The expected PR result is therefore three successful platform builds and one
+skipped =Deploy Web= job.  After merge to =master=, =Deploy Web= must run and
+succeed.
+
+* Required release sequence
+
+1. Push both provider and consumer integration branches.
+2. Open pull requests against the actual release branches.
+3. Evaluate checks attached to the latest commit only.  Old failed deployments
+   remain visible and are not evidence that the current commit failed.
+4. Require backend tests and every applicable frontend build to pass.
+5. Merge provider changes before or together with the pinned consumer update.
+6. Merge the consumer pull request.
+7. Verify the release-branch Flutter workflow and Pages deployment.
+8. Hard-refresh or use a private browser window to bypass an old Flutter Web
+   service-worker/browser cache.
+9. Pull the exact released commits on the VPS.
+10. Install dependencies, apply migrations, restart services, and verify local
+    and public health/readiness endpoints.
+11. Exercise the integration in =fake= or =shadow= mode.
+12. Promote tenant mode only after its documented operational, accounting,
+    security, and legal gates pass.
+
+* Evidence checklist
+
+Retain these values in the release record:
+
+- Provider commit and consumer commit.
+- Pull-request URLs and latest successful workflow run IDs.
+- Artifact names and Pages deployment commit.
+- VPS checkout branches and commits.
+- Database migration heads.
+- Service states and health/readiness responses.
+- Tenant connection ID, provider company/tenant ID, mode, kill switch, last
+  synchronization time, event cursor, mapping errors, and unresolved commands.
+- Approval references for pilot and live activation.
+- Backup filenames made immediately before fiscal/authoritative cutover.
+
+Never retain passwords, PATs, client secrets, database URLs, private keys, or
+AGT credentials in Git, logs, screenshots, or this evidence record.
+
+* Failure signatures and first response
+
+| Symptom | Meaning | First response |
+|---------+---------+----------------|
+| =Branch refs/pull/... is not allowed to deploy to github-pages= | PR build job entered protected deployment environment | Separate Web build and deploy jobs; skip deploy on PR |
+| Path package =doesn't exist= | CI lacks a local sibling repository | Reproduce dependency topology in the runner |
+| Private checkout asks for username or returns repository not found | Current token cannot read provider repository | Configure authorized read-only Actions secret |
+| Commit archive returns =404= | Provider/ref is not anonymously downloadable | Use authenticated pinned checkout |
+| Exit 66 during =flutter create= | Dependency resolution failed; inspect preceding package error | Fix package checkout/path before changing Flutter code |
+| Node.js/action deprecation warning | Maintenance notice, not the current build failure | Schedule action upgrades separately |
+| PR shows failed outdated deployment | A prior commit/run remains in history | Match check =head_sha= to latest PR commit |
+| VPS returns transient =502= after restart | Workers have not completed startup | Wait, then verify local health and journal; investigate only if persistent |
+
+* Operational invariants
+
+- Never invent legal identities, NIFs, certificates, fiscal series, or approval
+  references.
+- Never expose a private-repository PAT in workflow YAML or logs.
+- Never issue a new fiscal retry key for an unknown outcome.
+- Never merge merely because Git reports no conflicts; current required checks
+  must pass.
+- Never promote all tenants to a new module at once.  Start with one named
+  tenant, retain a kill switch, reconcile, then expand deliberately.
+- Preserve unrelated untracked media and operator files on production servers
+  and developer workstations.
+
+* Maintenance after a successful release
+
+Update deprecated Actions in a dedicated change so release failures remain
+easy to diagnose.  Rotate read-only repository tokens before expiry and update
+the consumer secret without changing workflow code.  When the provider commit
+is upgraded, change the pinned ref, run the complete matrix, and record the new
+provider/consumer pair.
