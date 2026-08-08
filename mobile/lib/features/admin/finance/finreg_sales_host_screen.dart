@@ -7,6 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
+import 'billing_items_screen.dart';
+import 'credit_balances_screen.dart';
+import 'parent_payment_review_screen.dart';
+import 'payment_plans_screen.dart';
+import 'payment_references_screen.dart';
+import 'reminders_screen.dart';
 import 'student_billing_plans_screen.dart';
 
 class FinregSalesHostScreen extends ConsumerWidget {
@@ -19,7 +25,8 @@ class FinregSalesHostScreen extends ConsumerWidget {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Não foi possível abrir o Finreg: ${snapshot.error}',
+                child: Text(
+                    'Não foi possível abrir o Finreg: ${snapshot.error}',
                     textAlign: TextAlign.center),
               ),
             );
@@ -41,12 +48,68 @@ class FinregSalesHostScreen extends ConsumerWidget {
             );
           }
           final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
-          return FinregSchoolBillingModule(
-              repository: adapter,
-              host: adapter,
-              billingPlansBuilder: (_) => const StudentBillingPlansScreen(),
-              onOfficialDocument: (name, bytes) =>
-                  Printing.sharePdf(bytes: bytes, filename: name));
+          return FutureBuilder<FinregCapabilities>(
+            future: adapter.capabilities(),
+            builder: (context, capabilitySnapshot) {
+              if (capabilitySnapshot.hasError) {
+                return Center(
+                    child: Text(
+                        'Não foi possível validar o perfil Finreg: ${capabilitySnapshot.error}'));
+              }
+              if (!capabilitySnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final capabilities = capabilitySnapshot.data!;
+              if (capabilities.vertical != 'school') {
+                return const Center(
+                    child: Text(
+                        'O perfil financeiro desta organização não é escolar.'));
+              }
+              return FinregSchoolBillingModule(
+                  repository: adapter,
+                  host: adapter,
+                  effectiveCapabilities: capabilities.effectiveCapabilities,
+                  extensions: [
+                    FinregModuleExtension(
+                        id: 'student-plans',
+                        label: 'Planos escolares',
+                        icon: Icons.event_repeat_outlined,
+                        builder: (_) => const StudentBillingPlansScreen()),
+                    FinregModuleExtension(
+                        id: 'school-services',
+                        label: 'Serviços',
+                        icon: Icons.school_outlined,
+                        builder: (_) => const BillingItemsScreen()),
+                    FinregModuleExtension(
+                        id: 'parent-payments',
+                        label: 'Comprovativos',
+                        icon: Icons.fact_check_outlined,
+                        builder: (_) => const ParentPaymentReviewScreen()),
+                    FinregModuleExtension(
+                        id: 'payment-arrangements',
+                        label: 'Acordos',
+                        icon: Icons.calendar_month_outlined,
+                        builder: (_) => const PaymentPlansScreen()),
+                    FinregModuleExtension(
+                        id: 'payment-references',
+                        label: 'Referências',
+                        icon: Icons.qr_code_outlined,
+                        builder: (_) => const PaymentReferencesScreen()),
+                    FinregModuleExtension(
+                        id: 'guardian-credits',
+                        label: 'Créditos',
+                        icon: Icons.savings_outlined,
+                        builder: (_) => const CreditBalancesScreen()),
+                    FinregModuleExtension(
+                        id: 'reminders',
+                        label: 'Lembretes',
+                        icon: Icons.notifications_outlined,
+                        builder: (_) => const RemindersScreen()),
+                  ],
+                  onOfficialDocument: (name, bytes) =>
+                      Printing.sharePdf(bytes: bytes, filename: name));
+            },
+          );
         },
       );
 }
@@ -69,6 +132,10 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
             Map<String, String>.from(value['terminology'] as Map? ?? {}),
         enabledModules:
             Set<String>.from(value['enabled_modules'] as List? ?? []),
+        effectiveCapabilities:
+            Set<String>.from(value['effective_capabilities'] as List? ?? []),
+        manifestFingerprint: value['manifest_fingerprint']?.toString(),
+        countryPack: value['country_pack']?.toString(),
         nonFiscal: value['non_fiscal'] as bool? ?? false);
   }
 

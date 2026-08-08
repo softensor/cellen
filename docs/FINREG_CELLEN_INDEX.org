@@ -24,6 +24,14 @@ logic or maintain a second fiscal ledger.
 - [[file:FINREG_CELLEN_IMPLEMENTATION_PLAN.org][Implementation Plan and Work Breakdown]]
 - [[file:CELLEN_NIX_DOCKER_SPEC.org][Cellen Nix and Docker Build Specification]]
 - [[file:FINREG_CELLEN_TEST_ROLLOUT_SPEC.org][Testing, Single-Backend Safety, Migration, and Rollout]]
+- [[file:CELLEN_FINREG_AUTHORITY_MATRIX.org][Authoritative Data and School Extension Matrix]]
+
+Platform-wide modularity and certification controls:
+
+- =/workspace/finreg/docs/FINREG_MODULAR_PLATFORM_SPEC.org=
+- =/workspace/finreg/docs/FINREG_PLUGIN_MANIFEST_SPEC.org=
+- =/workspace/finreg/docs/FINREG_VERTICAL_REFERENCE_PROFILES.org=
+- =/workspace/finreg/docs/FINREG_CERTIFICATION_CHANGE_CONTROL.org=
 
 * Governing rule
 

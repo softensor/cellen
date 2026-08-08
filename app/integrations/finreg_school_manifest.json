@@ -1,0 +1,14 @@
+{
+  "schema_version": "cellen-finreg-adapter/v1",
+  "host": "cellen",
+  "vertical": "school",
+  "finreg_manifest_schema": "finreg-manifest/v1",
+  "required_capabilities": [
+    "billing", "receivables", "payments", "recurring_billing", "integrations"
+  ],
+  "default_forbidden_capabilities": [
+    "pos", "cash_sessions", "inventory", "kitchen"
+  ],
+  "context_schema": "school/v1",
+  "authority_matrix": "docs/CELLEN_FINREG_AUTHORITY_MATRIX.org"
+}

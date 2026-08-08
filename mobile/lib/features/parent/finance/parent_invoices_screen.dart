@@ -152,18 +152,26 @@ final _parentPaymentRefsProvider =
 final _parentReceiptsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final data = await api.get('/finance/parent/receipts') as List;
-  return data.cast<Map<String, dynamic>>();
+  final legacy = await api.get('/finance/parent/receipts') as List;
+  final finreg = await api.get('/finreg/parent/receipts') as List;
+  return [...legacy, ...finreg]
+      .map((value) => Map<String, dynamic>.from(value as Map))
+      .toList();
 });
 
 final _parentStatementProvider =
     FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final api = ref.read(apiClientProvider);
   try {
-    final data = await api.get('/finance/parent/statement');
+    final data = await api.get('/finreg/parent/statement');
     return data as Map<String, dynamic>?;
   } catch (_) {
-    return null;
+    try {
+      final data = await api.get('/finance/parent/statement');
+      return data as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
   }
 });
 
@@ -796,7 +804,16 @@ class _ReceiptsTab extends ConsumerWidget {
                 ),
                 child: ListTile(
                   dense: true,
-                  onTap: () => _showReceiptDetail(context, r, currency),
+                  onTap: r['finreg'] == true
+                      ? () async {
+                          final bytes = await ref
+                              .read(apiClientProvider)
+                              .getBytes('/finreg/parent/receipts/${r['id']}/pdf');
+                          await Printing.sharePdf(
+                              bytes: bytes,
+                              filename: 'finreg-recibo-${r['id']}.pdf');
+                        }
+                      : () => _showReceiptDetail(context, r, currency),
                   leading: const Icon(Icons.receipt_long_outlined,
                       color: Colors.green),
                   title: Text(docNum,
@@ -842,8 +859,7 @@ class _InvoiceCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final monthLabel =
         DateFormat('MMMM yyyy', 'pt_PT').format(invoice.referenceMonth);
-    final canPay = !invoice.isFinreg &&
-        invoice.status != 'paid' &&
+    final canPay = invoice.status != 'paid' &&
         invoice.status != 'cancelled';
 
     return Card(

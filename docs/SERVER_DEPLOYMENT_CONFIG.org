@@ -52,6 +52,11 @@ is =condo.167.235.158.77.nip.io=.  Ports 80 and 443 belong to Nginx.
 
 * Finreg connection target
 
+The paired Finreg tenant must resolve the declarative =school= profile before
+Cellen exposes its embedded finance workspace. The deployment helper validates
+the manifests, migrates Finreg, persists that profile, and restarts both
+services. The returned manifest fingerprint is retained as release evidence.
+
 Finreg was absent at the initial audit and was installed successfully on
 2026-08-06.  Its verified allocation is:
 
@@ -100,6 +105,17 @@ secret, PR-versus-Pages separation, VPS release evidence, and staged activation
 gates learned during this rollout.
 
 * Verification commands
+
+For the unified Finreg school-finance and parent-collection release, after both
+repositories have been merged and pulled, use the idempotent entry point:
+
+#+BEGIN_SRC sh
+sudo bash /var/www/cellen/deploy/deploy_finreg_school_finance.sh
+#+END_SRC
+
+It applies both Alembic histories, restores all required integration scopes,
+restarts the API/worker/Beat services, and checks readiness. It deliberately
+does not promote a school from shadow or pilot to live.
 
 #+BEGIN_SRC sh
 systemctl status cellen-api --no-pager

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.models.finreg_integration import FinregSchoolConnection
+from app.models.finance import Payment
 from app.services.finreg import (
     FakeFinregAdapter,
     FinregError,
@@ -21,6 +22,21 @@ def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
     assert "path: '/admin/finance',              builder: (_, __) => const FinregSalesHostScreen()" in router
     assert "FinregSchoolBillingModule(" in host
     assert "return const InvoicesScreen()" not in host
+
+
+def test_finreg_parent_payment_cross_system_references_are_persisted():
+    assert "finreg_document_external_reference" in Payment.__table__.columns
+    assert "finreg_payment_external_reference" in Payment.__table__.columns
+
+
+def test_school_extensions_and_parent_finreg_payments_are_wired():
+    root = Path(__file__).resolve().parents[1]
+    host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+    parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
+    assert host.count("FinregModuleExtension(") >= 7
+    assert "final canPay = invoice.status != 'paid'" in parent
+    assert "/finreg/parent/receipts" in parent
+    assert "/finreg/parent/statement" in parent
 
 
 def test_billing_key_is_stable_and_period_scoped():
