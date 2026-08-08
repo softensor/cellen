@@ -18,6 +18,9 @@ source /etc/finreg.env
 set +a
 export PYTHONPATH="$FINREG_DIR/backend"
 "$FINREG_DIR/.venv/bin/alembic" upgrade head
+"$FINREG_DIR/.venv/bin/python" -m app.cli.validate_module_manifests >/dev/null
+"$FINREG_DIR/.venv/bin/python" -m app.cli.set_company_profile \
+  5000413178 school
 "$FINREG_DIR/.venv/bin/python" -m app.cli.grant_integration_client_scopes \
   "$CLIENT_KEY" billing_plans:read billing_plans:write
 

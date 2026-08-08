@@ -52,6 +52,11 @@ is =condo.167.235.158.77.nip.io=.  Ports 80 and 443 belong to Nginx.
 
 * Finreg connection target
 
+The paired Finreg tenant must resolve the declarative =school= profile before
+Cellen exposes its embedded finance workspace. The deployment helper validates
+the manifests, migrates Finreg, persists that profile, and restarts both
+services. The returned manifest fingerprint is retained as release evidence.
+
 Finreg was absent at the initial audit and was installed successfully on
 2026-08-06.  Its verified allocation is:
 

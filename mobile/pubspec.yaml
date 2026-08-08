@@ -33,6 +33,8 @@ dependencies:
     path: ../../finreg/packages/finreg_sales_ui
   finreg_vertical_school_ui:
     path: ../../finreg/packages/finreg_vertical_school_ui
+  finreg_vertical_school:
+    path: ../../finreg/packages/finreg_vertical_school
 
 dev_dependencies:
   flutter_test:

@@ -27,6 +27,7 @@ from app.models.finreg_integration import (
 from app.models.person import Child, Guardian
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
+from app.integrations.finreg_school import validate_school_capabilities
 
 router = APIRouter(prefix="/finreg", tags=["Finreg Integration"])
 
@@ -174,7 +175,10 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
         manifest = await FakeFinregAdapter().capabilities(str(user.id))
         return {**manifest, "company_id": str(connection.finreg_company_id),
                 "terminology": {"customer": "guardian", "beneficiary": "pupil"},
-                "enabled_modules": ["billing"], "supported_entity_types": []}
+                "enabled_modules": ["billing"], "supported_entity_types": [],
+                "vertical": "school",
+                "effective_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
+                "manifest_fingerprint": "0" * 64, "country_pack": "angola"}
     try:
         manifest = await HttpFinregAdapter().capabilities(str(user.id))
         if str(manifest.get("company_id")) != str(connection.finreg_company_id):
@@ -182,7 +186,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
                 "code": "company_mismatch",
                 "message": "The configured Finreg credential belongs to another company",
             })
-        return manifest
+        return validate_school_capabilities(manifest)
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
 
 

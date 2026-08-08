@@ -1,0 +1,1 @@
+"""Validated host-adapter contracts."""

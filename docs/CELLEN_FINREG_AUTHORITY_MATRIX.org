@@ -1,0 +1,49 @@
+#+TITLE: Cellen–Finreg Authoritative Data and School Extension Matrix
+#+DATE: 2026-08-08
+#+OPTIONS: toc:2 num:nil
+
+* Rule
+
+Cellen owns school operations. Finreg owns every financial and fiscal record.
+The school extension carries references and context; it never reimplements tax,
+numbering, signing, finalisation, corrections, receipts, SAF-T, or AGT exchange.
+
+* Authoritative ownership
+
+| Domain object | Authority | Projection / integration rule |
+|-
+| School, campus, academic year | Cellen | Stable external IDs and labels sent as context |
+| Pupil, enrolment, class | Cellen | Pupil is beneficiary, never silently treated as payer |
+| Guardian / responsible payer relationship | Cellen | Guardian party is upserted to Finreg with idempotent mapping |
+| School service catalogue and price intent | Cellen | Mapped to Finreg products; Finreg owns fiscal tax validation |
+| Student billing plan | Cellen | Creates/updates a Finreg recurring billing template |
+| Invoice draft and fiscal document | Finreg | Cellen displays Finreg state and official PDF only |
+| Number, series, hash, signature, tax totals | Finreg | Never generated or edited in Cellen |
+| Credit/debit note and cancellation workflow | Finreg | Cellen supplies reason/context, Finreg validates and executes |
+| Payment evidence uploaded by guardian | Cellen | Evidence is reviewed under school permissions |
+| Accepted payment, allocation, receipt | Finreg | Cellen command is idempotent; Finreg result is authoritative |
+| Payment arrangement / reminder workflow | Cellen | Operational school workflow; balances come from Finreg |
+| Customer statement, ageing, sales reports | Finreg | Cellen embeds or projects Finreg responses |
+| AGT credentials, submissions and SAF-T | Finreg | Not exposed to or stored by Cellen |
+| Integration mapping, idempotency and event cursor | Shared boundary | Each system owns its ledger; correlation IDs make it auditable |
+
+* Permission boundary
+
+- School administrators may configure plans and operate finance only through
+  explicitly granted Cellen permissions and Finreg integration scopes.
+- Guardians may see only documents, balances and receipts attached to their
+  own guardian identity. They may upload evidence or start an allowed payment;
+  they cannot issue, alter, allocate or reverse fiscal records.
+- Every backend rechecks tenant, school, subject ownership and operation rights.
+  UI visibility is not authorization.
+
+* Profile contract
+
+Cellen requires the =school= Finreg profile and the capabilities =billing=,
+=receivables=, =payments=, =recurring_billing= and =integrations=. POS, cash
+sessions, inventory and kitchen are disabled unless a school deliberately adds
+an independent retail/canteen operation. Such activation is not inferred from
+the fact that the organization is a school.
+
+The manifest fingerprint returned by Finreg is retained in deployment evidence.
+A changed fingerprint requires compatibility tests before promotion.

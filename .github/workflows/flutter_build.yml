@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 0d8dc52ee5102be57de44952f967af615193d973
+          ref: a506d0923b0359ed74cdcdb372ef2d99fece8165
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 0d8dc52ee5102be57de44952f967af615193d973
+          ref: a506d0923b0359ed74cdcdb372ef2d99fece8165
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 0d8dc52ee5102be57de44952f967af615193d973
+          ref: a506d0923b0359ed74cdcdb372ef2d99fece8165
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 

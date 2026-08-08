@@ -36,6 +36,13 @@ Integrate Finreg's complete sales and billing experience into Cellen while:
 - supporting future verticals such as schools, clinics, hospitality, retail,
   and professional services.
 
+Cellen is the reference consumer of Finreg's declarative =school= vertical.
+The platform-wide kernel, capability, plugin and profile contracts live in
+=/workspace/finreg/docs/FINREG_MODULAR_PLATFORM_SPEC.org= and its companion
+specifications. Cellen-specific code may implement a thin adapter and
+host-authoritative school workflows, but profile dependencies and shared
+finance UI remain versioned Finreg artifacts.
+
 * Non-negotiable boundaries
 
 ** Finance user-interface ownership
