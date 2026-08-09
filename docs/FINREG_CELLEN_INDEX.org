@@ -20,6 +20,9 @@ logic or maintain a second fiscal ledger.
 
 * Documents
 
+- =FINREG_AGT_MODE_RUNBOOK.org= — authoritative fiscal/transport state matrix
+  and promotion commands.
+
 - [[file:FINREG_CELLEN_ARCHITECTURE_SPEC.org][Architecture and Integration Specification]]
 - [[file:FINREG_CELLEN_IMPLEMENTATION_PLAN.org][Implementation Plan and Work Breakdown]]
 - [[file:CELLEN_NIX_DOCKER_SPEC.org][Cellen Nix and Docker Build Specification]]

@@ -1,0 +1,64 @@
+#+TITLE: Cellen–Finreg Fiscal and AGT Mode Runbook
+#+DATE: 2026-08-09
+
+* Supported matrix
+
+| Cellen mode | Finreg AGT channel | Result |
+|-------------+--------------------+--------|
+| shadow      | disabled           | comparison only; finalization and AGT IO blocked |
+| pilot       | offline            | complete local fiscal workflow; zero AGT IO |
+| pilot       | sandbox            | complete workflow plus AGT homologation |
+| live        | production         | approved public fiscal operation |
+
+No other combination may be deployed.  Cellen controls operational authority;
+Finreg's per-company =agt_channel= controls external transport.
+
+* Commands
+
+From =/var/www/cellen=:
+
+1. Promote a validated shadow tenant to a local pilot:
+
+   #+begin_src sh
+   sudo bash deploy/promote_finreg_pilot.sh
+   #+end_src
+
+   Enter =offline=.  This enables the complete local Finreg fiscal workflow but
+   cannot contact AGT. Integration-owned recurring plans are atomically changed
+   from shadow draft generation to fiscal finalization; rollback restores them.
+
+2. Validate that state in one evidence-producing run:
+
+   #+begin_src sh
+   sudo bash deploy/validate_cellen_finreg_release.sh \
+     --mode pilot --agt-channel offline
+   #+end_src
+
+3. When AGT provides authorised homologation credentials, move the existing
+   pilot to sandbox:
+
+   #+begin_src sh
+   sudo bash deploy/promote_finreg_agt_sandbox.sh
+   sudo bash deploy/validate_cellen_finreg_release.sh \
+     --mode pilot --agt-channel sandbox
+   #+end_src
+
+   The promotion never replays offline documents.  Submit eligible historical
+   test documents only through the explicit compliance retry action. It
+   deactivates =OFF*= local series; create sandbox series in Finreg and wait for
+   AGT confirmation before the sandbox acceptance run can pass.
+
+4. Only after signed homologation acceptance and recorded production enrolment:
+
+   #+begin_src sh
+   sudo bash deploy/promote_finreg_live.sh
+   sudo bash deploy/validate_cellen_finreg_release.sh \
+     --mode live --agt-channel production
+   #+end_src
+
+* Missing prerequisites as of 2026-08-09
+
+Rainha Njinga did not yet have the AGT API username/password, producer signing
+key, software validation number, or producer NIF registered in =/etc/finreg.env=.
+This blocks sandbox and production, but it does not block =pilot + offline=.
+Never invent these values.

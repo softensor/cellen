@@ -82,6 +82,29 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert "validate_cellen_finreg_release.sh" in deploy
 
 
+def test_agt_mode_lifecycle_is_explicit_and_fail_closed():
+    validator = Path("deploy/validate_cellen_finreg_release.sh").read_text()
+    pilot = Path("deploy/promote_finreg_pilot.sh").read_text()
+    sandbox = Path("deploy/promote_finreg_agt_sandbox.sh")
+    live = Path("deploy/promote_finreg_live.sh").read_text()
+    assert "shadow\\|disabled" in validator
+    assert "pilot\\|(offline|sandbox)" in validator
+    assert "live\\|production" in validator
+    assert "set_agt_channel" in pilot
+    assert "ensure_offline_series" in pilot
+    assert "SET generation_mode='finalize'" in pilot
+    assert sandbox.stat().st_mode & 0o111
+    assert "Expected pilot+offline" in sandbox.read_text()
+    assert "no_automatic_replay=true" in sandbox.read_text()
+    assert "series_code LIKE 'OFF%'" in sandbox.read_text()
+    assert "current channel=$AGT_CHANNEL" in live
+    assert "set_agt_channel 5000413178 production" in live
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert "agtChannel: value['agt_channel']" in host
+
+
 @pytest.mark.asyncio
 async def test_fake_adapter_replays_success_without_duplicate():
     adapter = FakeFinregAdapter()

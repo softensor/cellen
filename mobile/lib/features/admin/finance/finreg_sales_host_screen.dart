@@ -136,6 +136,7 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
             Set<String>.from(value['effective_capabilities'] as List? ?? []),
         manifestFingerprint: value['manifest_fingerprint']?.toString(),
         countryPack: value['country_pack']?.toString(),
+        agtChannel: value['agt_channel']?.toString() ?? 'disabled',
         nonFiscal: value['non_fiscal'] as bool? ?? false);
   }
 

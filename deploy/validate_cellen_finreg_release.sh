@@ -8,16 +8,18 @@ SCHOOL_SLUG=${SCHOOL_SLUG:-rainha-njinga}
 TAX_ID=${TAX_ID:-5000413178}
 CLIENT_KEY=${CLIENT_KEY:-cellen-rainha-njinga}
 EXPECTED_MODE=${EXPECTED_MODE:-shadow}
+EXPECTED_AGT_CHANNEL=${EXPECTED_AGT_CHANNEL:-}
 REPORT_DIR=${REPORT_DIR:-/home/jorgehel/backups}
 RUN_SCHEDULER=1
 STARTED_AT=$(date --iso-8601=seconds)
 REPORT="$REPORT_DIR/cellen-finreg-acceptance-$(date -u +%Y%m%d-%H%M%S).org"
 PASS=0 FAIL=0 WARN=0
 
-usage() { echo "Usage: sudo bash $0 [--mode shadow|pilot|live] [--no-scheduler]"; }
+usage() { echo "Usage: sudo bash $0 [--mode shadow|pilot|live] [--agt-channel disabled|offline|sandbox|production] [--no-scheduler]"; }
 while (($#)); do
   case "$1" in
     --mode) [[ $# -ge 2 ]] || { usage; exit 2; }; EXPECTED_MODE=$2; shift 2 ;;
+    --agt-channel) [[ $# -ge 2 ]] || { usage; exit 2; }; EXPECTED_AGT_CHANNEL=$2; shift 2 ;;
     --no-scheduler) RUN_SCHEDULER=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
@@ -25,6 +27,17 @@ while (($#)); do
 done
 [[ $EUID -eq 0 ]] || { echo 'Run with sudo.' >&2; exit 2; }
 [[ $EXPECTED_MODE =~ ^(shadow|pilot|live)$ ]] || { echo 'Invalid mode.' >&2; exit 2; }
+if [[ -z $EXPECTED_AGT_CHANNEL ]]; then
+  case "$EXPECTED_MODE" in
+    shadow) EXPECTED_AGT_CHANNEL=disabled ;;
+    pilot) EXPECTED_AGT_CHANNEL=offline ;;
+    live) EXPECTED_AGT_CHANNEL=production ;;
+  esac
+fi
+[[ $EXPECTED_AGT_CHANNEL =~ ^(disabled|offline|sandbox|production)$ ]] || { echo 'Invalid AGT channel.' >&2; exit 2; }
+[[ "$EXPECTED_MODE|$EXPECTED_AGT_CHANNEL" =~ ^(shadow\|disabled|pilot\|(offline|sandbox)|live\|production)$ ]] || {
+  echo 'Invalid operational-mode/AGT-channel combination.' >&2; exit 2;
+}
 
 install -d -m 0700 -o jorgehel -g jorgehel "$REPORT_DIR"
 umask 077
@@ -74,14 +87,46 @@ migration_state Finreg "$FINREG_DIR/backend" /etc/finreg.env "$FINREG_DIR/.venv/
 migration_state Cellen "$CELLEN_DIR" "$CELLEN_DIR/.env" "$CELLEN_DIR/.venv/bin"
 
 printf '\n* Tenant and authorization boundary\n\n' >>"$REPORT"
-company=$(sql finreg "SELECT id||'|'||vertical_profile||'|'||COALESCE(module_manifest_fingerprint,'') FROM companies WHERE tax_id='$TAX_ID';" 2>/dev/null || true)
-IFS='|' read -r company_id profile stored_fingerprint <<<"$company"
+company=$(sql finreg "SELECT id||'|'||vertical_profile||'|'||COALESCE(module_manifest_fingerprint,'')||'|'||agt_channel FROM companies WHERE tax_id='$TAX_ID';" 2>/dev/null || true)
+IFS='|' read -r company_id profile stored_fingerprint agt_channel <<<"$company"
 [[ -n ${company_id:-} ]] && pass 'Finreg company exists' "$company_id" || fail 'Finreg company exists' "tax_id=$TAX_ID"
 [[ ${profile:-} == school ]] && pass 'School vertical is enabled' || fail 'School vertical is enabled' "${profile:-missing}"
+[[ ${agt_channel:-} == "$EXPECTED_AGT_CHANNEL" ]] && pass 'AGT channel' "$agt_channel" || fail 'AGT channel' "expected=$EXPECTED_AGT_CHANNEL actual=${agt_channel:-missing}"
+if [[ $EXPECTED_AGT_CHANNEL == offline || $EXPECTED_AGT_CHANNEL == disabled ]]; then
+  pass 'AGT network policy' 'transport is structurally disabled'
+else
+  set -a
+  source /etc/finreg.env
+  set +a
+  missing_agt=()
+  for name in AGT_FE_USERNAME AGT_FE_PASSWORD AGT_SOFTWARE_PRIVATE_KEY_PEM AGT_SOFTWARE_VALIDATION_NUMBER AGT_SOFTWARE_PRODUCER_TAX_ID; do
+    [[ -n ${!name:-} ]] || missing_agt+=("$name")
+  done
+  tenant_key=$(sql finreg "SELECT (private_key_pem IS NOT NULL)::int FROM companies WHERE id='$company_id';" 2>/dev/null || true)
+  [[ $tenant_key == 1 ]] || missing_agt+=(tenant_private_key)
+  if ((${#missing_agt[@]} == 0)); then
+    pass 'AGT network configuration is complete' "$EXPECTED_AGT_CHANNEL"
+  else
+    fail 'AGT network configuration is complete' "missing=${missing_agt[*]}"
+  fi
+fi
+if [[ $EXPECTED_AGT_CHANNEL == offline ]]; then
+  local_series=$(sql finreg "SELECT count(*) FROM document_series WHERE company_id='$company_id' AND is_active=true AND document_type='invoice' AND series_code LIKE 'OFF%';" 2>/dev/null || echo -1)
+  [[ $local_series -ge 1 ]] && pass 'Offline invoice series is active' "$local_series" || fail 'Offline invoice series is active' "$local_series"
+elif [[ $EXPECTED_AGT_CHANNEL == sandbox || $EXPECTED_AGT_CHANNEL == production ]]; then
+  confirmed_series=$(sql finreg "SELECT count(*) FROM document_series ds JOIN agt_series_notifications n ON n.series_id=ds.id AND n.confirmed_at IS NOT NULL WHERE ds.company_id='$company_id' AND ds.is_active=true AND ds.document_type='invoice' AND ds.series_code NOT LIKE 'OFF%';" 2>/dev/null || echo -1)
+  [[ $confirmed_series -ge 1 ]] && pass 'AGT-confirmed invoice series is active' "$confirmed_series" || fail 'AGT-confirmed invoice series is active' "$confirmed_series"
+fi
 fingerprint=$(cd "$FINREG_DIR/backend" && set -a && source /etc/finreg.env && set +a && export PYTHONPATH="$FINREG_DIR/backend" && "$FINREG_DIR/.venv/bin/python" -c 'from app.core.module_registry import module_registry; print(module_registry.resolve("school", [], "angola").fingerprint)' 2>/dev/null || true)
 [[ -n $fingerprint && $fingerprint == "$stored_fingerprint" ]] && pass 'Module manifest fingerprint matches deployed code' "$fingerprint" || fail 'Module manifest fingerprint matches deployed code' "stored=$stored_fingerprint resolved=$fingerprint"
 client=$(sql finreg "SELECT status||'|'||non_fiscal||'|'||allowed_scopes::text FROM integration_clients WHERE client_key='$CLIENT_KEY';" 2>/dev/null || true)
 [[ $client == active\|* ]] && pass 'Integration client is active' "$client" || fail 'Integration client is active' "${client:-missing}"
+client_non_fiscal=${client#*|}; client_non_fiscal=${client_non_fiscal%%|*}
+if [[ $EXPECTED_MODE == shadow ]]; then
+  [[ $client_non_fiscal == true ]] && pass 'Shadow client is non-fiscal' || fail 'Shadow client is non-fiscal' "$client_non_fiscal"
+else
+  [[ $client_non_fiscal == false ]] && pass 'Pilot/live client permits fiscal operations' || fail 'Pilot/live client permits fiscal operations' "$client_non_fiscal"
+fi
 for scope in documents:read documents:write payments:write receipts:read receipts:write reports:read billing_plans:read billing_plans:write; do
   [[ $client == *\"$scope\"* ]] && pass "Scope $scope" || fail "Scope $scope"
 done
@@ -102,7 +147,9 @@ plan=$(sql finreg "SELECT id||'|'||frequency||'|'||interval_count||'|'||due_days
 IFS='|' read -r plan_id frequency interval due_days next_run generation_mode active <<<"$plan"
 [[ -n ${plan_id:-} ]] && pass 'Billing plan exists' "$plan_id" || fail 'Billing plan exists'
 [[ ${frequency:-} =~ ^(weekly|monthly|quarterly|annual)$ && ${interval:-0} -ge 1 && ${due_days:-x} =~ ^[0-9]+$ && -n ${next_run:-} ]] && pass 'Billing plan schedule is complete' "$frequency/$interval due=$due_days next=$next_run" || fail 'Billing plan schedule is complete'
-[[ ${generation_mode:-} == draft && ${active:-} == true ]] && pass 'Billing plan is an active draft generator' || fail 'Billing plan is an active draft generator' "mode=${generation_mode:-missing} active=${active:-missing}"
+expected_generation=draft
+[[ $EXPECTED_MODE == shadow ]] || expected_generation=finalize
+[[ ${generation_mode:-} == "$expected_generation" && ${active:-} == true ]] && pass 'Billing plan generation mode' "$generation_mode" || fail 'Billing plan generation mode' "expected=$expected_generation actual=${generation_mode:-missing} active=${active:-missing}"
 if [[ $RUN_SCHEDULER -eq 1 && -n ${plan_id:-} ]]; then
   before=$(sql finreg "SELECT count(*) FROM documents WHERE recurring_template_id='$plan_id';" 2>/dev/null || echo -1)
   task=$(cd "$FINREG_DIR/backend" && set -a && source /etc/finreg.env && set +a && export PYTHONPATH="$FINREG_DIR/backend" && "$FINREG_DIR/.venv/bin/celery" -A app.tasks.celery_app call app.tasks.invoice_batch.generate_recurring_invoices 2>/dev/null || true)
@@ -117,6 +164,10 @@ if [[ $RUN_SCHEDULER -eq 1 && -n ${plan_id:-} ]]; then
   if [[ $EXPECTED_MODE == shadow ]]; then
     unsafe=$(sql finreg "SELECT count(*) FROM documents WHERE recurring_template_id='$plan_id' AND (document_status<>'draft' OR full_document_number IS NOT NULL);" 2>/dev/null || echo query_failed)
     [[ $unsafe == 0 ]] && pass 'Shadow documents remain unnumbered drafts' || fail 'Shadow documents remain unnumbered drafts' "$unsafe"
+  fi
+  if [[ $EXPECTED_MODE == pilot && $EXPECTED_AGT_CHANNEL == offline ]]; then
+    offline_docs=$(sql finreg "SELECT count(*) FROM documents WHERE company_id='$company_id' AND document_status='finalized' AND agt_status='transmission_disabled';" 2>/dev/null || echo -1)
+    [[ $offline_docs -ge 1 ]] && pass 'Offline fiscal document finalized without AGT transport' "count=$offline_docs" || fail 'Offline fiscal document finalized without AGT transport' "$offline_docs"
   fi
 else
   warn 'Scheduler exercise skipped'
