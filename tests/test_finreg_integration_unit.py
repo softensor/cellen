@@ -77,6 +77,7 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert "Recurring generation is idempotent" in source
     assert "SAF-T exports through Cellen into authoritative Finreg" in source
     assert "Evidence report:" in source
+    assert 'sudo -u jorgehel git -C "$repo" status' in source
     deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
     assert "validate_cellen_finreg_release.sh" in deploy
 

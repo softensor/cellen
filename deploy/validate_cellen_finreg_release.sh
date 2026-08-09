@@ -45,10 +45,13 @@ for path in "$FINREG_DIR/backend" "$CELLEN_DIR/app" /etc/finreg.env /etc/cellen-
   [[ -e $path ]] && pass "Required path $path" || fail "Required path $path" missing
 done
 for repo in "$FINREG_DIR" "$CELLEN_DIR"; do
-  branch=$(git -C "$repo" branch --show-current 2>/dev/null || true)
-  commit=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || true)
+  # The suite runs under sudo, but Git metadata belongs to the deployment
+  # account. Running status as root can refresh .git/index with root ownership
+  # and prevent the next normal deployment pull.
+  branch=$(sudo -u jorgehel git -C "$repo" branch --show-current 2>/dev/null || true)
+  commit=$(sudo -u jorgehel git -C "$repo" rev-parse --short HEAD 2>/dev/null || true)
   [[ -n $branch && -n $commit ]] && pass "$(basename "$repo") revision" "$branch @ $commit" || fail "$(basename "$repo") revision"
-  dirty=$(git -C "$repo" status --short --untracked-files=no 2>/dev/null || true)
+  dirty=$(sudo -u jorgehel git -C "$repo" status --short --untracked-files=no 2>/dev/null || true)
   [[ -z $dirty ]] && pass "$(basename "$repo") tracked worktree is clean" || warn "$(basename "$repo") tracked worktree is dirty" "${dirty//$'\n'/; }"
 done
 for service in finreg-api finreg-worker finreg-beat cellen-api; do
