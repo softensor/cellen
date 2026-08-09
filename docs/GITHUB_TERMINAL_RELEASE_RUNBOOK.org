@@ -8,6 +8,11 @@ Both repositories use =master= as the production and pull-request base branch.
 Never create a pull request from =master= to =master=; development and release
 commits must live on a separate branch.
 
+For a cross-repository Cellen–Finreg release, merge both pull requests and then
+run =deploy/validate_cellen_finreg_release.sh= on the VPS. Its timestamped Org
+report is the production acceptance evidence; ad-hoc SQL and curl fragments do
+not replace that aggregate gate.
+
 * One-time GitHub CLI setup on the Intel Mac
 
 The Mac is =x86_64-darwin=.  Nixpkgs 26.05 currently supplies a =gh= binary

@@ -311,4 +311,10 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
       Map<String, Object?>.from(await api.get('/finreg/reports/delinquent',
               queryParameters: asOf == null ? null : {'as_of': _date(asOf)})
           as Map);
+
+  @override
+  Future<Uint8List> downloadSaftSales(
+          {required DateTime from, required DateTime to}) =>
+      api.getBytes('/finreg/reports/saft-sales'
+          '?date_from=${_date(from)}&date_to=${_date(to)}');
 }

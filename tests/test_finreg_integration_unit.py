@@ -59,6 +59,28 @@ def test_school_context_uses_only_contract_fields():
     assert value["pupil_id"] == str(pupil)
 
 
+def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
+    router = Path("app/routers/finreg.py").read_text()
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert '@router.get("/reports/saft-sales")' in router
+    assert "downloadSaftSales" in host
+    assert "/finreg/reports/saft-sales" in host
+
+
+def test_aggregate_production_acceptance_runner_is_release_ready():
+    runner = Path("deploy/validate_cellen_finreg_release.sh")
+    source = runner.read_text()
+    assert runner.stat().st_mode & 0o111
+    assert "Scheduler task has no failure" in source
+    assert "Recurring generation is idempotent" in source
+    assert "SAF-T exports through Cellen into authoritative Finreg" in source
+    assert "Evidence report:" in source
+    deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
+    assert "validate_cellen_finreg_release.sh" in deploy
+
+
 @pytest.mark.asyncio
 async def test_fake_adapter_replays_success_without_duplicate():
     adapter = FakeFinregAdapter()

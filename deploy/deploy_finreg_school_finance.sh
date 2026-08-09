@@ -41,4 +41,7 @@ done
 curl --fail --silent --show-error http://127.0.0.1:8003/ready >/dev/null
 curl --fail --silent --show-error http://127.0.0.1:8001/health >/dev/null
 
-echo "Unified Finreg school finance and parent collections deployed."
+"$CELLEN_DIR/deploy/validate_cellen_finreg_release.sh" \
+  --mode "${FINREG_ACCEPTANCE_MODE:-shadow}"
+
+echo "Unified Finreg school finance and parent collections deployed and accepted."
