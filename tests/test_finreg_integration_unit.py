@@ -80,6 +80,26 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert 'sudo -u jorgehel git -C "$repo" status' in source
     deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
     assert "validate_cellen_finreg_release.sh" in deploy
+    assert '--mode "$ACCEPTANCE_MODE"' in deploy
+    assert '--agt-channel "$ACCEPTANCE_CHANNEL"' in deploy
+
+
+def test_finreg_promotions_use_bounded_readiness_polling():
+    helper = Path("deploy/lib/wait_for_finreg_services.sh").read_text()
+    assert "wait_for_finreg_services()" in helper
+    assert "attempt <= attempts" in helper
+    assert "http://127.0.0.1:8003/ready" in helper
+    assert "http://127.0.0.1:8001/health" in helper
+    for name in (
+        "deploy_finreg_school_finance.sh",
+        "promote_finreg_pilot.sh",
+        "promote_finreg_agt_sandbox.sh",
+        "promote_finreg_live.sh",
+    ):
+        source = Path("deploy", name).read_text()
+        assert 'source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"' in source
+        assert "wait_for_finreg_services" in source
+        assert "sleep 5" not in source
 
 
 def test_agt_mode_lifecycle_is_explicit_and_fail_closed():

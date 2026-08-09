@@ -7,6 +7,9 @@ set -Eeuo pipefail
 FINREG_DIR=/var/www/finreg
 CELLEN_DIR=/var/www/cellen
 CLIENT_KEY=cellen-rainha-njinga
+SCHOOL_SLUG=rainha-njinga
+TAX_ID=5000413178
+source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"
 
 for required in \
   "$FINREG_DIR/backend" \
@@ -33,15 +36,19 @@ export PYTHONPATH="$CELLEN_DIR"
 "$CELLEN_DIR/.venv/bin/alembic" upgrade head
 
 systemctl restart finreg-api finreg-worker finreg-beat cellen-api
-sleep 8
+wait_for_finreg_services
 
-for service in finreg-api finreg-worker finreg-beat cellen-api; do
-  systemctl is-active --quiet "$service"
-done
-curl --fail --silent --show-error http://127.0.0.1:8003/ready >/dev/null
-curl --fail --silent --show-error http://127.0.0.1:8001/health >/dev/null
+ACCEPTANCE_MODE=$(sudo -u postgres psql -X -A -t -v ON_ERROR_STOP=1 \
+  -d cellen -c "SELECT fc.mode FROM schools s JOIN finreg_school_connections fc ON fc.school_id=s.id WHERE s.slug='$SCHOOL_SLUG'")
+ACCEPTANCE_CHANNEL=$(sudo -u postgres psql -X -A -t -v ON_ERROR_STOP=1 \
+  -d finreg -c "SELECT agt_channel FROM companies WHERE tax_id='$TAX_ID'")
+[[ -n $ACCEPTANCE_MODE && -n $ACCEPTANCE_CHANNEL ]] || {
+  echo "Unable to resolve deployed acceptance mode/channel." >&2
+  exit 1
+}
 
 "$CELLEN_DIR/deploy/validate_cellen_finreg_release.sh" \
-  --mode "${FINREG_ACCEPTANCE_MODE:-shadow}"
+  --mode "$ACCEPTANCE_MODE" \
+  --agt-channel "$ACCEPTANCE_CHANNEL"
 
 echo "Unified Finreg school finance and parent collections deployed and accepted."

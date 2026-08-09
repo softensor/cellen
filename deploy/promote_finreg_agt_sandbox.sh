@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 FINREG_DIR=/var/www/finreg
+CELLEN_DIR=/var/www/cellen
+source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"
 TAX_ID=5000413178
 CHANNEL_CHANGED=false
 SERIES_CHANGED=false
@@ -52,9 +54,7 @@ SERIES_CHANGED=true
 "$FINREG_DIR/.venv/bin/python" -m app.cli.set_agt_channel "$TAX_ID" sandbox
 CHANNEL_CHANGED=true
 systemctl restart finreg-api finreg-worker finreg-beat cellen-api
-sleep 5
-curl -fsS http://127.0.0.1:8003/ready >/dev/null
-curl -fsS http://127.0.0.1:8001/health >/dev/null
+wait_for_finreg_services
 CHANNEL_CHANGED=false
 SERIES_CHANGED=false
 printf '%s RainhaNjinga channel=sandbox approval=%s no_automatic_replay=true\n' \
