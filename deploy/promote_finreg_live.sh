@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 SCHOOL_ID=65794af5-2831-4709-9b53-437bb5d50515
+CELLEN_DIR=/var/www/cellen
+source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"
 CHANNEL_CHANGED=false
 MODE_CHANGED=false
 
@@ -69,9 +71,7 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 -d cellen -c \
   "UPDATE finreg_school_connections SET mode = 'live' WHERE school_id = '$SCHOOL_ID'::uuid AND mode = 'pilot' AND kill_switch = false"
 MODE_CHANGED=true
 systemctl restart finreg-api finreg-worker finreg-beat cellen-api
-sleep 5
-curl --fail --silent --show-error http://127.0.0.1:8003/ready >/dev/null
-curl --fail --silent --show-error http://127.0.0.1:8001/health >/dev/null
+wait_for_finreg_services
 CHANNEL_CHANGED=false
 MODE_CHANGED=false
 printf '%s RainhaNjinga channel=approved approval=%s mode=live\n' \

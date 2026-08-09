@@ -147,6 +147,114 @@ AGT credentials in Git, logs, screenshots, or this evidence record.
 | PR shows failed outdated deployment | A prior commit/run remains in history | Match check =head_sha= to latest PR commit |
 | VPS returns transient =502= after restart | Workers have not completed startup | Wait, then verify local health and journal; investigate only if persistent |
 
+* Finreg school-pilot incident lessons (2026-08-09)
+
+The Rainha Njinga cutover exposed a sequence of individually small assumptions
+that together made the release unnecessarily difficult.  Treat the following
+as mandatory controls for every future vertical, not as tenant-specific
+workarounds.
+
+** Use the complete mode matrix
+
+Operational authority and AGT transport are separate axes:
+
+| Operational mode | AGT channel | Meaning |
+|------------------+-------------+---------|
+| =shadow= | =disabled= | Compare integration results; never finalize fiscal documents |
+| =pilot= | =offline= | Exercise numbering, hashing, signing, accounting, receipts and SAF-T locally; make no AGT network call |
+| =pilot= | =sandbox= | Run the same fiscal workflow against AGT homologation credentials |
+| =live= | =production= | Approved public fiscal operation |
+
+Deployment scripts and validators must receive or discover both values.  A
+validator defaulting to =shadow/disabled= against an intentional
+=pilot/offline= tenant produces false failures and is not evidence of a
+rollback.
+
+** Make fiscal finalization one atomic persistence boundary
+
+Never allow an ORM query/autoflush between assigning a fiscal number and
+persisting the final status, hash-chain fields and signature.  A partial flush
+made the database immutability trigger correctly interpret the second update
+as an illegal edit of already issued content.  Query prerequisites first, then
+assign and flush all protected fields together.  Keep the immutability trigger;
+do not weaken it to accommodate application ordering defects.
+
+** Migrate every new persisted vocabulary value
+
+Adding =transmission_disabled= to application logic required widening
+=documents.agt_status= from =VARCHAR(20)= to =VARCHAR(30)=.  For every new
+status, mode, channel or error code, check all ORM declarations, migrations,
+database constraints, API schemas, filters, reports and test fixtures.  CI must
+assert that the longest supported value fits the deployed column.
+
+** Treat existing partial state as a recovery workflow
+
+After a failed multi-step attempt, inspect the authoritative row before
+retrying.  The August invoice was safely finalized and posted but retained
+=agt_status=pending= because the subsequent offline-status update had failed.
+Re-running the idempotent transport task reconciled it to
+=transmission_disabled= without contacting AGT.  Do not renumber, delete or
+manually rewrite an issued fiscal document.
+
+** Exercise background workers, not only HTTP endpoints
+
+Acceptance must invoke the real recurring-invoice Celery task.  This revealed:
+
+- async database resources attached to a different event loop;
+- incomplete SQLAlchemy mapper registration in the worker process;
+- a required recurring-plan field omitted by the integration endpoint;
+- finalization/autoflush behavior that request-level tests had not exposed.
+
+Worker acceptance must prove task receipt, successful completion, idempotency,
+document creation/finalization, and absence of new worker errors.
+
+** Preserve deployment ownership and wait for readiness
+
+Run Git inspection as the deployment account even when the acceptance wrapper
+runs under =sudo=.  Root-owned =.git/index= and =__pycache__= files can prevent
+later pulls and diagnostics.  Avoid bytecode writes during read-only syntax
+checks when production caches are not writable.
+
+A process being =active= is not the same as the API being ready.  Finreg needed
+more than five seconds on this VPS.  Promotion must wait for readiness with a
+bounded retry/poll and must roll back only after that readiness budget expires.
+
+** Use one aggregate acceptance report
+
+Do not ask an operator to test endpoints one by one.  The version-controlled
+=deploy/validate_cellen_finreg_release.sh= suite is the release authority.  It
+must check repositories, migrations, services, databases, tenant/profile
+fingerprints, scopes, secret permissions, mode/channel, mappings, outbox,
+recurring generation, idempotency, fiscal state, accounting state, offline
+transport isolation, authoritative SAF-T and new service errors.
+
+The accepted Rainha Njinga pilot/offline baseline was:
+
+#+BEGIN_EXAMPLE
+Finreg revision: 9b882fc
+Finreg migration head: d4a6b9c1e5f7
+Document: OFFFT/2026/1
+Document status: finalized
+Accounting status: posted
+AGT status: transmission_disabled
+AGT transmitted: false
+Acceptance: 53 passed, 0 failed
+Evidence: /home/jorgehel/backups/cellen-finreg-acceptance-20260809-152632.org
+#+END_EXAMPLE
+
+This proves the deployed local fiscal pilot behavior.  It is not a statement
+of AGT certification or authorization for production transport.
+
+** Keep terminal instructions paste-safe
+
+Operator command blocks must contain commands only.  Prose such as =If this
+passes= or =Then= was repeatedly interpreted by the shell.  Prefer short,
+restartable blocks; inspect an existing branch before recreating it; use
+=set -Eeuo pipefail=; and verify =git diff --check=, syntax, migration heads and
+the current branch before committing.  GitHub pull requests, checks and merges
+should use the terminal workflow recorded in
+=docs/GITHUB_TERMINAL_RELEASE_RUNBOOK.org=.
+
 * Operational invariants
 
 - Never invent legal identities, NIFs, certificates, fiscal series, or approval

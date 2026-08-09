@@ -207,6 +207,19 @@ when a required gate fails.
 =--no-scheduler= makes the diagnostic read-only. =--mode pilot= and =--mode
 live= assert an already promoted state; they do not perform promotion.
 
+Always state the AGT channel when validating a promoted installation.  The
+accepted pre-homologation command is:
+
+#+begin_src sh
+sudo bash deploy/validate_cellen_finreg_release.sh \
+  --mode pilot \
+  --agt-channel offline
+#+end_src
+
+Do not run the default =shadow/disabled= assertion against a tenant that is
+already =pilot/offline=; the resulting mode, client and generation failures are
+expectation mismatches rather than evidence that fiscal processing failed.
+
 Passing this suite proves the deployed integration behavior. It does not claim
 AGT certification. Fiscal activation still requires the authorized series,
 credentials, certificate, and formal approval applicable to the company.

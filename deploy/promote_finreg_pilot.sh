@@ -6,6 +6,7 @@ set -Eeuo pipefail
 CELLEN_DIR=/var/www/cellen
 FINREG_DIR=/var/www/finreg
 FINREG_ENV=/etc/finreg.env
+source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"
 SCHOOL_ID=65794af5-2831-4709-9b53-437bb5d50515
 CLIENT_KEY=cellen-rainha-njinga
 CLIENT_PROMOTED=false
@@ -99,9 +100,7 @@ SQL
 MODE_PROMOTED=true
 
 systemctl restart finreg-api finreg-worker finreg-beat cellen-api
-sleep 5
-curl --fail --silent --show-error http://127.0.0.1:8003/ready >/dev/null
-curl --fail --silent --show-error http://127.0.0.1:8001/health >/dev/null
+wait_for_finreg_services
 CLIENT_PROMOTED=false
 CHANNEL_PROMOTED=false
 MODE_PROMOTED=false
