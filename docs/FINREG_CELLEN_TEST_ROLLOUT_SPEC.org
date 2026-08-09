@@ -185,3 +185,28 @@ Rollback must not issue duplicate fiscal documents.
 - Historical reconciliation signed off.
 - Pilot rollback rehearsed.
 - No duplicate Cellen fiscal writer enabled at live cutover.
+
+* Aggregate production acceptance
+
+Production acceptance is one repeatable suite, not a sequence of copied
+diagnostic fragments:
+
+#+begin_src sh
+cd /var/www/cellen
+sudo bash deploy/validate_cellen_finreg_release.sh --mode shadow
+#+end_src
+
+The runner checks repository revisions, services, Redis and PostgreSQL,
+migration heads, the company module-manifest fingerprint, client scopes and
+secret permissions, tenant linkage, mapping and outbox errors, billing-plan
+completeness, scheduler execution and idempotency, shadow draft safety, the
+Cellen-to-Finreg SAF-T boundary, and new service-log errors. It writes a
+mode-0600 Org evidence report under =/home/jorgehel/backups= and exits non-zero
+when a required gate fails.
+
+=--no-scheduler= makes the diagnostic read-only. =--mode pilot= and =--mode
+live= assert an already promoted state; they do not perform promotion.
+
+Passing this suite proves the deployed integration behavior. It does not claim
+AGT certification. Fiscal activation still requires the authorized series,
+credentials, certificate, and formal approval applicable to the company.

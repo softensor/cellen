@@ -524,6 +524,37 @@ async def delinquent_report(as_of: date | None = None, user=Depends(require_fina
         raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
 
 
+@router.get("/reports/saft-sales")
+async def sales_saft(
+    date_from: date,
+    date_to: date,
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+):
+    """Download Finreg's authoritative sales SAF-T; Cellen never generates it."""
+    if date_to < date_from:
+        raise HTTPException(status_code=422, detail="date_to cannot be before date_from")
+    try:
+        content = await HttpFinregAdapter().download(
+            "reports/saft-sales"
+            f"?date_from={date_from.isoformat()}&date_to={date_to.isoformat()}",
+            actor_reference=str(user.id),
+        )
+        return Response(
+            content=content,
+            media_type="application/xml",
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="SAFT_AO_Faturacao_{date_from}_{date_to}.xml"'
+            },
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"code": exc.code, "message": exc.detail},
+        )
+
+
 async def _parent_instruction(instruction_id, current_user, db):
     guardian_id = getattr(current_user, "guardian_id", None)
     school_id = getattr(current_user, "_school_id", None)

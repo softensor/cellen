@@ -1,0 +1,161 @@
+#+title: GitHub Terminal Release Runbook
+#+startup: overview
+
+* Purpose
+
+This is the canonical browser-free GitHub workflow for Finreg and Cellen.
+Both repositories use =master= as the production and pull-request base branch.
+Never create a pull request from =master= to =master=; development and release
+commits must live on a separate branch.
+
+For a cross-repository Cellen–Finreg release, merge both pull requests and then
+run =deploy/validate_cellen_finreg_release.sh= on the VPS. Its timestamped Org
+report is the production acceptance evidence; ad-hoc SQL and curl fragments do
+not replace that aggregate gate.
+
+* One-time GitHub CLI setup on the Intel Mac
+
+The Mac is =x86_64-darwin=.  Nixpkgs 26.05 currently supplies a =gh= binary
+built for macOS 14, which fails on the installed older macOS with
+=_SecTrustCopyCertificateChain=.  Use the compatible pinned package:
+
+#+begin_src sh
+nix profile remove gh 2>/dev/null || true
+nix profile add 'github:NixOS/nixpkgs/nixpkgs-24.11-darwin#gh'
+rehash
+gh --version
+#+end_src
+
+Authenticate through the device flow.  Never paste a PAT into shell history:
+
+#+begin_src sh
+gh auth login
+gh auth status
+#+end_src
+
+The authenticated account is expected to have =repo= and =workflow= scopes.
+Credentials are retained by the macOS keyring.
+
+* Canonical branches
+
+#+begin_src sh
+gh repo view softensor/finreg --json nameWithOwner,defaultBranchRef
+gh repo view softensor/cellen --json nameWithOwner,defaultBranchRef
+#+end_src
+
+Both must report =master=.  Finreg's old =main= contains only an unrelated
+initial commit and is not a release base.  Do not merge =main= into =master=.
+
+* Start a change safely
+
+Choose the repository, update =master=, and create a purpose-named branch:
+
+#+begin_src sh
+cd /Users/jorgehel/projects/finreg
+git switch master
+git pull --ff-only origin master
+git switch -c fix/short-description
+#+end_src
+
+For Cellen, use =/Users/jorgehel/projects/cellen= and the same sequence.
+Before editing, inspect existing local material:
+
+#+begin_src sh
+git status --short
+#+end_src
+
+Untracked bundles, media, manuals, Playwright evidence, or other user files are
+not part of a change unless explicitly selected.  Never use broad commands such
+as =git add .=, =git clean=, or destructive resets.  Add only reviewed paths:
+
+#+begin_src sh
+git diff --check
+git add path/to/file1 path/to/file2
+git diff --cached --check
+git commit -m "type: concise description"
+#+end_src
+
+* Create, validate, and merge a pull request
+
+These commands are run from the feature branch, never from =master=:
+
+#+begin_src sh
+BRANCH=$(git branch --show-current)
+test "$BRANCH" != master
+
+git push -u origin "$BRANCH"
+
+gh pr create \
+  --base master \
+  --head "$BRANCH" \
+  --fill
+
+gh pr checks "$BRANCH" --watch
+
+gh pr merge "$BRANCH" \
+  --merge \
+  --delete-branch
+#+end_src
+
+The merge command must only be used after required checks succeed.  Repository
+protection remains authoritative if a command is attempted too early.
+
+* Return the local checkout to production
+
+#+begin_src sh
+git switch master
+git pull --ff-only origin master
+git branch --merged master
+git status --short
+#+end_src
+
+If =gh pr merge --delete-branch= did not remove the local feature branch, delete
+it only after =git branch --merged master= proves it is merged:
+
+#+begin_src sh
+git branch -d fix/short-description
+#+end_src
+
+* Useful terminal-only inspection
+
+#+begin_src sh
+gh pr status
+gh pr list --state open
+gh pr view --json number,title,state,headRefName,baseRefName,url,statusCheckRollup
+gh run list --limit 10
+#+end_src
+
+With the pinned older =gh=, avoid rendering untrusted workflow logs directly in
+the terminal.  Check names, conclusions, and URLs first.  Upgrade =gh= when the
+Mac operating system permits a current compatible build.
+
+* VPS deployment boundary
+
+GitHub merge and VPS deployment are separate operations.  Deploy only merged
+=master= commits:
+
+#+begin_src sh
+cd /var/www/finreg
+git fetch origin
+git switch master
+git pull --ff-only origin master
+
+cd /var/www/cellen
+git fetch origin
+git switch master
+git pull --ff-only origin master
+#+end_src
+
+Run the release-specific, version-controlled deployment/acceptance script after
+the pull.  Never deploy an unmerged integration branch as the normal production
+procedure.
+
+* Common errors
+
+| Message | Meaning | Resolution |
+|---------+---------+------------|
+| =must be on a branch named differently than master= | A PR was attempted from the base branch | Create or switch to a feature branch |
+| =no pull requests found for branch master= | Checks/merge were requested without a PR | Create the PR from a feature branch first |
+| =Warning: N uncommitted changes= | Tracked or untracked local files exist | Inspect =git status --short=; preserve unrelated files |
+| branch protection rejected deployment | A PR tried to deploy GitHub Pages | Build in PR; deploy only after an allowed branch merge |
+| private repository checkout failed | Workflow lacks Finreg access | Use the configured =FINREG_READ_TOKEN= secret |
