@@ -34,6 +34,10 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
     assert host.count("FinregModuleExtension(") >= 7
+    assert host.count("requiredCapabilities:") >= 7
+    assert "configuredCapabilities: capabilities.configuredCapabilities" in host
+    assert "blockedCapabilities: capabilities.blockedCapabilities" in host
+    assert "onRefreshCapabilities: _refresh" in host
     assert "final canPay = invoice.status != 'paid'" in parent
     assert "/finreg/parent/receipts" in parent
     assert "/finreg/parent/statement" in parent

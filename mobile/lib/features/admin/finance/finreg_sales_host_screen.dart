@@ -15,11 +15,32 @@ import 'payment_references_screen.dart';
 import 'reminders_screen.dart';
 import 'student_billing_plans_screen.dart';
 
-class FinregSalesHostScreen extends ConsumerWidget {
+class FinregSalesHostScreen extends ConsumerStatefulWidget {
   const FinregSalesHostScreen({super.key});
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => FutureBuilder<dynamic>(
-        future: ref.read(apiClientProvider).get('/finreg/connection'),
+  ConsumerState<FinregSalesHostScreen> createState() =>
+      _FinregSalesHostScreenState();
+}
+
+class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
+  late Future<dynamic> _connection;
+
+  @override
+  void initState() {
+    super.initState();
+    _connection = ref.read(apiClientProvider).get('/finreg/connection');
+  }
+
+  void _refresh() {
+    setState(() {
+      _connection = ref.read(apiClientProvider).get('/finreg/connection');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<dynamic>(
+        future: _connection,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
@@ -68,42 +89,52 @@ class FinregSalesHostScreen extends ConsumerWidget {
               return FinregSchoolBillingModule(
                   repository: adapter,
                   host: adapter,
+                  configuredCapabilities: capabilities.configuredCapabilities,
                   effectiveCapabilities: capabilities.effectiveCapabilities,
+                  blockedCapabilities: capabilities.blockedCapabilities,
+                  onRefreshCapabilities: _refresh,
                   extensions: [
                     FinregModuleExtension(
                         id: 'student-plans',
                         label: 'Planos escolares',
                         icon: Icons.event_repeat_outlined,
+                        requiredCapabilities: {'recurring_billing'},
                         builder: (_) => const StudentBillingPlansScreen()),
                     FinregModuleExtension(
                         id: 'school-services',
                         label: 'Serviços',
                         icon: Icons.school_outlined,
+                        requiredCapabilities: {'catalog'},
                         builder: (_) => const BillingItemsScreen()),
                     FinregModuleExtension(
                         id: 'parent-payments',
                         label: 'Comprovativos',
                         icon: Icons.fact_check_outlined,
+                        requiredCapabilities: {'payments'},
                         builder: (_) => const ParentPaymentReviewScreen()),
                     FinregModuleExtension(
                         id: 'payment-arrangements',
                         label: 'Acordos',
                         icon: Icons.calendar_month_outlined,
+                        requiredCapabilities: {'receivables'},
                         builder: (_) => const PaymentPlansScreen()),
                     FinregModuleExtension(
                         id: 'payment-references',
                         label: 'Referências',
                         icon: Icons.qr_code_outlined,
+                        requiredCapabilities: {'payments'},
                         builder: (_) => const PaymentReferencesScreen()),
                     FinregModuleExtension(
                         id: 'guardian-credits',
                         label: 'Créditos',
                         icon: Icons.savings_outlined,
+                        requiredCapabilities: {'receivables'},
                         builder: (_) => const CreditBalancesScreen()),
                     FinregModuleExtension(
                         id: 'reminders',
                         label: 'Lembretes',
                         icon: Icons.notifications_outlined,
+                        requiredCapabilities: {'receivables'},
                         builder: (_) => const RemindersScreen()),
                   ],
                   onOfficialDocument: (name, bytes) =>
@@ -132,8 +163,13 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
             Map<String, String>.from(value['terminology'] as Map? ?? {}),
         enabledModules:
             Set<String>.from(value['enabled_modules'] as List? ?? []),
+        configuredCapabilities:
+            Set<String>.from(value['configured_capabilities'] as List? ?? []),
         effectiveCapabilities:
             Set<String>.from(value['effective_capabilities'] as List? ?? []),
+        blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
+            .map((key, value) => MapEntry(
+                key.toString(), Set<String>.from(value as List? ?? const []))),
         manifestFingerprint: value['manifest_fingerprint']?.toString(),
         countryPack: value['country_pack']?.toString(),
         agtChannel: value['agt_channel']?.toString() ?? 'disabled',

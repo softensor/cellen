@@ -7,7 +7,9 @@ from app.services.finreg import FinregError
 def valid_payload():
     return {
         "vertical": "school",
+        "configured_capabilities": MANIFEST["required_capabilities"],
         "effective_capabilities": MANIFEST["required_capabilities"],
+        "blocked_capabilities": {},
         "manifest_fingerprint": "a" * 64,
     }
 
@@ -24,6 +26,14 @@ def test_school_adapter_rejects_retail_profile():
 
 def test_school_adapter_rejects_missing_financial_capability():
     payload = valid_payload()
+    payload["configured_capabilities"] = ["billing"]
     payload["effective_capabilities"] = ["billing"]
-    with pytest.raises(FinregError, match="missing"):
+    with pytest.raises(FinregError, match="profile is missing"):
+        validate_school_capabilities(payload)
+
+
+def test_school_adapter_rejects_commercially_blocked_capability():
+    payload = valid_payload()
+    payload["effective_capabilities"] = ["billing"]
+    with pytest.raises(FinregError, match="plan blocks"):
         validate_school_capabilities(payload)

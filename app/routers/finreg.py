@@ -177,7 +177,9 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
                 "terminology": {"customer": "guardian", "beneficiary": "pupil"},
                 "enabled_modules": ["billing"], "supported_entity_types": [],
                 "vertical": "school",
+                "configured_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
                 "effective_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
+                "blocked_capabilities": {},
                 "manifest_fingerprint": "0" * 64, "country_pack": "angola"}
     try:
         manifest = await HttpFinregAdapter().capabilities(str(user.id))
