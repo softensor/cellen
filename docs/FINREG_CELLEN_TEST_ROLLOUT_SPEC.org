@@ -117,6 +117,12 @@ idempotency, and timeout recovery.
 | pilot    | Authorized school uses Finreg with close monitoring        |
 | live     | Finreg is authoritative; duplicate Cellen writes disabled  |
 
+Cellen consumes both the configured and operational capability sets returned
+by Finreg. Only operational capabilities render embedded workflows or authorize
+writes; capabilities blocked by the subscription are shown as blocked and fail
+closed. The finance host provides an explicit manifest refresh so an audited
+owner composition change is visible without a new application deployment.
+
 Mode is server-side per school. Clients cannot override it.
 
 * Historical data strategy

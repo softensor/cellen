@@ -65,10 +65,16 @@ Use =actions/checkout= with all of the following:
   uses: actions/checkout@v4
   with:
     repository: softensor/finreg
-    ref: 06660c9a3e3a61b3315989e6c8d312bc6583d8a4
+    ref: ${{ env.FINREG_PACKAGES_REF }}
     token: ${{ secrets.FINREG_READ_TOKEN }}
     path: finreg-source
 #+END_SRC
+
+=FINREG_PACKAGES_REF= is one workflow-level immutable full commit SHA shared by
+Android, iOS and Web. When a Cellen change consumes a new Finreg SDK or UI
+contract, merge and validate Finreg first, update this single pin in the same
+Cellen pull request, and verify that every platform resolves that revision.
+Never leave one platform on a different or historical package revision.
 
 Expose the directory expected by the consumer's path dependencies only inside
 the isolated runner:

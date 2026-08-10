@@ -13,13 +13,22 @@ def validate_school_capabilities(payload: dict) -> dict:
             "vertical_mismatch",
             f"Cellen requires Finreg profile {MANIFEST['vertical']}",
         )
-    actual = set(payload.get("effective_capabilities") or [])
     required = set(MANIFEST["required_capabilities"])
-    missing = required - actual
-    if missing:
+    configured = set(payload.get("configured_capabilities") or [])
+    missing_configuration = required - configured
+    if missing_configuration:
         raise FinregError(
             "capability_mismatch",
-            f"Finreg school profile is missing: {', '.join(sorted(missing))}",
+            "Finreg school profile is missing: "
+            f"{', '.join(sorted(missing_configuration))}",
+        )
+    operational = set(payload.get("effective_capabilities") or [])
+    commercially_blocked = required - operational
+    if commercially_blocked:
+        raise FinregError(
+            "capability_entitlement_blocked",
+            "Finreg plan blocks required school capabilities: "
+            f"{', '.join(sorted(commercially_blocked))}",
         )
     fingerprint = payload.get("manifest_fingerprint")
     if not isinstance(fingerprint, str) or len(fingerprint) != 64:
