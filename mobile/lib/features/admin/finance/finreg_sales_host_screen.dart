@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
 import 'billing_items_screen.dart';
+import 'finreg_operational_modules_screen.dart';
 import 'credit_balances_screen.dart';
 import 'parent_payment_review_screen.dart';
 import 'payment_plans_screen.dart';
@@ -92,51 +93,28 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   configuredCapabilities: capabilities.configuredCapabilities,
                   effectiveCapabilities: capabilities.effectiveCapabilities,
                   blockedCapabilities: capabilities.blockedCapabilities,
+                  hostSurfaces: capabilities.hostSurfaces,
                   onRefreshCapabilities: _refresh,
-                  extensions: [
-                    FinregModuleExtension(
-                        id: 'student-plans',
-                        label: 'Planos escolares',
-                        icon: Icons.event_repeat_outlined,
-                        requiredCapabilities: {'recurring_billing'},
-                        builder: (_) => const StudentBillingPlansScreen()),
-                    FinregModuleExtension(
-                        id: 'school-services',
-                        label: 'Serviços',
-                        icon: Icons.school_outlined,
-                        requiredCapabilities: {'catalog'},
-                        builder: (_) => const BillingItemsScreen()),
-                    FinregModuleExtension(
-                        id: 'parent-payments',
-                        label: 'Comprovativos',
-                        icon: Icons.fact_check_outlined,
-                        requiredCapabilities: {'payments'},
-                        builder: (_) => const ParentPaymentReviewScreen()),
-                    FinregModuleExtension(
-                        id: 'payment-arrangements',
-                        label: 'Acordos',
-                        icon: Icons.calendar_month_outlined,
-                        requiredCapabilities: {'receivables'},
-                        builder: (_) => const PaymentPlansScreen()),
-                    FinregModuleExtension(
-                        id: 'payment-references',
-                        label: 'Referências',
-                        icon: Icons.qr_code_outlined,
-                        requiredCapabilities: {'payments'},
-                        builder: (_) => const PaymentReferencesScreen()),
-                    FinregModuleExtension(
-                        id: 'guardian-credits',
-                        label: 'Créditos',
-                        icon: Icons.savings_outlined,
-                        requiredCapabilities: {'receivables'},
-                        builder: (_) => const CreditBalancesScreen()),
-                    FinregModuleExtension(
-                        id: 'reminders',
-                        label: 'Lembretes',
-                        icon: Icons.notifications_outlined,
-                        requiredCapabilities: {'receivables'},
-                        builder: (_) => const RemindersScreen()),
-                  ],
+                  surfaceBuilders: {
+                    'school_student_plans': (_) =>
+                        const StudentBillingPlansScreen(),
+                    'school_services': (_) => const BillingItemsScreen(),
+                    'school_payment_proofs': (_) =>
+                        const ParentPaymentReviewScreen(),
+                    'school_payment_arrangements': (_) =>
+                        const PaymentPlansScreen(),
+                    'school_payment_references': (_) =>
+                        const PaymentReferencesScreen(),
+                    'school_guardian_credits': (_) =>
+                        const CreditBalancesScreen(),
+                    'school_reminders': (_) => const RemindersScreen(),
+                    'school_accounting_overview': (_) =>
+                        FinregAccountingOverviewScreen(
+                            api: ref.read(apiClientProvider)),
+                    'school_cash_sessions_overview': (_) =>
+                        FinregCashSessionsScreen(
+                            api: ref.read(apiClientProvider)),
+                  },
                   onOfficialDocument: (name, bytes) =>
                       Printing.sharePdf(bytes: bytes, filename: name));
             },
@@ -170,6 +148,21 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
         blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
             .map((key, value) => MapEntry(
                 key.toString(), Set<String>.from(value as List? ?? const []))),
+        hostSurfaces: (value['host_surfaces'] as List? ?? const [])
+            .map((raw) {
+              final surface = Map<String, dynamic>.from(raw as Map);
+              return FinregHostSurface(
+                  id: surface['id'].toString(),
+                  capabilityId: surface['capability_id'].toString(),
+                  presentation: surface['presentation'].toString(),
+                  labels: Map<String, String>.from(surface['labels'] as Map),
+                  icon: surface['icon'].toString(),
+                  order: surface['order'] as int,
+                  operational: surface['operational'] as bool,
+                  blockedReasons: List<String>.from(
+                      surface['blocked_reasons'] as List? ?? const []));
+            })
+            .toList(growable: false),
         manifestFingerprint: value['manifest_fingerprint']?.toString(),
         countryPack: value['country_pack']?.toString(),
         agtChannel: value['agt_channel']?.toString() ?? 'disabled',

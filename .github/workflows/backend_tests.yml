@@ -9,6 +9,7 @@ on:
       - 'alembic/**'
       - 'requirements*.txt'
       - 'pytest.ini'
+      - '.github/finreg-packages-ref'
   pull_request:
     branches: [main, master]
     paths:
@@ -17,6 +18,7 @@ on:
       - 'alembic/**'
       - 'requirements*.txt'
       - 'pytest.ini'
+      - '.github/finreg-packages-ref'
   workflow_dispatch:
 
 jobs:
@@ -48,6 +50,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read pinned Finreg revision
+        id: finreg-ref
+        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned Finreg contract source
+        uses: actions/checkout@v4
+        with:
+          repository: softensor/finreg
+          ref: ${{ steps.finreg-ref.outputs.ref }}
+          token: ${{ secrets.FINREG_READ_TOKEN }}
+          path: finreg-source
+
+      - name: Expose Finreg sibling contract source
+        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
 
       - uses: actions/setup-python@v5
         with:
