@@ -5,10 +5,12 @@ on:
     branches: [main, master, finance-improve]
     paths:
       - 'mobile/**'
+      - '.github/finreg-packages-ref'
   pull_request:
     branches: [main, master]
     paths:
       - 'mobile/**'
+      - '.github/finreg-packages-ref'
   workflow_dispatch:
 
 # Required for GitHub Pages deployment
@@ -16,9 +18,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-
-env:
-  FINREG_PACKAGES_REF: abeb031dbb69a37b532856da6d2cae1237861872
 
 # Only one Pages deployment at a time
 concurrency:
@@ -36,11 +35,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned Finreg revision
+        id: finreg-ref
+        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
+
       - name: Check out pinned Finreg packages
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: ${{ env.FINREG_PACKAGES_REF }}
+          ref: ${{ steps.finreg-ref.outputs.ref }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -91,11 +94,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned Finreg revision
+        id: finreg-ref
+        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
+
       - name: Check out pinned Finreg packages
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: ${{ env.FINREG_PACKAGES_REF }}
+          ref: ${{ steps.finreg-ref.outputs.ref }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -135,11 +142,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned Finreg revision
+        id: finreg-ref
+        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
+
       - name: Check out pinned Finreg packages
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: ${{ env.FINREG_PACKAGES_REF }}
+          ref: ${{ steps.finreg-ref.outputs.ref }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 

@@ -1,0 +1,46 @@
+#+TITLE: Finreg Operational Modules in Cellen — UI Acceptance
+#+DATE: 2026-08-10
+
+* Evidence that exposed the gap
+
+- =cellen-finance-before-operational-surfaces.png= shows the school finance
+  host receiving the operational capability identifiers but exposing no
+  accounting or cash-session workspace.
+- =finreg-owner-school-composition-reference.png= shows that the platform owner
+  deliberately selected Accounting and Cash Sessions for Rainha Njinga.
+
+The API composition was correct.  The defect was in the host presentation:
+capabilities were used only to filter pre-existing school tabs.  Selected
+Finreg capabilities without a Cellen tab were therefore operational on the
+server but invisible to the school operator.
+
+The correction is global rather than a special case for the two screenshots.
+Finreg manifests declare school host surfaces; the capability response returns
+the resolved surface catalog; Cellen constructs navigation from that catalog
+and a stable builder registry.  CI compares the complete declared workspace
+set with the registry.  Accounting and cash sessions are simply two registered
+surface implementations.
+
+* Required behavior
+
+1. Cellen renders manifest-provided human business labels, never raw manifest
+   identifiers or a hard-coded capability menu.
+2. =accounting= exposes a tenant-scoped, read-only accounting overview with
+   account count, journal totals, balance state and recent entries.
+3. =cash_sessions= exposes tenant-scoped session history and pending variance
+   review state.
+4. Removing or commercially blocking either capability removes its Cellen tab
+   and the Finreg integration endpoint rejects access.
+5. Cellen remains the school workflow host; Finreg remains the accounting and
+   fiscal authority.  Cellen does not duplicate journal or cash-session data.
+6. Any future =workspace= surface added to the school manifest must fail Cellen
+   CI until its builder is registered.  =service= and standalone-only behavior
+   is presented explicitly and never masquerades as a missing tab.
+
+* Follow-up acceptance
+
+- Rebuild and deploy the pinned Finreg shared package and Cellen Web release.
+- Confirm the Accounting and Cash tabs appear for Rainha Njinga.
+- Confirm both tabs load Finreg data and their refresh actions work.
+- Disable each optional capability in the owner console and confirm the
+  corresponding tab disappears after refresh.

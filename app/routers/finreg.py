@@ -557,6 +557,38 @@ async def sales_saft(
         )
 
 
+@router.get("/accounting/overview")
+async def accounting_overview(
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+):
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", "accounting/overview", None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"code": exc.code, "message": exc.detail},
+        )
+
+
+@router.get("/cash-sessions")
+async def cash_sessions(
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+):
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", "cash-sessions", None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"code": exc.code, "message": exc.detail},
+        )
+
+
 async def _parent_instruction(instruction_id, current_user, db):
     guardian_id = getattr(current_user, "guardian_id", None)
     school_id = getattr(current_user, "_school_id", None)

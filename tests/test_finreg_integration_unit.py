@@ -1,4 +1,6 @@
 import uuid
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -33,23 +35,66 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     root = Path(__file__).resolve().parents[1]
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
-    assert host.count("FinregModuleExtension(") >= 7
-    assert host.count("requiredCapabilities:") >= 7
+    assert "hostSurfaces: capabilities.hostSurfaces" in host
+    assert "surfaceBuilders:" in host
     assert "configuredCapabilities: capabilities.configuredCapabilities" in host
     assert "blockedCapabilities: capabilities.blockedCapabilities" in host
     assert "onRefreshCapabilities: _refresh" in host
+    assert "FinregAccountingOverviewScreen" in host
+    assert "FinregCashSessionsScreen" in host
     assert "final canPay = invoice.status != 'paid'" in parent
     assert "/finreg/parent/receipts" in parent
     assert "/finreg/parent/statement" in parent
 
 
-def test_flutter_jobs_share_the_reviewed_finreg_package_pin():
-    workflow = Path(".github/workflows/flutter_build.yml").read_text()
-    expected = "abeb031dbb69a37b532856da6d2cae1237861872"
-    assert f"FINREG_PACKAGES_REF: {expected}" in workflow
-    assert workflow.count("ref: ${{ env.FINREG_PACKAGES_REF }}") == 3
-    assert "50dd3c06ef039e2ec5af8b0eace97df69ca9bdb0" not in workflow
-    assert "continue-on-error: true" not in workflow
+def test_every_declared_school_workspace_has_a_registered_builder():
+    manifests = json.loads(Path(
+        "../finreg/backend/app/module_manifests/capabilities.json"
+    ).read_text())
+    declared = {
+        surface["id"]
+        for capability in manifests
+        for surface in capability.get("host_surfaces", [])
+        if surface["host"] == "school" and surface["presentation"] == "workspace"
+    }
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    registered = set(re.findall(r"'((?:school_)[a-z0-9_]+)'\s*:", host))
+    registered.update({"school_sales", "school_compliance"})
+    assert declared == registered
+
+
+def test_school_profile_requirements_have_an_embedded_contract():
+    profiles = json.loads(Path(
+        "../finreg/backend/app/module_manifests/profiles.json"
+    ).read_text())
+    capabilities = json.loads(Path(
+        "../finreg/backend/app/module_manifests/capabilities.json"
+    ).read_text())
+    school = next(item for item in profiles if item["id"] == "school")
+    by_id = {item["id"]: item for item in capabilities}
+    missing = {
+        capability_id
+        for capability_id in school["requires"]
+        if not any(
+            surface["host"] == "school"
+            for surface in by_id[capability_id].get("host_surfaces", [])
+        )
+    }
+    assert missing == set()
+
+
+def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
+    expected = "413daa229e308dc05cee41d1778bc71a3304c6c1"
+    assert Path(".github/finreg-packages-ref").read_text().strip() == expected
+
+    flutter = Path(".github/workflows/flutter_build.yml").read_text()
+    backend = Path(".github/workflows/backend_tests.yml").read_text()
+    reference = "ref: ${{ steps.finreg-ref.outputs.ref }}"
+    assert flutter.count(reference) == 3
+    assert backend.count(reference) == 1
+    assert "continue-on-error: true" not in flutter
 
 
 def test_billing_key_is_stable_and_period_scoped():
@@ -82,6 +127,21 @@ def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
     assert "/finreg/reports/saft-sales" in host
 
 
+def test_operational_finreg_modules_are_proxied_and_rendered():
+    router = Path("app/routers/finreg.py").read_text()
+    screen = Path(
+        "mobile/lib/features/admin/finance/finreg_operational_modules_screen.dart"
+    ).read_text()
+    assert '@router.get("/accounting/overview")' in router
+    assert '"GET", "accounting/overview"' in router
+    assert '@router.get("/cash-sessions")' in router
+    assert '"GET", "cash-sessions"' in router
+    assert "/finreg/accounting/overview" in screen
+    assert "/finreg/cash-sessions" in screen
+    assert "Contabilidade Finreg" in screen
+    assert "Sessões de caixa Finreg" in screen
+
+
 def test_aggregate_production_acceptance_runner_is_release_ready():
     runner = Path("deploy/validate_cellen_finreg_release.sh")
     source = runner.read_text()
@@ -95,6 +155,7 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert "composition_profile" in source
     assert 'module_registry.resolve("school", [], "angola")' not in source
     deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
+    assert "refresh_company_manifest_fingerprints" in deploy
     assert "validate_cellen_finreg_release.sh" in deploy
     assert '--mode "$ACCEPTANCE_MODE"' in deploy
     assert '--agt-channel "$ACCEPTANCE_CHANNEL"' in deploy
