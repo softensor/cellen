@@ -122,6 +122,38 @@ succeed.
 12. Promote tenant mode only after its documented operational, accounting,
     security, and legal gates pass.
 
+** Verify manifest-driven authoritative workspaces
+
+Cellen must not contain a hardcoded catalogue of Finreg ERP modules. The
+=/finreg/capabilities= response supplies every configured workspace and its
+current operational state. Cellen renders that list and retains native screens
+only for school-specific context. Selecting a workspace requests a 60-second,
+single-use launch from Cellen's backend and opens the complete Finreg route with
+the mapped tenant role.
+
+The launch URL carries the one-time code after =#= rather than in the query
+string. This keeps it out of the initial nginx request and ordinary access
+logs. Cellen never receives or stores a Finreg user password, and the browser
+never receives the integration client secret.
+
+For each release that changes composition or UI manifests, verify all of the
+following:
+
+- enabling a capability in the Finreg owner Composition panel makes its
+  workspace appear in Cellen after refresh;
+- disabling it makes the workspace unavailable and a direct launch request is
+  rejected;
+- at least one capability other than Accounting or POS opens its complete
+  Finreg page;
+- the Cellen browser never receives the integration client secret;
+- reusing or waiting more than 60 seconds before exchanging a launch code
+  fails;
+- the Finreg session has the mapped user's permissions, not platform-owner
+  permissions.
+
+Production Cellen configuration must set =FINREG_WEB_URL= to the public Finreg
+web origin. =FINREG_BASE_URL= remains the API base ending in =/api/v1=.
+
 * Evidence checklist
 
 Retain these values in the release record:

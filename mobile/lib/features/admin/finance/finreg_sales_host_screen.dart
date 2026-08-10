@@ -6,9 +6,9 @@ import 'package:finreg_sales_ui/finreg_sales_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'billing_items_screen.dart';
-import 'finreg_operational_modules_screen.dart';
 import 'credit_balances_screen.dart';
 import 'parent_payment_review_screen.dart';
 import 'payment_plans_screen.dart';
@@ -37,6 +37,25 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
     setState(() {
       _connection = ref.read(apiClientProvider).get('/finreg/connection');
     });
+  }
+
+  Future<void> _openWorkspace(FinregWorkspace workspace) async {
+    try {
+      final response = Map<String, dynamic>.from(
+        await ref
+            .read(apiClientProvider)
+            .post('/finreg/workspace-launch/${workspace.capabilityId}') as Map,
+      );
+      final uri = Uri.parse(response['url'].toString());
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw StateError('Não foi possível abrir o módulo Finreg.');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao abrir ${workspace.title}: $error')),
+      );
+    }
   }
 
   @override
@@ -94,6 +113,8 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   effectiveCapabilities: capabilities.effectiveCapabilities,
                   blockedCapabilities: capabilities.blockedCapabilities,
                   hostSurfaces: capabilities.hostSurfaces,
+                  workspaces: capabilities.workspaces,
+                  onOpenWorkspace: _openWorkspace,
                   onRefreshCapabilities: _refresh,
                   surfaceBuilders: {
                     'school_student_plans': (_) =>
@@ -108,12 +129,6 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                     'school_guardian_credits': (_) =>
                         const CreditBalancesScreen(),
                     'school_reminders': (_) => const RemindersScreen(),
-                    'school_accounting_overview': (_) =>
-                        FinregAccountingOverviewScreen(
-                            api: ref.read(apiClientProvider)),
-                    'school_cash_sessions_overview': (_) =>
-                        FinregCashSessionsScreen(
-                            api: ref.read(apiClientProvider)),
                   },
                   onOfficialDocument: (name, bytes) =>
                       Printing.sharePdf(bytes: bytes, filename: name));
@@ -148,21 +163,30 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
         blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
             .map((key, value) => MapEntry(
                 key.toString(), Set<String>.from(value as List? ?? const []))),
-        hostSurfaces: (value['host_surfaces'] as List? ?? const [])
-            .map((raw) {
-              final surface = Map<String, dynamic>.from(raw as Map);
-              return FinregHostSurface(
-                  id: surface['id'].toString(),
-                  capabilityId: surface['capability_id'].toString(),
-                  presentation: surface['presentation'].toString(),
-                  labels: Map<String, String>.from(surface['labels'] as Map),
-                  icon: surface['icon'].toString(),
-                  order: surface['order'] as int,
-                  operational: surface['operational'] as bool,
-                  blockedReasons: List<String>.from(
-                      surface['blocked_reasons'] as List? ?? const []));
-            })
-            .toList(growable: false),
+        hostSurfaces: (value['host_surfaces'] as List? ?? const []).map((raw) {
+          final surface = Map<String, dynamic>.from(raw as Map);
+          return FinregHostSurface(
+              id: surface['id'].toString(),
+              capabilityId: surface['capability_id'].toString(),
+              presentation: surface['presentation'].toString(),
+              labels: Map<String, String>.from(surface['labels'] as Map),
+              icon: surface['icon'].toString(),
+              order: surface['order'] as int,
+              operational: surface['operational'] as bool,
+              blockedReasons: List<String>.from(
+                  surface['blocked_reasons'] as List? ?? const []));
+        }).toList(growable: false),
+        workspaces: (value['workspaces'] as List? ?? const []).map((raw) {
+          final workspace = Map<String, dynamic>.from(raw as Map);
+          return FinregWorkspace(
+              capabilityId: workspace['capability_id'].toString(),
+              title: workspace['title'].toString(),
+              description: workspace['description'].toString(),
+              route: workspace['route'].toString(),
+              operational: workspace['operational'] as bool,
+              blockedReasons: List<String>.from(
+                  workspace['blocked_reasons'] as List? ?? const []));
+        }).toList(growable: false),
         manifestFingerprint: value['manifest_fingerprint']?.toString(),
         countryPack: value['country_pack']?.toString(),
         agtChannel: value['agt_channel']?.toString() ?? 'disabled',

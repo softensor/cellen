@@ -28,7 +28,8 @@ export PYTHONPATH="$FINREG_DIR/backend"
 "$FINREG_DIR/.venv/bin/python" -m app.cli.refresh_company_manifest_fingerprints
 "$FINREG_DIR/.venv/bin/python" -m app.cli.grant_integration_client_scopes \
   "$CLIENT_KEY" documents:read documents:write payments:write \
-  receipts:read receipts:write reports:read billing_plans:read billing_plans:write
+  receipts:read receipts:write reports:read billing_plans:read billing_plans:write \
+  workspace:launch
 
 cd "$CELLEN_DIR"
 set -a

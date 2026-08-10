@@ -1,6 +1,7 @@
 import hashlib
 import json
 import uuid
+from urllib.parse import urlencode
 from datetime import date
 from decimal import Decimal
 
@@ -190,6 +191,54 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             })
         return validate_school_capabilities(manifest)
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.post("/workspace-launch/{capability_id}")
+async def workspace_launch(
+    capability_id: str,
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a short-lived handoff to the complete authoritative Finreg UI."""
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
+        raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
+    try:
+        roles = list(
+            getattr(user, "_roles_list", None)
+            or getattr(user, "roles", None)
+            or []
+        )
+        display_name = (
+            getattr(user, "username", None)
+            or getattr(user, "email", None)
+            or str(user.id)
+        )
+        launch = await HttpFinregAdapter().request(
+            "POST",
+            "workspace-launches",
+            {
+                "capability_id": capability_id,
+                "external_user_id": str(user.id),
+                "display_name": display_name,
+                "roles": roles,
+            },
+            actor_reference=str(user.id),
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 403,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    web_url = settings.FINREG_WEB_URL or settings.FINREG_BASE_URL.removesuffix("/api/v1")
+    return {
+        "url": f"{web_url.rstrip('/')}/delegated#{urlencode({'code': launch['code']})}",
+        "target_path": launch["target_path"],
+        "expires_in": launch["expires_in"],
+    }
 
 
 @router.get("/instructions")
