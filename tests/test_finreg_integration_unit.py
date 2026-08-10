@@ -43,6 +43,15 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     assert "/finreg/parent/statement" in parent
 
 
+def test_flutter_jobs_share_the_reviewed_finreg_package_pin():
+    workflow = Path(".github/workflows/flutter_build.yml").read_text()
+    expected = "abeb031dbb69a37b532856da6d2cae1237861872"
+    assert f"FINREG_PACKAGES_REF: {expected}" in workflow
+    assert workflow.count("ref: ${{ env.FINREG_PACKAGES_REF }}") == 3
+    assert "50dd3c06ef039e2ec5af8b0eace97df69ca9bdb0" not in workflow
+    assert "continue-on-error: true" not in workflow
+
+
 def test_billing_key_is_stable_and_period_scoped():
     school, contract = uuid.uuid4(), uuid.uuid4()
     first = billing_idempotency_key(school, contract, "2026-09")

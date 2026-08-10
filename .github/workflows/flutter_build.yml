@@ -17,6 +17,9 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  FINREG_PACKAGES_REF: abeb031dbb69a37b532856da6d2cae1237861872
+
 # Only one Pages deployment at a time
 concurrency:
   group: pages
@@ -37,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 50dd3c06ef039e2ec5af8b0eace97df69ca9bdb0
+          ref: ${{ env.FINREG_PACKAGES_REF }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -92,7 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 50dd3c06ef039e2ec5af8b0eace97df69ca9bdb0
+          ref: ${{ env.FINREG_PACKAGES_REF }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
@@ -116,7 +119,6 @@ jobs:
       - name: Build iOS (no codesign)
         working-directory: mobile
         run: flutter build ios --release --no-codesign
-        continue-on-error: true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -137,7 +139,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: softensor/finreg
-          ref: 50dd3c06ef039e2ec5af8b0eace97df69ca9bdb0
+          ref: ${{ env.FINREG_PACKAGES_REF }}
           token: ${{ secrets.FINREG_READ_TOKEN }}
           path: finreg-source
 
