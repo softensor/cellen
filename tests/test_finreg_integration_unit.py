@@ -87,7 +87,7 @@ def test_workspace_launch_is_user_bound_and_never_exposes_client_credentials():
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "4b7c74be7f935ee1f944ec616efbd676807b5c3b"
+    expected = "9ec3c8e01d22e649314ac5a021ee6d649207fab5"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
