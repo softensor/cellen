@@ -129,7 +129,7 @@ if [[ $EXPECTED_MODE == shadow ]]; then
 else
   [[ $client_non_fiscal == false ]] && pass 'Pilot/live client permits fiscal operations' || fail 'Pilot/live client permits fiscal operations' "$client_non_fiscal"
 fi
-for scope in documents:read documents:write payments:write receipts:read receipts:write reports:read billing_plans:read billing_plans:write; do
+for scope in documents:read documents:write payments:write receipts:read receipts:write reports:read billing_plans:read billing_plans:write workspace:launch; do
   [[ $client == *\"$scope\"* ]] && pass "Scope $scope" || fail "Scope $scope"
 done
 permissions=$(stat -c '%U|%G|%a' /etc/cellen-finreg-client-secret 2>/dev/null || true)

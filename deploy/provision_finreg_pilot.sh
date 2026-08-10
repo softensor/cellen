@@ -82,6 +82,7 @@ from pathlib import Path
 path = Path(os.environ["CELLEN_ENV"])
 updates = {
     "FINREG_BASE_URL": "https://finreg.167.235.158.77.nip.io/api/v1",
+    "FINREG_WEB_URL": "https://finreg.167.235.158.77.nip.io",
     "FINREG_CLIENT_ID": os.environ["CLIENT_KEY"],
     "FINREG_CLIENT_SECRET_FILE": os.environ["SECRET_FILE"],
     "FINREG_TIMEOUT_SECONDS": "15",

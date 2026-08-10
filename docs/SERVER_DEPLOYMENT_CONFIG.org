@@ -74,6 +74,7 @@ Finreg was absent at the initial audit and was installed successfully on
 | TLS | Let's Encrypt, automatic renewal; initial expiry 2026-11-04 |
 
 Required Cellen environment variable names are =FINREG_BASE_URL=,
+=FINREG_WEB_URL=,
 =FINREG_CLIENT_ID=, =FINREG_CLIENT_SECRET_FILE=,
 =FINREG_TIMEOUT_SECONDS=, =FINREG_VERIFY_TLS=, optional
 =FINREG_TLS_CA_FILE=, and =FINREG_INTEGRATION_ENABLED=.  Secret values must be

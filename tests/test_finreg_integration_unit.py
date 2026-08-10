@@ -1,6 +1,5 @@
 import uuid
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -36,36 +35,30 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
     assert "hostSurfaces: capabilities.hostSurfaces" in host
+    assert "workspaces: capabilities.workspaces" in host
+    assert "onOpenWorkspace: _openWorkspace" in host
     assert "surfaceBuilders:" in host
     assert "configuredCapabilities: capabilities.configuredCapabilities" in host
     assert "blockedCapabilities: capabilities.blockedCapabilities" in host
     assert "onRefreshCapabilities: _refresh" in host
-    assert "FinregAccountingOverviewScreen" in host
-    assert "FinregCashSessionsScreen" in host
+    assert "FinregAccountingOverviewScreen" not in host
+    assert "FinregCashSessionsScreen" not in host
     assert "final canPay = invoice.status != 'paid'" in parent
     assert "/finreg/parent/receipts" in parent
     assert "/finreg/parent/statement" in parent
 
 
-def test_every_declared_school_workspace_has_a_registered_builder():
-    manifests = json.loads(Path(
-        "../finreg/backend/app/module_manifests/capabilities.json"
-    ).read_text())
-    declared = {
-        surface["id"]
-        for capability in manifests
-        for surface in capability.get("host_surfaces", [])
-        if surface["host"] == "school" and surface["presentation"] == "workspace"
-    }
+def test_host_parses_every_authoritative_workspace_without_capability_ids():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    registered = set(re.findall(r"'((?:school_)[a-z0-9_]+)'\s*:", host))
-    registered.update({"school_sales", "school_compliance"})
-    assert declared == registered
+    assert "value['workspaces']" in host
+    assert "workspace['capability_id']" in host
+    assert "workspace['route']" in host
+    assert "/finreg/workspace-launch/${workspace.capabilityId}" in host
 
 
-def test_school_profile_requirements_have_an_embedded_contract():
+def test_school_profile_requirements_have_an_authoritative_workspace():
     profiles = json.loads(Path(
         "../finreg/backend/app/module_manifests/profiles.json"
     ).read_text())
@@ -77,16 +70,24 @@ def test_school_profile_requirements_have_an_embedded_contract():
     missing = {
         capability_id
         for capability_id in school["requires"]
-        if not any(
-            surface["host"] == "school"
-            for surface in by_id[capability_id].get("host_surfaces", [])
-        )
+        if not by_id[capability_id].get("ui")
     }
     assert missing == set()
 
 
+def test_workspace_launch_is_user_bound_and_never_exposes_client_credentials():
+    router = Path("app/routers/finreg.py").read_text()
+    assert '@router.post("/workspace-launch/{capability_id}")' in router
+    assert 'getattr(user, "_roles_list", None)' in router
+    assert "/delegated#{urlencode" in router
+    assert '"external_user_id": str(user.id)' in router
+    assert '"roles": roles' in router
+    assert "FINREG_CLIENT_SECRET" not in router
+    assert "urlencode({'code': launch['code']})" in router
+
+
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "413daa229e308dc05cee41d1778bc71a3304c6c1"
+    expected = "4b7c74be7f935ee1f944ec616efbd676807b5c3b"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
@@ -127,19 +128,20 @@ def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
     assert "/finreg/reports/saft-sales" in host
 
 
-def test_operational_finreg_modules_are_proxied_and_rendered():
+def test_legacy_reduced_operational_finreg_screen_is_not_shipped():
     router = Path("app/routers/finreg.py").read_text()
-    screen = Path(
-        "mobile/lib/features/admin/finance/finreg_operational_modules_screen.dart"
+    screen = Path("mobile/lib/features/admin/finance/finreg_operational_modules_screen.dart")
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
+    assert not screen.exists()
+    assert "FinregOperationalModulesScreen" not in host
+    # These proxy endpoints remain valid API integrations, but are no longer
+    # presented as substitutes for the complete authoritative workspaces.
     assert '@router.get("/accounting/overview")' in router
     assert '"GET", "accounting/overview"' in router
     assert '@router.get("/cash-sessions")' in router
     assert '"GET", "cash-sessions"' in router
-    assert "/finreg/accounting/overview" in screen
-    assert "/finreg/cash-sessions" in screen
-    assert "Contabilidade Finreg" in screen
-    assert "Sessões de caixa Finreg" in screen
 
 
 def test_aggregate_production_acceptance_runner_is_release_ready():
