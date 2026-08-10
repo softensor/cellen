@@ -234,6 +234,12 @@ fingerprints, scopes, secret permissions, mode/channel, mappings, outbox,
 recurring generation, idempotency, fiscal state, accounting state, offline
 transport isolation, authoritative SAF-T and new service errors.
 
+The fingerprint check must resolve the deployed tenant's authoritative
+=vertical_profile=, =enabled_capabilities= and country pack.  A hard-coded
+school baseline becomes invalid as soon as the owner changes that tenant's
+composition, even when both the stored manifest and runtime behavior are
+correct.
+
 The accepted Rainha Njinga pilot/offline baseline was:
 
 #+BEGIN_EXAMPLE
