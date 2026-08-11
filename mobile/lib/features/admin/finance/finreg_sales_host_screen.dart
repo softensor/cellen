@@ -28,7 +28,6 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   late Future<dynamic> _connection;
   late _CellenFinregAdapter _adapter;
   late Future<FinregCapabilities> _capabilities;
-  Future<FinregEmbeddedSession>? _embeddedSession;
 
   @override
   void initState() {
@@ -42,18 +41,14 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
     setState(() {
       _connection = ref.read(apiClientProvider).get('/finreg/connection');
       _capabilities = _adapter.capabilities();
-      _embeddedSession = null;
     });
   }
 
   Future<FinregEmbeddedSession> _createEmbeddedSession(
-      List<FinregWorkspace> workspaces) async {
-    final workspace = workspaces.firstWhere((item) =>
-        item.operational &&
-        finregEmbeddedModules.containsKey(item.capabilityId));
+      String capabilityId) async {
     final payload = Map<String, dynamic>.from(await ref
         .read(apiClientProvider)
-        .post('/finreg/embedded-session/${workspace.capabilityId}') as Map);
+        .post('/finreg/embedded-session/$capabilityId') as Map);
     final tokens = Map<String, dynamic>.from(payload['tokens'] as Map);
     final user = Map<String, dynamic>.from(payload['user'] as Map);
     return FinregEmbeddedSession(
@@ -157,30 +152,14 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
               if (workspaces.isEmpty || value['mode'] == 'fake') {
                 return schoolModule;
               }
-              _embeddedSession ??= _createEmbeddedSession(workspaces);
-              return FutureBuilder<FinregEmbeddedSession>(
-                future: _embeddedSession,
-                builder: (context, sessionSnapshot) {
-                  if (sessionSnapshot.hasError) {
-                    return Center(
-                      child: Text(
-                        'Não foi possível iniciar os módulos Finreg: '
-                        '${sessionSnapshot.error}',
-                      ),
-                    );
-                  }
-                  if (!sessionSnapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return _EmbeddedFinregMenu(
-                    key: ValueKey(workspaces
-                        .map((workspace) => workspace.capabilityId)
-                        .join('|')),
-                    workspaces: workspaces,
-                    session: sessionSnapshot.data!,
-                    schoolModule: schoolModule,
-                  );
-                },
+              return _EmbeddedFinregMenu(
+                key: ValueKey(workspaces
+                    .map((workspace) => workspace.capabilityId)
+                    .join('|')),
+                workspaces: workspaces,
+                initialCapabilityId: 'billing',
+                sessionForCapability: _createEmbeddedSession,
+                capabilityOverrides: {'billing': schoolModule},
               );
             },
           );
@@ -192,13 +171,16 @@ class _EmbeddedFinregMenu extends StatefulWidget {
   const _EmbeddedFinregMenu({
     super.key,
     required this.workspaces,
-    required this.session,
-    required this.schoolModule,
+    required this.sessionForCapability,
+    required this.capabilityOverrides,
+    this.initialCapabilityId,
   });
 
   final List<FinregWorkspace> workspaces;
-  final FinregEmbeddedSession session;
-  final Widget schoolModule;
+  final Future<FinregEmbeddedSession> Function(String capabilityId)
+      sessionForCapability;
+  final Map<String, Widget> capabilityOverrides;
+  final String? initialCapabilityId;
 
   @override
   State<_EmbeddedFinregMenu> createState() => _EmbeddedFinregMenuState();
@@ -206,15 +188,33 @@ class _EmbeddedFinregMenu extends StatefulWidget {
 
 class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
     with SingleTickerProviderStateMixin {
-  late final TabController _controller = TabController(
-    length: widget.workspaces.length + 1,
-    vsync: this,
-  )..addListener(_selectTab);
-  int _selected = 0;
+  late final TabController _controller;
+  late int _selected;
+  final Map<String, Future<FinregEmbeddedSession>> _sessions = {};
+  final Set<String> _visitedCapabilityIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    final initialIndex = widget.workspaces.indexWhere(
+        (workspace) => workspace.capabilityId == widget.initialCapabilityId);
+    _selected = initialIndex < 0 ? 0 : initialIndex;
+    _visitedCapabilityIds.add(widget.workspaces[_selected].capabilityId);
+    _controller = TabController(
+      length: widget.workspaces.length,
+      initialIndex: _selected,
+      vsync: this,
+    )..addListener(_selectTab);
+  }
 
   void _selectTab() {
     if (!_controller.indexIsChanging && _selected != _controller.index) {
-      setState(() => _selected = _controller.index);
+      setState(() {
+        _selected = _controller.index;
+        _visitedCapabilityIds.add(
+          widget.workspaces[_controller.index].capabilityId,
+        );
+      });
     }
   }
 
@@ -228,8 +228,6 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
 
   @override
   Widget build(BuildContext context) {
-    final selectedWorkspace =
-        _selected == 0 ? null : widget.workspaces[_selected - 1];
     return Column(
       children: [
         Material(
@@ -239,7 +237,6 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: [
-              const Tab(icon: Icon(Icons.school_outlined), text: 'Escola'),
               for (final workspace in widget.workspaces)
                 Tab(
                   icon: Icon(
@@ -251,15 +248,61 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
           ),
         ),
         Expanded(
-          child: selectedWorkspace == null
-              ? widget.schoolModule
-              : FinregEmbeddedModuleHost(
-                  key: ValueKey(selectedWorkspace.capabilityId),
-                  capabilityId: selectedWorkspace.capabilityId,
-                  session: widget.session,
-                ),
+          child: IndexedStack(
+            index: _selected,
+            children: [
+              for (final workspace in widget.workspaces)
+                if (_visitedCapabilityIds.contains(workspace.capabilityId))
+                  widget.capabilityOverrides[workspace.capabilityId] ??
+                      _buildAuthoritativeModule(workspace)
+                else
+                  const SizedBox.shrink(),
+            ],
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAuthoritativeModule(FinregWorkspace workspace) {
+    final capabilityId = workspace.capabilityId;
+    final session = _sessions.putIfAbsent(
+      capabilityId,
+      () => widget.sessionForCapability(capabilityId),
+    );
+    return FutureBuilder<FinregEmbeddedSession>(
+      future: session,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Não foi possível abrir este módulo.'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () =>
+                      setState(() => _sessions.remove(capabilityId)),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return FinregEmbeddedModuleHost(
+          key: ObjectKey(snapshot.data),
+          capabilityId: capabilityId,
+          session: snapshot.data!,
+          onSessionExpired: () {
+            if (!mounted) return;
+            setState(() => _sessions.remove(capabilityId));
+          },
+        );
+      },
     );
   }
 }
@@ -329,16 +372,15 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
 
   @override
   Future<List<ExternalReference>> searchGuardians(String query) async {
-    final rows = await api.get('/guardians') as List;
-    return rows
-        .map((raw) {
-          final v = Map<String, dynamic>.from(raw as Map);
-          return ExternalReference(
-              id: v['id'].toString(),
-              displayName: '${v['first_name']} ${v['last_name']}');
-        })
-        .where((x) => x.displayName.toLowerCase().contains(query.toLowerCase()))
-        .toList();
+    final rows = await api.get(
+      '/finreg/guardians',
+      queryParameters: query.trim().isEmpty ? null : {'search': query.trim()},
+    ) as List;
+    return rows.map((raw) {
+      final v = Map<String, dynamic>.from(raw as Map);
+      return ExternalReference(
+          id: v['id'].toString(), displayName: v['display_name'].toString());
+    }).toList();
   }
 
   @override
@@ -353,6 +395,18 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
         })
         .where((x) => x.displayName.toLowerCase().contains(query.toLowerCase()))
         .toList();
+  }
+
+  @override
+  Future<List<ExternalReference>> pupilsForGuardian(String guardianId) async {
+    final rows = await api.get('/finreg/guardians/$guardianId/pupils') as List;
+    return rows.map((raw) {
+      final value = Map<String, dynamic>.from(raw as Map);
+      return ExternalReference(
+        id: value['id'].toString(),
+        displayName: value['display_name'].toString(),
+      );
+    }).toList(growable: false);
   }
 
   @override

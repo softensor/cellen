@@ -8,7 +8,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -25,7 +25,7 @@ from app.models.finreg_integration import (
     FinregEntityMapping,
     FinregSchoolConnection,
 )
-from app.models.person import Child, Guardian
+from app.models.person import Child, ChildGuardian, Guardian
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
 from app.integrations.finreg_school import validate_school_capabilities
@@ -95,15 +95,37 @@ class BillingPlanStateDraft(BaseModel):
     next_run_date: date | None = None
 
 
+async def _linked_guardian_child(guardian_id, child_id, school_id, db):
+    row = (await db.execute(
+        select(Guardian, Child)
+        .join(
+            ChildGuardian,
+            (ChildGuardian.guardian_id == Guardian.id)
+            & (ChildGuardian.school_id == school_id),
+        )
+        .join(
+            Child,
+            (Child.id == ChildGuardian.child_id)
+            & (Child.school_id == school_id),
+        )
+        .where(
+            Guardian.id == guardian_id,
+            Guardian.school_id == school_id,
+            Child.id == child_id,
+        )
+    )).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=422,
+            detail="The learner is not associated with the selected payer",
+        )
+    return row
+
+
 async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
-    guardian = (await db.execute(select(Guardian).where(
-        Guardian.id == body.guardian_id, Guardian.school_id == school_id
-    ))).scalar_one_or_none()
-    child = (await db.execute(select(Child).where(
-        Child.id == body.pupil_id, Child.school_id == school_id
-    ))).scalar_one_or_none()
-    if not guardian or not child:
-        raise HTTPException(status_code=404, detail="Guardian or pupil not found")
+    guardian, child = await _linked_guardian_child(
+        body.guardian_id, body.pupil_id, school_id, db
+    )
     item_ids = [line.billing_item_id for line in body.lines]
     items = (await db.execute(select(BillingItem).where(
         BillingItem.id.in_(item_ids), BillingItem.school_id == school_id,
@@ -191,6 +213,64 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             })
         return validate_school_capabilities(manifest)
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
+
+
+@router.get("/guardians")
+async def billing_guardians(
+    search: str | None = None,
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    query = select(Guardian).where(Guardian.school_id == school_id)
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.where(or_(
+            Guardian.first_name.ilike(term),
+            Guardian.middle_name.ilike(term),
+            Guardian.last_name.ilike(term),
+        ))
+    rows = (await db.execute(
+        query.order_by(Guardian.first_name, Guardian.last_name).limit(50)
+    )).scalars().all()
+    return [
+        {"id": str(guardian.id),
+         "display_name": f"{guardian.first_name} {guardian.last_name}"}
+        for guardian in rows
+    ]
+
+
+@router.get("/guardians/{guardian_id}/pupils")
+async def guardian_pupils(
+    guardian_id: uuid.UUID,
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    guardian = (await db.execute(select(Guardian.id).where(
+        Guardian.id == guardian_id,
+        Guardian.school_id == school_id,
+    ))).scalar_one_or_none()
+    if guardian is None:
+        raise HTTPException(status_code=404, detail="Payer not found")
+    rows = (await db.execute(
+        select(Child)
+        .join(
+            ChildGuardian,
+            (ChildGuardian.child_id == Child.id)
+            & (ChildGuardian.school_id == school_id),
+        )
+        .where(
+            ChildGuardian.guardian_id == guardian_id,
+            Child.school_id == school_id,
+            Child.is_active.is_(True),
+        )
+        .order_by(Child.first_name, Child.last_name)
+    )).scalars().all()
+    return [
+        {"id": str(child.id), "display_name": f"{child.first_name} {child.last_name}"}
+        for child in rows
+    ]
 
 
 @router.post("/workspace-launch/{capability_id}")
@@ -354,14 +434,9 @@ async def upsert_billing_plan(
     if body.external_id != external_id:
         raise HTTPException(status_code=422, detail="Billing plan external ID must match the URL")
     connection = await _writable_or_shadow_connection(school_id, db)
-    guardian = (await db.execute(select(Guardian).where(
-        Guardian.id == body.guardian_id, Guardian.school_id == school_id
-    ))).scalar_one_or_none()
-    child = (await db.execute(select(Child).where(
-        Child.id == body.pupil_id, Child.school_id == school_id
-    ))).scalar_one_or_none()
-    if guardian is None or child is None:
-        raise HTTPException(status_code=404, detail="Guardian or pupil not found")
+    guardian, child = await _linked_guardian_child(
+        body.guardian_id, body.pupil_id, school_id, db
+    )
     item_ids = [line.billing_item_id for line in body.lines]
     items = (await db.execute(select(BillingItem).where(
         BillingItem.id.in_(item_ids), BillingItem.school_id == school_id,
