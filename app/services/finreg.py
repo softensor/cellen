@@ -67,6 +67,35 @@ class HttpFinregAdapter:
             response = await client.get(f"{settings.FINREG_BASE_URL}/integrations/capabilities", headers=headers)
         return self._decode(response)
 
+    async def exchange_delegated(self, code: str) -> dict:
+        """Consume a one-time workspace grant without exposing host credentials."""
+        verify = settings.FINREG_TLS_CA_FILE or settings.FINREG_VERIFY_TLS
+        try:
+            async with httpx.AsyncClient(
+                timeout=settings.FINREG_TIMEOUT_SECONDS,
+                verify=verify,
+            ) as client:
+                token_response = await client.post(
+                    f"{settings.FINREG_BASE_URL}/auth/delegated/exchange",
+                    json={"code": code},
+                )
+                tokens = self._decode(token_response)
+                user_response = await client.get(
+                    f"{settings.FINREG_BASE_URL}/auth/me",
+                    headers={
+                        "Authorization": f"Bearer {tokens['access_token']}"
+                    },
+                )
+        except httpx.TimeoutException as exc:
+            raise FinregError(
+                "timeout", "Finreg session exchange timed out", retryable=True
+            ) from exc
+        except httpx.TransportError as exc:
+            raise FinregError(
+                "unavailable", "Finreg is unavailable", retryable=True
+            ) from exc
+        return {"tokens": tokens, "user": self._decode(user_response)}
+
     async def execute(self, operation: str, payload: dict, *, idempotency_key: str, correlation_id: str, actor_reference: str) -> dict:
         return await self.request("POST", operation, payload, idempotency_key=idempotency_key,
                                   correlation_id=correlation_id, actor_reference=actor_reference)

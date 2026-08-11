@@ -89,6 +89,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  charcode:
+    dependency: transitive
+    description:
+      name: charcode
+      sha256: fb0f1107cac15a5ea6ef0a6ef71a807b9e4267c713bb93e00e92d737cc8dbd8a
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.0"
   clock:
     dependency: transitive
     description:
@@ -113,6 +121,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  connectivity_plus:
+    dependency: transitive
+    description:
+      name: connectivity_plus
+      sha256: b5e72753cf63becce2c61fd04dfe0f1c430cc5278b53a1342dc5ad839eab29ec
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.1.5"
+  connectivity_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: connectivity_plus_platform_interface
+      sha256: "3c09627c536d22fd24691a905cdd8b14520de69da52c7a97499c8be5284a32ed"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   cross_file:
     dependency: transitive
     description:
@@ -129,6 +153,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.7"
+  csslib:
+    dependency: transitive
+    description:
+      name: csslib
+      sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.2"
+  csv:
+    dependency: transitive
+    description:
+      name: csv
+      sha256: c6aa2679b2a18cb57652920f674488d89712efaf4d3fdf2e537215b35fc19d6c
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.0"
   dbus:
     dependency: transitive
     description:
@@ -225,10 +265,24 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.3+5"
+  finreg_app:
+    dependency: "direct main"
+    description:
+      path: "../../finreg/apps/finreg_app"
+      relative: true
+    source: path
+    version: "0.1.0+1"
   finreg_client_sdk:
     dependency: "direct main"
     description:
       path: "../../finreg/packages/finreg_client_sdk"
+      relative: true
+    source: path
+    version: "0.1.0"
+  finreg_core:
+    dependency: transitive
+    description:
+      path: "../../finreg/packages/finreg_core"
       relative: true
     source: path
     version: "0.1.0"
@@ -239,10 +293,31 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  finreg_vertical_school:
+    dependency: "direct main"
+    description:
+      path: "../../finreg/packages/finreg_vertical_school"
+      relative: true
+    source: path
+    version: "1.0.0"
   finreg_vertical_school_ui:
     dependency: "direct main"
     description:
       path: "../../finreg/packages/finreg_vertical_school_ui"
+      relative: true
+    source: path
+    version: "0.1.0"
+  finreg_vertical_sdk:
+    dependency: transitive
+    description:
+      path: "../../finreg/packages/finreg_vertical_sdk"
+      relative: true
+    source: path
+    version: "1.0.0"
+  finreg_widgets:
+    dependency: transitive
+    description:
+      path: "../../finreg/packages/finreg_widgets"
       relative: true
     source: path
     version: "0.1.0"
@@ -370,6 +445,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "14.8.1"
+  hive:
+    dependency: transitive
+    description:
+      name: hive
+      sha256: "8dcf6db979d7933da8217edcec84e9df1bdb4e4edc7fc77dbd5aa74356d6d941"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   hooks:
     dependency: transitive
     description:
@@ -378,6 +461,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.2"
+  html:
+    dependency: transitive
+    description:
+      name: html
+      sha256: "6d1264f2dffa1b1101c25a91dff0dc2daee4c18e87cd8538729773c073dbf602"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.15.6"
   http:
     dependency: transitive
     description:
@@ -498,6 +589,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.7"
+  json2yaml:
+    dependency: transitive
+    description:
+      name: json2yaml
+      sha256: da94630fbc56079426fdd167ae58373286f603371075b69bf46d848d63ba3e51
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
   leak_tracker:
     dependency: transitive
     description:
@@ -610,6 +709,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  nm:
+    dependency: transitive
+    description:
+      name: nm
+      sha256: "2c9aae4127bdc8993206464fcc063611e0e36e72018696cd9631023a31b24254"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
   objective_c:
     dependency: transitive
     description:
@@ -770,6 +877,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  qr_flutter:
+    dependency: transitive
+    description:
+      name: qr_flutter
+      sha256: "5095f0fc6e3f71d08adef8feccc8cea4f12eec18a2e31c2e8d82cb6019f4b097"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.0"
   record_use:
     dependency: transitive
     description:
@@ -783,6 +898,14 @@ packages:
     description:
       name: riverpod
       sha256: "59062512288d3056b2321804332a13ffdd1bf16df70dcc8e506e411280a72959"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.6.1"
+  riverpod_annotation:
+    dependency: transitive
+    description:
+      name: riverpod_annotation
+      sha256: e14b0bf45b71326654e2705d462f21b958f987087be850afd60578fcd502d1b8
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
@@ -807,6 +930,22 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  slang:
+    dependency: transitive
+    description:
+      name: slang
+      sha256: a466773de768eb95bdf681e0a92e7c8010d44bb247b62130426c83ece33aeaed
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.32.0"
+  slang_flutter:
+    dependency: transitive
+    description:
+      name: slang_flutter
+      sha256: "1a98e878673996902fa5ef0b61ce5c245e41e4d25640d18af061c6aab917b0c7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.32.0"
   source_span:
     dependency: transitive
     description:
@@ -935,6 +1074,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  universal_html:
+    dependency: transitive
+    description:
+      name: universal_html
+      sha256: c0bcae5c733c60f26c7dfc88b10b0fd27cbcc45cb7492311cdaa6067e21c9cd4
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.0"
+  universal_io:
+    dependency: transitive
+    description:
+      name: universal_io
+      sha256: f63cbc48103236abf48e345e07a03ce5757ea86285ed313a6a032596ed9301e2
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.1"
   url_launcher:
     dependency: "direct main"
     description:
@@ -1023,6 +1178,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.2.0"
+  watcher:
+    dependency: transitive
+    description:
+      name: watcher
+      sha256: "1398c9f081a753f9226febe8900fce8f7d0a67163334e1c94a2438339d79d635"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.1"
   web:
     dependency: transitive
     description:

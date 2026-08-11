@@ -1,12 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:cellen/core/api/api_client.dart';
+import 'package:finreg_app/embedded_modules.dart';
 import 'package:finreg_client_sdk/finreg_client_sdk.dart';
 import 'package:finreg_sales_ui/finreg_sales_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'billing_items_screen.dart';
 import 'credit_balances_screen.dart';
@@ -26,36 +26,56 @@ class FinregSalesHostScreen extends ConsumerStatefulWidget {
 
 class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   late Future<dynamic> _connection;
+  late _CellenFinregAdapter _adapter;
+  late Future<FinregCapabilities> _capabilities;
+  Future<FinregEmbeddedSession>? _embeddedSession;
 
   @override
   void initState() {
     super.initState();
+    _adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
     _connection = ref.read(apiClientProvider).get('/finreg/connection');
+    _capabilities = _adapter.capabilities();
   }
 
   void _refresh() {
     setState(() {
       _connection = ref.read(apiClientProvider).get('/finreg/connection');
+      _capabilities = _adapter.capabilities();
+      _embeddedSession = null;
     });
   }
 
-  Future<void> _openWorkspace(FinregWorkspace workspace) async {
-    try {
-      final response = Map<String, dynamic>.from(
-        await ref
-            .read(apiClientProvider)
-            .post('/finreg/workspace-launch/${workspace.capabilityId}') as Map,
-      );
-      final uri = Uri.parse(response['url'].toString());
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw StateError('Não foi possível abrir o módulo Finreg.');
-      }
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao abrir ${workspace.title}: $error')),
-      );
-    }
+  Future<FinregEmbeddedSession> _createEmbeddedSession(
+      List<FinregWorkspace> workspaces) async {
+    final workspace = workspaces.firstWhere((item) =>
+        item.operational &&
+        finregEmbeddedModules.containsKey(item.capabilityId));
+    final payload = Map<String, dynamic>.from(await ref
+        .read(apiClientProvider)
+        .post('/finreg/embedded-session/${workspace.capabilityId}') as Map);
+    final tokens = Map<String, dynamic>.from(payload['tokens'] as Map);
+    final user = Map<String, dynamic>.from(payload['user'] as Map);
+    return FinregEmbeddedSession(
+      apiBaseUrl: payload['api_base_url'].toString(),
+      accessToken: tokens['access_token'].toString(),
+      refreshToken: tokens['refresh_token'].toString(),
+      userId: user['id'].toString(),
+      email: user['email'].toString(),
+      fullName: user['full_name'].toString(),
+      role: user['role'].toString(),
+      companyId: user['company_id'].toString(),
+      companyName: user['company_name']?.toString(),
+      permissions: Set<String>.from(user['permissions'] as List? ?? const []),
+      enabledModules:
+          Set<String>.from(user['enabled_modules'] as List? ?? const []),
+      effectiveCapabilities:
+          Set<String>.from(user['effective_capabilities'] as List? ?? const []),
+      verticalProfile:
+          user['vertical_profile']?.toString() ?? 'generic_service',
+      moduleManifestFingerprint:
+          user['module_manifest_fingerprint']?.toString(),
+    );
   }
 
   @override
@@ -88,9 +108,8 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
               ),
             );
           }
-          final adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
           return FutureBuilder<FinregCapabilities>(
-            future: adapter.capabilities(),
+            future: _capabilities,
             builder: (context, capabilitySnapshot) {
               if (capabilitySnapshot.hasError) {
                 return Center(
@@ -106,15 +125,18 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                     child: Text(
                         'O perfil financeiro desta organização não é escolar.'));
               }
-              return FinregSchoolBillingModule(
-                  repository: adapter,
-                  host: adapter,
+              final workspaces = capabilities.workspaces
+                  .where((item) =>
+                      item.operational &&
+                      finregEmbeddedModules.containsKey(item.capabilityId))
+                  .toList(growable: false);
+              final schoolModule = FinregSchoolBillingModule(
+                  repository: _adapter,
+                  host: _adapter,
                   configuredCapabilities: capabilities.configuredCapabilities,
                   effectiveCapabilities: capabilities.effectiveCapabilities,
                   blockedCapabilities: capabilities.blockedCapabilities,
                   hostSurfaces: capabilities.hostSurfaces,
-                  workspaces: capabilities.workspaces,
-                  onOpenWorkspace: _openWorkspace,
                   onRefreshCapabilities: _refresh,
                   surfaceBuilders: {
                     'school_student_plans': (_) =>
@@ -132,10 +154,114 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   },
                   onOfficialDocument: (name, bytes) =>
                       Printing.sharePdf(bytes: bytes, filename: name));
+              if (workspaces.isEmpty || value['mode'] == 'fake') {
+                return schoolModule;
+              }
+              _embeddedSession ??= _createEmbeddedSession(workspaces);
+              return FutureBuilder<FinregEmbeddedSession>(
+                future: _embeddedSession,
+                builder: (context, sessionSnapshot) {
+                  if (sessionSnapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Não foi possível iniciar os módulos Finreg: '
+                        '${sessionSnapshot.error}',
+                      ),
+                    );
+                  }
+                  if (!sessionSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return _EmbeddedFinregMenu(
+                    key: ValueKey(workspaces
+                        .map((workspace) => workspace.capabilityId)
+                        .join('|')),
+                    workspaces: workspaces,
+                    session: sessionSnapshot.data!,
+                    schoolModule: schoolModule,
+                  );
+                },
+              );
             },
           );
         },
       );
+}
+
+class _EmbeddedFinregMenu extends StatefulWidget {
+  const _EmbeddedFinregMenu({
+    super.key,
+    required this.workspaces,
+    required this.session,
+    required this.schoolModule,
+  });
+
+  final List<FinregWorkspace> workspaces;
+  final FinregEmbeddedSession session;
+  final Widget schoolModule;
+
+  @override
+  State<_EmbeddedFinregMenu> createState() => _EmbeddedFinregMenuState();
+}
+
+class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
+    with SingleTickerProviderStateMixin {
+  late final TabController _controller = TabController(
+    length: widget.workspaces.length + 1,
+    vsync: this,
+  )..addListener(_selectTab);
+  int _selected = 0;
+
+  void _selectTab() {
+    if (!_controller.indexIsChanging && _selected != _controller.index) {
+      setState(() => _selected = _controller.index);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_selectTab)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedWorkspace =
+        _selected == 0 ? null : widget.workspaces[_selected - 1];
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          child: TabBar(
+            controller: _controller,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              const Tab(icon: Icon(Icons.school_outlined), text: 'Escola'),
+              for (final workspace in widget.workspaces)
+                Tab(
+                  icon: Icon(
+                    finregEmbeddedModules[workspace.capabilityId]!.icon,
+                  ),
+                  text: workspace.title,
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: selectedWorkspace == null
+              ? widget.schoolModule
+              : FinregEmbeddedModuleHost(
+                  key: ValueKey(selectedWorkspace.capabilityId),
+                  capabilityId: selectedWorkspace.capabilityId,
+                  session: widget.session,
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {

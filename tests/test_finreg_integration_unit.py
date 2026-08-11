@@ -35,8 +35,10 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
     assert "hostSurfaces: capabilities.hostSurfaces" in host
-    assert "workspaces: capabilities.workspaces" in host
-    assert "onOpenWorkspace: _openWorkspace" in host
+    assert "FinregEmbeddedModuleHost(" in host
+    assert "finregEmbeddedModules.containsKey" in host
+    assert "onOpenWorkspace: _openWorkspace" not in host
+    assert "package:url_launcher/url_launcher.dart" not in host
     assert "surfaceBuilders:" in host
     assert "configuredCapabilities: capabilities.configuredCapabilities" in host
     assert "blockedCapabilities: capabilities.blockedCapabilities" in host
@@ -55,7 +57,8 @@ def test_host_parses_every_authoritative_workspace_without_capability_ids():
     assert "value['workspaces']" in host
     assert "workspace['capability_id']" in host
     assert "workspace['route']" in host
-    assert "/finreg/workspace-launch/${workspace.capabilityId}" in host
+    assert "/finreg/embedded-session/${workspace.capabilityId}" in host
+    assert "finregEmbeddedModules[workspace.capabilityId]" in host
 
 
 def test_school_profile_requirements_have_an_authoritative_workspace():
@@ -86,8 +89,23 @@ def test_workspace_launch_is_user_bound_and_never_exposes_client_credentials():
     assert "urlencode({'code': launch['code']})" in router
 
 
+def test_embedded_session_reuses_delegated_security_without_external_navigation():
+    router = Path("app/routers/finreg.py").read_text()
+    service = Path("app/services/finreg.py").read_text()
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert '@router.post("/embedded-session/{capability_id}")' in router
+    assert 'response.headers["Cache-Control"] = "no-store"' in router
+    assert "exchange_delegated(launch[\"code\"])" in router
+    assert 'f"{settings.FINREG_BASE_URL}/auth/delegated/exchange"' in service
+    assert 'f"{settings.FINREG_BASE_URL}/auth/me"' in service
+    assert "FINREG_CLIENT_SECRET" not in host
+    assert "launchUrl(" not in host
+
+
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "9ec3c8e01d22e649314ac5a021ee6d649207fab5"
+    expected = "2e3f8232efacb1d61d9172dcd8715e379f6841a8"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
@@ -158,7 +176,10 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert 'module_registry.resolve("school", [], "angola")' not in source
     deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
     assert "refresh_company_manifest_fingerprints" in deploy
+    assert "CELLEN_WEB_ORIGIN=https://softensor.github.io" in deploy
+    assert "CORS_ALLOWED_ORIGINS" in deploy
     assert "validate_cellen_finreg_release.sh" in deploy
+    assert "Finreg permits the embedded Cellen Web origin" in source
     assert '--mode "$ACCEPTANCE_MODE"' in deploy
     assert '--agt-channel "$ACCEPTANCE_CHANNEL"' in deploy
 

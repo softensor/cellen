@@ -11,6 +11,30 @@ SCHOOL_SLUG=rainha-njinga
 TAX_ID=5000413178
 source "$CELLEN_DIR/deploy/lib/wait_for_finreg_services.sh"
 
+export FINREG_ENV=/etc/finreg.env
+export CELLEN_WEB_ORIGIN=https://softensor.github.io
+python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["FINREG_ENV"])
+origin = os.environ["CELLEN_WEB_ORIGIN"]
+lines = path.read_text().splitlines()
+result = []
+found = False
+for line in lines:
+    if line.startswith("CORS_ALLOWED_ORIGINS="):
+        values = [value.strip() for value in line.split("=", 1)[1].split(",")]
+        if origin not in values:
+            values.append(origin)
+        line = "CORS_ALLOWED_ORIGINS=" + ",".join(filter(None, values))
+        found = True
+    result.append(line)
+if not found:
+    result.append(f"CORS_ALLOWED_ORIGINS={origin}")
+path.write_text("\n".join(result) + "\n")
+PY
+
 for required in \
   "$FINREG_DIR/backend" \
   "$FINREG_DIR/.venv/bin/alembic" \
