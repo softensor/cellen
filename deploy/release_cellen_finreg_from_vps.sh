@@ -13,10 +13,10 @@ for required in "$FINREG_DIR/.git" "$CELLEN_DIR/.git"; do
   [[ -e $required ]] || { echo "Missing required path: $required" >&2; exit 2; }
 done
 
-git -C "$FINREG_DIR" switch master
-git -C "$FINREG_DIR" pull --ff-only origin master
-git -C "$CELLEN_DIR" switch master
-git -C "$CELLEN_DIR" pull --ff-only origin master
+sudo -u jorgehel git -C "$FINREG_DIR" switch master
+sudo -u jorgehel git -C "$FINREG_DIR" pull --ff-only origin master
+sudo -u jorgehel git -C "$CELLEN_DIR" switch master
+sudo -u jorgehel git -C "$CELLEN_DIR" pull --ff-only origin master
 
 FINREG_SHA=$(git -C "$FINREG_DIR" rev-parse HEAD)
 WEB_DIR=/tmp/finreg-web-$FINREG_SHA

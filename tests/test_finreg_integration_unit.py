@@ -241,8 +241,8 @@ def test_combined_vps_release_is_single_command_and_identity_checked():
     script = Path("deploy/release_cellen_finreg_from_vps.sh")
     source = script.read_text()
     assert script.stat().st_mode & 0o111
-    assert "git -C \"$FINREG_DIR\" pull --ff-only origin master" in source
-    assert "git -C \"$CELLEN_DIR\" pull --ff-only origin master" in source
+    assert "sudo -u jorgehel git -C \"$FINREG_DIR\" pull --ff-only origin master" in source
+    assert "sudo -u jorgehel git -C \"$CELLEN_DIR\" pull --ff-only origin master" in source
     assert "deploy_finreg_school_finance.sh" in source
     assert "deploy-web-release.sh" in source
     assert "validate-web-release.sh" in source
