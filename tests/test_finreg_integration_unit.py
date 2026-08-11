@@ -158,7 +158,7 @@ def test_embedded_session_reuses_delegated_security_without_external_navigation(
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "311fc4445952f56b811cbc53b135cb552c53055b"
+    expected = "d3372cada06d4f4ba8838c054ec19d6065975e0b"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
