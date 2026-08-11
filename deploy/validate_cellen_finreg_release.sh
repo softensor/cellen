@@ -72,6 +72,10 @@ for service in finreg-api finreg-worker finreg-beat cellen-api; do
 done
 check 'Finreg is ready' curl -fsS http://127.0.0.1:8003/ready
 check 'Cellen is healthy' curl -fsS http://127.0.0.1:8001/health
+finreg_cors=$(set -a; source /etc/finreg.env; set +a; printf '%s' "${CORS_ALLOWED_ORIGINS:-}")
+[[ ",$finreg_cors," == *,https://softensor.github.io,* ]] \
+  && pass 'Finreg permits the embedded Cellen Web origin' \
+  || fail 'Finreg permits the embedded Cellen Web origin' "$finreg_cors"
 check 'Redis is ready' redis-cli ping
 check 'Finreg PostgreSQL is ready' sudo -u postgres psql -X -d finreg -c 'SELECT 1;'
 check 'Cellen PostgreSQL is ready' sudo -u postgres psql -X -d cellen -c 'SELECT 1;'

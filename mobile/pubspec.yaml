@@ -29,6 +29,8 @@ dependencies:
   printing: ^5.13.1
   finreg_client_sdk:
     path: ../../finreg/packages/finreg_client_sdk
+  finreg_app:
+    path: ../../finreg/apps/finreg_app
   finreg_sales_ui:
     path: ../../finreg/packages/finreg_sales_ui
   finreg_vertical_school_ui:

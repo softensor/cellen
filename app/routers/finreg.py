@@ -241,6 +241,57 @@ async def workspace_launch(
     }
 
 
+@router.post("/embedded-session/{capability_id}")
+async def embedded_session(
+    capability_id: str,
+    response: Response,
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a user-bound Finreg session for the in-app module widgets."""
+    connection = (await db.execute(select(FinregSchoolConnection).where(
+        FinregSchoolConnection.school_id == school_id
+    ))).scalar_one_or_none()
+    if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
+        raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
+    roles = list(
+        getattr(user, "_roles_list", None)
+        or getattr(user, "roles", None)
+        or []
+    )
+    display_name = (
+        getattr(user, "username", None)
+        or getattr(user, "email", None)
+        or str(user.id)
+    )
+    adapter = HttpFinregAdapter()
+    try:
+        launch = await adapter.request(
+            "POST",
+            "workspace-launches",
+            {
+                "capability_id": capability_id,
+                "external_user_id": str(user.id),
+                "display_name": display_name,
+                "roles": roles,
+            },
+            actor_reference=str(user.id),
+        )
+        session = await adapter.exchange_delegated(launch["code"])
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 403,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    web_url = settings.FINREG_WEB_URL or settings.FINREG_BASE_URL.removesuffix("/api/v1")
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "api_base_url": f"{web_url.rstrip('/')}/api/v1",
+        **session,
+    }
+
+
 @router.get("/instructions")
 async def instructions(limit: int = 100, school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db), _=Depends(require_finance_access)):
     rows = (await db.execute(select(FinregBillingInstruction).where(
