@@ -155,10 +155,37 @@ def test_embedded_session_reuses_delegated_security_without_external_navigation(
     assert 'f"{settings.FINREG_BASE_URL}/auth/me"' in service
     assert "FINREG_CLIENT_SECRET" not in host
     assert "launchUrl(" not in host
+    assert "localeTag: localeTag" in host
+
+
+def test_school_composition_uses_contextual_sources_without_duplicate_modules():
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert "schoolBillingCapabilities" in host
+    for capability in (
+        "'catalog'",
+        "'payments'",
+        "'receivables'",
+        "'recurring_billing'",
+    ):
+        assert capability in host
+    assert "GuardiansListScreen()" in host
+    assert "EmployeesListScreen()" in host
+    assert "_SchoolContextualModule" in host
+    assert "_CompositionReadiness" in host
+    assert "'/finreg/composition-readiness/$capabilityId'" in host
+    assert "void didChangeDependencies()" in host
+    assert "_sessions.clear()" in host
+    assert ".label(Localizations.localeOf(context).languageCode)" in host
+    assert '@router.get("/composition-readiness/{capability_id}")' in Path(
+        "app/routers/finreg.py"
+    ).read_text()
+    assert "mapping_policy" in Path("app/routers/finreg.py").read_text()
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "52424156cea39258495a0aec1835cdfc31d6bdd9"
+    expected = "4f903b5cc18f668ab89d46f5a0e6f6dfea7f0a5f"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()

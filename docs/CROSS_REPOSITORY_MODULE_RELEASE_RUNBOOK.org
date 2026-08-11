@@ -155,6 +155,18 @@ multiple linked learners are presented as a constrained choice. Cellen must
 validate the guardian-learner relationship again on every preview, issuance,
 and billing-plan write.
 
+Vertical composition preserves one authority for every fact. In the school
+host, Cellen owns guardians, learners, teachers and other employees; Finreg
+owns fiscal customer records, employment contracts, statutory payroll and the
+ledger. The =parties= and =payroll= workspaces therefore begin with their Cellen
+source records and continue into the authoritative Finreg workflow. The host
+must call =/finreg/composition-readiness/{capability}= and disclose incomplete
+source data before the user enters the statutory workflow. Guardians are
+linked to a Finreg customer on first financial use. Employees missing a hire
+date or positive salary are never silently converted into payroll records.
+Another vertical may supply different source entities through the same
+capability composition boundary; Finreg itself remains generic.
+
 For each release that changes composition or UI manifests, verify all of the
 following:
 
