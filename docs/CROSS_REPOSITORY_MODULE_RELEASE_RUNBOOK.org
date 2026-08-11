@@ -167,6 +167,27 @@ date or positive salary are never silently converted into payroll records.
 Another vertical may supply different source entities through the same
 capability composition boundary; Finreg itself remains generic.
 
+Local school administration is deliberately narrower than tenant composition.
+The Finreg owner controls profiles, capabilities, entitlements, integration
+clients, scopes and kill switches. A Cellen school administrator may restrict
+which already-operational Finreg workspaces are available to the school's
+finance-officer role, but cannot grant anything absent from Finreg's workspace
+contract. School administrators retain all operational workspaces for support
+and recovery. The effective rule is:
+
+#+begin_example
+Finreg operational workspaces
+  INTERSECT Cellen local role policy
+  INTERSECT delegated Finreg permissions
+#+end_example
+
+The =integrations= capability is required for the Cellen connection but is a
+service/control-plane capability, not a human workspace. Cellen may show its
+connection state; credential and composition administration remains in Finreg.
+Coordinator and secretary roles are not offered finance-module grants until
+their workflow-specific backend permissions are explicitly designed and
+enforced.
+
 For each release that changes composition or UI manifests, verify all of the
 following:
 
@@ -186,6 +207,10 @@ following:
   fails;
 - the Finreg session has the mapped user's permissions, not platform-owner
   permissions.
+- the Cellen local-access editor can remove a finance-officer workspace but
+  cannot add a capability outside the Finreg composition;
+- control-plane capabilities do not appear in Cellen and direct delegated
+  launch attempts fail;
 - selecting a payer never exposes unrelated learners, and an unlinked
   payer-learner payload is rejected server-side.
 

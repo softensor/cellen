@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
+import '../../../core/auth/auth_provider.dart';
+import '../../../core/auth/auth_state.dart';
 import 'billing_items_screen.dart';
 import 'credit_balances_screen.dart';
 import 'parent_payment_review_screen.dart';
@@ -211,6 +213,19 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   ),
                 },
                 readinessForCapability: _compositionReadiness,
+                onManageAccess:
+                    ref.watch(authProvider).roles.contains(UserRole.schoolAdmin)
+                        ? () async {
+                            await showDialog<void>(
+                              context: context,
+                              useRootNavigator: false,
+                              builder: (_) => _FinregAccessPolicyDialog(
+                                api: ref.read(apiClientProvider),
+                              ),
+                            );
+                            _refresh();
+                          }
+                        : null,
               );
             },
           );
@@ -226,6 +241,7 @@ class _EmbeddedFinregMenu extends StatefulWidget {
     required this.capabilityOverrides,
     required this.contextualCapabilities,
     required this.readinessForCapability,
+    this.onManageAccess,
     this.initialCapabilityId,
   });
 
@@ -236,6 +252,7 @@ class _EmbeddedFinregMenu extends StatefulWidget {
   final Map<String, _SchoolContextDefinition> contextualCapabilities;
   final Future<Map<String, dynamic>> Function(String capabilityId)
       readinessForCapability;
+  final VoidCallback? onManageAccess;
   final String? initialCapabilityId;
 
   @override
@@ -300,18 +317,33 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
       children: [
         Material(
           color: Theme.of(context).colorScheme.surfaceContainerLow,
-          child: TabBar(
-            controller: _controller,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              for (final workspace in widget.workspaces)
-                Tab(
-                  icon: Icon(
-                    finregEmbeddedModules[workspace.capabilityId]!.icon,
-                  ),
-                  text: finregEmbeddedModules[workspace.capabilityId]!
-                      .label(Localizations.localeOf(context).languageCode),
+          child: Row(
+            children: [
+              Expanded(
+                child: TabBar(
+                  controller: _controller,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  tabs: [
+                    for (final workspace in widget.workspaces)
+                      Tab(
+                        icon: Icon(
+                          finregEmbeddedModules[workspace.capabilityId]!.icon,
+                        ),
+                        text: finregEmbeddedModules[workspace.capabilityId]!
+                            .label(
+                                Localizations.localeOf(context).languageCode),
+                      ),
+                  ],
+                ),
+              ),
+              if (widget.onManageAccess != null)
+                IconButton(
+                  onPressed: widget.onManageAccess,
+                  tooltip: Localizations.localeOf(context).languageCode == 'pt'
+                      ? 'Acesso local aos módulos'
+                      : 'Local module access',
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
                 ),
             ],
           ),
@@ -388,6 +420,117 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
           },
         );
       },
+    );
+  }
+}
+
+class _FinregAccessPolicyDialog extends StatefulWidget {
+  const _FinregAccessPolicyDialog({required this.api});
+
+  final ApiClient api;
+
+  @override
+  State<_FinregAccessPolicyDialog> createState() =>
+      _FinregAccessPolicyDialogState();
+}
+
+class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
+  late final Future<void> _load = _loadPolicy();
+  final Map<String, Set<String>> _roleCapabilities = {};
+  List<String> _available = const [];
+  bool _saving = false;
+
+  Future<void> _loadPolicy() async {
+    final payload = Map<String, dynamic>.from(
+        await widget.api.get('/finreg/local-access-policy') as Map);
+    _available = List<String>.from(payload['available_capabilities'] as List);
+    final roles =
+        Map<String, dynamic>.from(payload['role_capabilities'] as Map);
+    for (final entry in roles.entries) {
+      _roleCapabilities[entry.key] = Set<String>.from(entry.value as List);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.api.put('/finreg/local-access-policy', data: {
+        'role_capabilities': _roleCapabilities.map(
+          (role, capabilities) => MapEntry(role, capabilities.toList()..sort()),
+        ),
+      });
+      if (mounted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    const roleLabels = {
+      'finance_officer': {'pt': 'Direção financeira', 'en': 'Finance officer'},
+    };
+    return AlertDialog(
+      title: Text(portuguese
+          ? 'Acesso local aos módulos Finreg'
+          : 'Local Finreg module access'),
+      content: SizedBox(
+        width: 720,
+        height: 520,
+        child: FutureBuilder<void>(
+          future: _load,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text(snapshot.error.toString()));
+            }
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return ListView(
+              children: [
+                Text(portuguese
+                    ? 'Estas permissões apenas restringem o acesso dentro da escola. Não podem ativar módulos ou alterar a composição definida pelo proprietário Finreg.'
+                    : 'These permissions only restrict access inside the school. They cannot activate modules or change the composition granted by the Finreg owner.'),
+                const SizedBox(height: 16),
+                for (final role in roleLabels.keys) ...[
+                  Text(
+                    roleLabels[role]![portuguese ? 'pt' : 'en']!,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  for (final capability in _available)
+                    CheckboxListTile(
+                      dense: true,
+                      value: _roleCapabilities[role]?.contains(capability) ??
+                          false,
+                      title: Text(finregEmbeddedModules[capability]
+                              ?.label(portuguese ? 'pt' : 'en') ??
+                          capability),
+                      onChanged: (selected) => setState(() {
+                        final values = _roleCapabilities.putIfAbsent(
+                            role, () => <String>{});
+                        selected == true
+                            ? values.add(capability)
+                            : values.remove(capability);
+                      }),
+                    ),
+                  const Divider(),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: Text(portuguese ? 'Cancelar' : 'Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: Text(portuguese ? 'Guardar' : 'Save'),
+        ),
+      ],
     );
   }
 }
