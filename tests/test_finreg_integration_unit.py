@@ -158,7 +158,7 @@ def test_embedded_session_reuses_delegated_security_without_external_navigation(
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "d3372cada06d4f4ba8838c054ec19d6065975e0b"
+    expected = "52424156cea39258495a0aec1835cdfc31d6bdd9"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
@@ -235,6 +235,19 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert "Finreg permits the embedded Cellen Web origin" in source
     assert '--mode "$ACCEPTANCE_MODE"' in deploy
     assert '--agt-channel "$ACCEPTANCE_CHANNEL"' in deploy
+
+
+def test_combined_vps_release_is_single_command_and_identity_checked():
+    script = Path("deploy/release_cellen_finreg_from_vps.sh")
+    source = script.read_text()
+    assert script.stat().st_mode & 0o111
+    assert "git -C \"$FINREG_DIR\" pull --ff-only origin master" in source
+    assert "git -C \"$CELLEN_DIR\" pull --ff-only origin master" in source
+    assert "deploy_finreg_school_finance.sh" in source
+    assert "deploy-web-release.sh" in source
+    assert "validate-web-release.sh" in source
+    assert "finreg-release.json" in source
+    assert "systemctl is-active finreg-api finreg-worker finreg-beat cellen-api" in source
 
 
 def test_finreg_promotions_use_bounded_readiness_polling():
