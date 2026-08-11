@@ -131,11 +131,29 @@ list and retains native screens only for school-specific context. Selecting a
 workspace renders Finreg's shared application router and exact page widgets
 inside Cellen; it does not copy the page and does not open another application.
 
+Each capability has exactly one entry in the host menu. A vertical may provide
+a renderer override for a capability while leaving visibility and entitlement
+manifest-driven. For example, Cellen renders its school-aware billing extension
+for the canonical =billing= capability; it must not add a second School or Sales
+entry beside the generic Finreg billing workspace. Capabilities without a host
+override render the authoritative Finreg page unchanged.
+
 Cellen's backend requests and immediately consumes the existing 60-second,
 single-use delegated grant to create the embedded user session. Cellen never
 receives or stores a Finreg user password, and the browser never receives the
 integration client secret. The legacy external launch remains an optional
 standalone handoff, not the normal module-menu behaviour.
+
+Embedded routers must override the browser platform location and neglect host
+browser history. Cellen's own route must never be interpreted as a Finreg login
+route. Sessions are obtained lazily for the selected capability; a failure is
+shown as an in-context retry and never as a second login form.
+
+School billing is payer-first. Selecting a guardian resolves only that
+guardian's active linked learners. A single learner is assigned automatically;
+multiple linked learners are presented as a constrained choice. Cellen must
+validate the guardian-learner relationship again on every preview, issuance,
+and billing-plan write.
 
 For each release that changes composition or UI manifests, verify all of the
 following:
@@ -145,6 +163,8 @@ following:
 - disabling it makes the workspace unavailable and a direct launch request is
   rejected;
 - every operational workspace has an entry in Finreg's shared widget registry;
+- each capability appears once and =billing= renders the school extension in
+  Cellen rather than a duplicate generic Sales entry;
 - at least one capability other than Accounting or POS renders its complete
   Finreg page and internal subroutes inside Cellen;
 - the normal Cellen module menu does not invoke =url_launcher= or an external
@@ -154,6 +174,8 @@ following:
   fails;
 - the Finreg session has the mapped user's permissions, not platform-owner
   permissions.
+- selecting a payer never exposes unrelated learners, and an unlinked
+  payer-learner payload is rejected server-side.
 
 Production Cellen configuration must set =FINREG_WEB_URL= to the public Finreg
 web origin. =FINREG_BASE_URL= remains the API base ending in =/api/v1=.

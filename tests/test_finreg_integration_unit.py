@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from app.models.finreg_integration import FinregSchoolConnection
 from app.models.finance import Payment
@@ -13,6 +14,7 @@ from app.services.finreg import (
     school_context,
 )
 from app.services.finreg_events import synchronize_connection
+from app.routers.finreg import _linked_guardian_child
 
 
 def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
@@ -57,8 +59,59 @@ def test_host_parses_every_authoritative_workspace_without_capability_ids():
     assert "value['workspaces']" in host
     assert "workspace['capability_id']" in host
     assert "workspace['route']" in host
-    assert "/finreg/embedded-session/${workspace.capabilityId}" in host
+    assert "/finreg/embedded-session/$capabilityId" in host
     assert "finregEmbeddedModules[workspace.capabilityId]" in host
+
+
+def test_each_capability_has_one_menu_entry_and_billing_uses_school_extension():
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert "length: widget.workspaces.length" in host
+    assert "widget.workspaces[_selected]" in host
+    assert "capabilityOverrides: {'billing': schoolModule}" in host
+    assert "const Tab(icon: Icon(Icons.school_outlined)" not in host
+    assert "widget.capabilityOverrides[workspace.capabilityId]" in host
+    assert "widget.sessionForCapability(capabilityId)" in host
+    assert "_sessions.putIfAbsent" in host
+    assert "final Set<String> _visitedCapabilityIds" in host
+    assert "child: IndexedStack(" in host
+    assert "key: ObjectKey(snapshot.data)" in host
+    assert "onSessionExpired:" in host
+    assert "_sessions.remove(capabilityId)" in host
+
+
+def test_school_billing_resolves_and_validates_payer_learner_relationships():
+    router = Path("app/routers/finreg.py").read_text()
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert '@router.get("/guardians/{guardian_id}/pupils")' in router
+    assert '@router.get("/guardians")' in router
+    assert "require_finance_access" in router
+    assert "ChildGuardian.guardian_id == Guardian.id" in router
+    assert "The learner is not associated with the selected payer" in router
+    assert router.count("await _linked_guardian_child(") == 2
+    assert "pupilsForGuardian(String guardianId)" in host
+    assert "'/finreg/guardians'" in host
+    assert "'/finreg/guardians/$guardianId/pupils'" in host
+
+
+@pytest.mark.asyncio
+async def test_unlinked_payer_learner_pair_is_rejected_before_finreg():
+    class EmptyResult:
+        def one_or_none(self):
+            return None
+
+    class EmptySession:
+        async def execute(self, _statement):
+            return EmptyResult()
+
+    with pytest.raises(HTTPException) as raised:
+        await _linked_guardian_child(
+            uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), EmptySession()
+        )
+    assert raised.value.status_code == 422
 
 
 def test_school_profile_requirements_have_an_authoritative_workspace():
@@ -105,7 +158,7 @@ def test_embedded_session_reuses_delegated_security_without_external_navigation(
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "2e3f8232efacb1d61d9172dcd8715e379f6841a8"
+    expected = "311fc4445952f56b811cbc53b135cb552c53055b"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
