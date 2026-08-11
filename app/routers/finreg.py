@@ -8,7 +8,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -20,6 +20,7 @@ from app.core.dependencies import (
     require_school_admin,
 )
 from app.models.finance import BillingItem, Payment
+from app.models.employee import Employee
 from app.models.finreg_integration import (
     FinregBillingInstruction,
     FinregEntityMapping,
@@ -400,6 +401,72 @@ async def mappings(school_id=Depends(get_school_id), db: AsyncSession = Depends(
     rows = (await db.execute(select(FinregEntityMapping).where(FinregEntityMapping.school_id == school_id))).scalars().all()
     return [{"entity_type": x.entity_type, "cellen_id": str(x.cellen_id), "finreg_id": str(x.finreg_id),
              "status": x.status, "last_error_code": x.last_error_code} for x in rows]
+
+
+@router.get("/composition-readiness/{capability_id}")
+async def composition_readiness(
+    capability_id: str,
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Describe whether vertical-owned records are ready for a Finreg workflow.
+
+    Cellen remains authoritative for school people.  This endpoint deliberately
+    reports readiness instead of silently manufacturing statutory or fiscal
+    records from incomplete profiles.
+    """
+    if capability_id == "parties":
+        source_total = (await db.execute(
+            select(func.count()).select_from(Guardian).where(
+                Guardian.school_id == school_id
+            )
+        )).scalar_one()
+        mapped_total = (await db.execute(
+            select(func.count()).select_from(FinregEntityMapping).where(
+                FinregEntityMapping.school_id == school_id,
+                FinregEntityMapping.entity_type == "customer",
+                FinregEntityMapping.status == "confirmed",
+            )
+        )).scalar_one()
+        return {
+            "capability_id": capability_id,
+            "source_entity": "guardian",
+            "source_total": source_total,
+            "ready_total": source_total,
+            "mapped_total": mapped_total,
+            "mapping_policy": "on_first_financial_use",
+            "blockers": [],
+        }
+    if capability_id == "payroll":
+        active = Employee.status == "active"
+        source_total = (await db.execute(
+            select(func.count()).select_from(Employee).where(
+                Employee.school_id == school_id, active
+            )
+        )).scalar_one()
+        ready_total = (await db.execute(
+            select(func.count()).select_from(Employee).where(
+                Employee.school_id == school_id,
+                active,
+                Employee.hire_date.is_not(None),
+                Employee.salary.is_not(None),
+                Employee.salary > 0,
+            )
+        )).scalar_one()
+        blockers = []
+        if ready_total < source_total:
+            blockers.append("missing_hire_date_or_salary")
+        return {
+            "capability_id": capability_id,
+            "source_entity": "employee",
+            "source_total": source_total,
+            "ready_total": ready_total,
+            "mapped_total": None,
+            "mapping_policy": "review_before_statutory_creation",
+            "blockers": blockers,
+        }
+    raise HTTPException(status_code=404, detail="No vertical composition for this capability")
 
 
 async def _writable_or_shadow_connection(school_id, db):

@@ -15,6 +15,8 @@ import 'payment_plans_screen.dart';
 import 'payment_references_screen.dart';
 import 'reminders_screen.dart';
 import 'student_billing_plans_screen.dart';
+import '../employees/employees_list_screen.dart';
+import '../guardians/guardians_list_screen.dart';
 
 class FinregSalesHostScreen extends ConsumerStatefulWidget {
   const FinregSalesHostScreen({super.key});
@@ -46,6 +48,7 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
 
   Future<FinregEmbeddedSession> _createEmbeddedSession(
       String capabilityId) async {
+    final localeTag = Localizations.localeOf(context).languageCode;
     final payload = Map<String, dynamic>.from(await ref
         .read(apiClientProvider)
         .post('/finreg/embedded-session/$capabilityId') as Map);
@@ -70,7 +73,16 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
           user['vertical_profile']?.toString() ?? 'generic_service',
       moduleManifestFingerprint:
           user['module_manifest_fingerprint']?.toString(),
+      localeTag: localeTag,
     );
+  }
+
+  Future<Map<String, dynamic>> _compositionReadiness(
+      String capabilityId) async {
+    final payload = await ref
+        .read(apiClientProvider)
+        .get('/finreg/composition-readiness/$capabilityId');
+    return Map<String, dynamic>.from(payload as Map);
   }
 
   @override
@@ -120,10 +132,23 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                     child: Text(
                         'O perfil financeiro desta organização não é escolar.'));
               }
-              final workspaces = capabilities.workspaces
+              const schoolBillingCapabilities = {
+                'billing',
+                'catalog',
+                'payments',
+                'receivables',
+                'recurring_billing',
+              };
+              final operationalWorkspaces = capabilities.workspaces
                   .where((item) =>
                       item.operational &&
                       finregEmbeddedModules.containsKey(item.capabilityId))
+                  .toList(growable: false);
+              final workspaces = operationalWorkspaces
+                  .where((workspace) =>
+                      workspace.capabilityId == 'billing' ||
+                      !schoolBillingCapabilities
+                          .contains(workspace.capabilityId))
                   .toList(growable: false);
               final schoolModule = FinregSchoolBillingModule(
                   repository: _adapter,
@@ -132,6 +157,7 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   effectiveCapabilities: capabilities.effectiveCapabilities,
                   blockedCapabilities: capabilities.blockedCapabilities,
                   hostSurfaces: capabilities.hostSurfaces,
+                  workspaces: const [],
                   onRefreshCapabilities: _refresh,
                   surfaceBuilders: {
                     'school_student_plans': (_) =>
@@ -160,6 +186,31 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                 initialCapabilityId: 'billing',
                 sessionForCapability: _createEmbeddedSession,
                 capabilityOverrides: {'billing': schoolModule},
+                contextualCapabilities: const {
+                  'parties': _SchoolContextDefinition(
+                    labels: {
+                      'pt': 'Encarregados e responsáveis',
+                      'en': 'Guardians and responsible payers',
+                    },
+                    authoritativeLabels: {
+                      'pt': 'Registos fiscais',
+                      'en': 'Fiscal records',
+                    },
+                    child: GuardiansListScreen(),
+                  ),
+                  'payroll': _SchoolContextDefinition(
+                    labels: {
+                      'pt': 'Professores e funcionários',
+                      'en': 'Teachers and employees',
+                    },
+                    authoritativeLabels: {
+                      'pt': 'Contratos e salários',
+                      'en': 'Contracts and payroll',
+                    },
+                    child: EmployeesListScreen(),
+                  ),
+                },
+                readinessForCapability: _compositionReadiness,
               );
             },
           );
@@ -173,6 +224,8 @@ class _EmbeddedFinregMenu extends StatefulWidget {
     required this.workspaces,
     required this.sessionForCapability,
     required this.capabilityOverrides,
+    required this.contextualCapabilities,
+    required this.readinessForCapability,
     this.initialCapabilityId,
   });
 
@@ -180,6 +233,9 @@ class _EmbeddedFinregMenu extends StatefulWidget {
   final Future<FinregEmbeddedSession> Function(String capabilityId)
       sessionForCapability;
   final Map<String, Widget> capabilityOverrides;
+  final Map<String, _SchoolContextDefinition> contextualCapabilities;
+  final Future<Map<String, dynamic>> Function(String capabilityId)
+      readinessForCapability;
   final String? initialCapabilityId;
 
   @override
@@ -191,7 +247,9 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
   late final TabController _controller;
   late int _selected;
   final Map<String, Future<FinregEmbeddedSession>> _sessions = {};
+  final Map<String, Future<Map<String, dynamic>>> _readiness = {};
   final Set<String> _visitedCapabilityIds = {};
+  String? _localeTag;
 
   @override
   void initState() {
@@ -219,6 +277,16 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final localeTag = Localizations.localeOf(context).languageCode;
+    if (_localeTag != null && _localeTag != localeTag) {
+      _sessions.clear();
+    }
+    _localeTag = localeTag;
+  }
+
+  @override
   void dispose() {
     _controller
       ..removeListener(_selectTab)
@@ -242,7 +310,8 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
                   icon: Icon(
                     finregEmbeddedModules[workspace.capabilityId]!.icon,
                   ),
-                  text: workspace.title,
+                  text: finregEmbeddedModules[workspace.capabilityId]!
+                      .label(Localizations.localeOf(context).languageCode),
                 ),
             ],
           ),
@@ -253,14 +322,30 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
             children: [
               for (final workspace in widget.workspaces)
                 if (_visitedCapabilityIds.contains(workspace.capabilityId))
-                  widget.capabilityOverrides[workspace.capabilityId] ??
-                      _buildAuthoritativeModule(workspace)
+                  _buildWorkspace(workspace)
                 else
                   const SizedBox.shrink(),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWorkspace(FinregWorkspace workspace) {
+    final override = widget.capabilityOverrides[workspace.capabilityId];
+    if (override != null) return override;
+    final contextDefinition =
+        widget.contextualCapabilities[workspace.capabilityId];
+    if (contextDefinition == null) return _buildAuthoritativeModule(workspace);
+    return _SchoolContextualModule(
+      capabilityId: workspace.capabilityId,
+      definition: contextDefinition,
+      authoritative: _buildAuthoritativeModule(workspace),
+      readiness: _readiness.putIfAbsent(
+        workspace.capabilityId,
+        () => widget.readinessForCapability(workspace.capabilityId),
+      ),
     );
   }
 
@@ -305,6 +390,119 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
       },
     );
   }
+}
+
+class _SchoolContextDefinition {
+  const _SchoolContextDefinition({
+    required this.labels,
+    required this.authoritativeLabels,
+    required this.child,
+  });
+
+  final Map<String, String> labels;
+  final Map<String, String> authoritativeLabels;
+  final Widget child;
+
+  String label(String languageCode) =>
+      labels[languageCode] ?? labels['pt'] ?? labels.values.first;
+
+  String authoritativeLabel(String languageCode) =>
+      authoritativeLabels[languageCode] ??
+      authoritativeLabels['pt'] ??
+      authoritativeLabels.values.first;
+}
+
+class _SchoolContextualModule extends StatelessWidget {
+  const _SchoolContextualModule({
+    required this.capabilityId,
+    required this.definition,
+    required this.authoritative,
+    required this.readiness,
+  });
+
+  final String capabilityId;
+  final _SchoolContextDefinition definition;
+  final Widget authoritative;
+  final Future<Map<String, dynamic>> readiness;
+
+  @override
+  Widget build(BuildContext context) {
+    final languageCode = Localizations.localeOf(context).languageCode;
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          _CompositionReadiness(
+            capabilityId: capabilityId,
+            readiness: readiness,
+            languageCode: languageCode,
+          ),
+          Material(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  Tab(text: definition.label(languageCode)),
+                  Tab(text: definition.authoritativeLabel(languageCode)),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [definition.child, authoritative],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompositionReadiness extends StatelessWidget {
+  const _CompositionReadiness({
+    required this.capabilityId,
+    required this.readiness,
+    required this.languageCode,
+  });
+
+  final String capabilityId;
+  final Future<Map<String, dynamic>> readiness;
+  final String languageCode;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
+        future: readiness,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const SizedBox.shrink();
+          final value = snapshot.data!;
+          final source = value['source_total'] as int? ?? 0;
+          final ready = value['ready_total'] as int? ?? 0;
+          final mapped = value['mapped_total'] as int?;
+          final portuguese = languageCode == 'pt';
+          final message = capabilityId == 'parties'
+              ? (portuguese
+                  ? '$source encarregados no Cellen; ${mapped ?? 0} já possuem registo fiscal. Os restantes são associados automaticamente na primeira operação financeira.'
+                  : '$source guardians in Cellen; ${mapped ?? 0} already have a fiscal record. Remaining guardians are linked automatically on first financial use.')
+              : (portuguese
+                  ? '$ready de $source funcionários têm data de admissão e salário prontos para revisão no processamento salarial.'
+                  : '$ready of $source employees have a hire date and salary ready for payroll review.');
+          final complete = ready == source;
+          return Material(
+            color: complete
+                ? Theme.of(context).colorScheme.primaryContainer
+                : Theme.of(context).colorScheme.errorContainer,
+            child: ListTile(
+              dense: true,
+              leading: Icon(complete ? Icons.link : Icons.warning_amber),
+              title: Text(message),
+            ),
+          );
+        },
+      );
 }
 
 class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
