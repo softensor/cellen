@@ -35,16 +35,24 @@ open_pr() {
 }
 
 wait_for_pr_checks() {
-  local repo=$1 pr=$2 count=0
+  local repo=$1 pr=$2 output status
   echo "Waiting for $repo PR #$pr checks..."
   for _ in {1..90}; do
-    count=$(gh pr view "$pr" --repo "$repo" --json statusCheckRollup \
-      --jq '.statusCheckRollup | length')
-    [[ $count -gt 0 ]] && break
-    sleep 5
+    set +e
+    output=$(gh pr checks "$pr" --repo "$repo" --watch 2>&1)
+    status=$?
+    set -e
+    printf '%s\n' "$output"
+    [[ $status -eq 0 ]] && return
+    if [[ $output == *"no checks reported"* ]]; then
+      echo "Checks for the new head are not registered yet; retrying..."
+      sleep 5
+      continue
+    fi
+    return "$status"
   done
-  [[ $count -gt 0 ]] || { echo "No PR checks appeared for $repo #$pr" >&2; exit 1; }
-  gh pr checks "$pr" --repo "$repo" --watch
+  echo "No PR checks appeared for $repo #$pr" >&2
+  exit 1
 }
 
 wait_for_master_run() {
