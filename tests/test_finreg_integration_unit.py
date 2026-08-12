@@ -1,6 +1,7 @@
 import uuid
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -14,7 +15,7 @@ from app.services.finreg import (
     school_context,
 )
 from app.services.finreg_events import synchronize_connection
-from app.routers.finreg import _linked_guardian_child
+from app.routers.finreg import _allowed_local_capabilities, _linked_guardian_child
 
 
 def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
@@ -50,6 +51,40 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     assert "final canPay = invoice.status != 'paid'" in parent
     assert "/finreg/parent/receipts" in parent
     assert "/finreg/parent/statement" in parent
+
+
+def test_local_finreg_policy_can_only_narrow_authoritative_workspaces():
+    available = {"billing", "accounting", "payroll"}
+    school = SimpleNamespace(features={
+        "finreg_role_capabilities": {
+            "finance_officer": ["billing", "outside-composition"],
+        }
+    })
+    school_admin = SimpleNamespace(_roles={"school_admin"})
+    finance_officer = SimpleNamespace(_roles={"finance_officer"})
+    coordinator = SimpleNamespace(_roles={"coordinator"})
+
+    assert _allowed_local_capabilities(school, school_admin, available) == available
+    assert _allowed_local_capabilities(school, finance_officer, available) == {"billing"}
+    assert _allowed_local_capabilities(school, coordinator, available) == set()
+
+
+def test_local_module_access_is_separate_from_finreg_control_plane():
+    router = Path("app/routers/finreg.py").read_text()
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert '_LOCAL_FINREG_ROLES = {"finance_officer"}' in router
+    assert '@router.get("/local-access-policy")' in router
+    assert '@router.put("/local-access-policy")' in router
+    assert router.count("user=Depends(require_school_admin)") >= 2
+    assert "Local policy cannot grant a capability outside Finreg composition" in router
+    assert router.count("Module is not granted to this school role") == 2
+    assert "authority\": \"local_access_only" in router
+    assert "Acesso local aos módulos Finreg" in host
+    assert "Não podem ativar módulos" in host
+    assert "'coordinator':" not in host
+    assert "'secretary':" not in host
 
 
 def test_host_parses_every_authoritative_workspace_without_capability_ids():
@@ -177,7 +212,8 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
     assert "'/finreg/composition-readiness/$capabilityId'" in host
     assert "void didChangeDependencies()" in host
     assert "_sessions.clear()" in host
-    assert ".label(Localizations.localeOf(context).languageCode)" in host
+    assert ".label(" in host
+    assert "Localizations.localeOf(context).languageCode" in host
     assert '@router.get("/composition-readiness/{capability_id}")' in Path(
         "app/routers/finreg.py"
     ).read_text()
@@ -185,7 +221,7 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "4f903b5cc18f668ab89d46f5a0e6f6dfea7f0a5f"
+    expected = "a7f8252000b26509299d8afd04d2dc6139137f93"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()

@@ -27,6 +27,7 @@ from app.models.finreg_integration import (
     FinregSchoolConnection,
 )
 from app.models.person import Child, ChildGuardian, Guardian
+from app.models.school import School
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
 from app.integrations.finreg_school import validate_school_capabilities
@@ -94,6 +95,35 @@ class BillingPlanDraft(BaseModel):
 class BillingPlanStateDraft(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
     next_run_date: date | None = None
+
+
+class LocalFinregAccessPolicy(BaseModel):
+    role_capabilities: dict[str, list[str]] = Field(default_factory=dict)
+
+
+_LOCAL_FINREG_ROLES = {"finance_officer"}
+
+
+def _allowed_local_capabilities(school: School, user, available: set[str]) -> set[str]:
+    roles = set(getattr(user, "_roles", set()))
+    if roles & {"school_admin", "platform_admin"}:
+        return available
+    configured = (school.features or {}).get("finreg_role_capabilities")
+    if not isinstance(configured, dict):
+        return available if "finance_officer" in roles else set()
+    allowed: set[str] = set()
+    for role in roles & _LOCAL_FINREG_ROLES:
+        values = configured.get(role)
+        if isinstance(values, list):
+            allowed.update(str(value) for value in values)
+    return allowed & available
+
+
+async def _school(db: AsyncSession, school_id) -> School:
+    school = await db.get(School, school_id)
+    if school is None:
+        raise HTTPException(status_code=404, detail="School not found")
+    return school
 
 
 async def _linked_guardian_child(guardian_id, child_id, school_id, db):
@@ -212,7 +242,24 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
                 "code": "company_mismatch",
                 "message": "The configured Finreg credential belongs to another company",
             })
-        return validate_school_capabilities(manifest)
+        manifest = validate_school_capabilities(manifest)
+        school = await _school(db, school_id)
+        workspace_ids = {
+            str(item["capability_id"])
+            for item in manifest.get("workspaces") or []
+        }
+        allowed = _allowed_local_capabilities(school, user, workspace_ids)
+        manifest["workspaces"] = [
+            item for item in manifest.get("workspaces") or []
+            if item.get("capability_id") in allowed
+        ]
+        manifest["host_surfaces"] = [
+            item for item in manifest.get("host_surfaces") or []
+            if item.get("capability_id") in allowed
+            or item.get("presentation") == "service"
+        ]
+        manifest["locally_granted_capabilities"] = sorted(allowed)
+        return manifest
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
 
 
@@ -287,6 +334,16 @@ async def workspace_launch(
     ))).scalar_one_or_none()
     if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
         raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
+    school = await _school(db, school_id)
+    manifest = await HttpFinregAdapter().capabilities(str(user.id))
+    workspace_ids = {
+        str(item["capability_id"])
+        for item in manifest.get("workspaces") or []
+    }
+    if capability_id not in _allowed_local_capabilities(
+        school, user, workspace_ids
+    ):
+        raise HTTPException(status_code=403, detail="Module is not granted to this school role")
     try:
         roles = list(
             getattr(user, "_roles_list", None)
@@ -336,6 +393,16 @@ async def embedded_session(
     ))).scalar_one_or_none()
     if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
         raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
+    school = await _school(db, school_id)
+    manifest = await HttpFinregAdapter().capabilities(str(user.id))
+    workspace_ids = {
+        str(item["capability_id"])
+        for item in manifest.get("workspaces") or []
+    }
+    if capability_id not in _allowed_local_capabilities(
+        school, user, workspace_ids
+    ):
+        raise HTTPException(status_code=403, detail="Module is not granted to this school role")
     roles = list(
         getattr(user, "_roles_list", None)
         or getattr(user, "roles", None)
@@ -370,6 +437,74 @@ async def embedded_session(
     return {
         "api_base_url": f"{web_url.rstrip('/')}/api/v1",
         **session,
+    }
+
+
+@router.get("/local-access-policy")
+async def local_access_policy(
+    user=Depends(require_school_admin),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    school = await _school(db, school_id)
+    manifest = validate_school_capabilities(
+        await HttpFinregAdapter().capabilities(str(user.id))
+    )
+    available = sorted(
+        str(item["capability_id"])
+        for item in manifest.get("workspaces") or []
+    )
+    configured = (school.features or {}).get("finreg_role_capabilities")
+    if not isinstance(configured, dict):
+        configured = {"finance_officer": available}
+    return {
+        "available_capabilities": available,
+        "workspaces": manifest.get("workspaces") or [],
+        "role_capabilities": {
+            role: sorted(set(configured.get(role) or []) & set(available))
+            for role in sorted(_LOCAL_FINREG_ROLES)
+        },
+        "authority": "local_access_only",
+    }
+
+
+@router.put("/local-access-policy")
+async def update_local_access_policy(
+    body: LocalFinregAccessPolicy,
+    user=Depends(require_school_admin),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    unknown_roles = set(body.role_capabilities) - _LOCAL_FINREG_ROLES
+    if unknown_roles:
+        raise HTTPException(status_code=422, detail="Unsupported local role")
+    school = await _school(db, school_id)
+    manifest = validate_school_capabilities(
+        await HttpFinregAdapter().capabilities(str(user.id))
+    )
+    available = {
+        str(item["capability_id"])
+        for item in manifest.get("workspaces") or []
+    }
+    requested = {
+        role: sorted(set(values))
+        for role, values in body.role_capabilities.items()
+    }
+    if any(set(values) - available for values in requested.values()):
+        raise HTTPException(
+            status_code=422,
+            detail="Local policy cannot grant a capability outside Finreg composition",
+        )
+    features = dict(school.features or {})
+    features["finreg_role_capabilities"] = {
+        role: requested.get(role, []) for role in sorted(_LOCAL_FINREG_ROLES)
+    }
+    school.features = features
+    await db.commit()
+    return {
+        "available_capabilities": sorted(available),
+        "role_capabilities": features["finreg_role_capabilities"],
+        "authority": "local_access_only",
     }
 
 
