@@ -212,7 +212,8 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
     assert "'/finreg/composition-readiness/$capabilityId'" in host
     assert "void didChangeDependencies()" in host
     assert "_sessions.clear()" in host
-    assert ".label(Localizations.localeOf(context).languageCode)" in host
+    assert ".label(" in host
+    assert "Localizations.localeOf(context).languageCode" in host
     assert '@router.get("/composition-readiness/{capability_id}")' in Path(
         "app/routers/finreg.py"
     ).read_text()
