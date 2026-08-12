@@ -20,6 +20,7 @@ _PLATFORM_ADMIN = {"platform_admin"}
 _SCHOOL_ADMIN   = {"school_admin"}
 _COORDINATOR    = {"coordinator"}
 _FINANCE        = {"finance_officer"}
+_CONFIGURABLE_FINANCE = {"coordinator", "finance_officer", "secretary"}
 _SECRETARY      = {"secretary"}
 _TEACHER        = {"teacher"}
 _NURSE          = {"nurse"}
@@ -95,6 +96,9 @@ async def get_current_user(
         user._roles_list = roles
         user._role = roles[0]
         user._school_id = uuid.UUID(school_id_str) if school_id_str else None
+        from app.models.school import School
+        school = await db.get(School, user._school_id) if user._school_id else None
+        user._school_features = school.resolved_features if school else {}
         return user
 
 
@@ -119,8 +123,23 @@ async def require_coordinator(user=Depends(get_current_user)):
 
 
 async def require_finance_access(user=Depends(get_current_user)):
-    """finance_officer or school_admin."""
-    return _check_roles(user, _FINANCE_ACCESS, "Finance access required")
+    """School administrators or locally granted operational finance roles."""
+    roles = set(getattr(user, "_roles", set()))
+    if roles & _ADMIN_OR_PLATFORM:
+        return user
+    eligible = roles & _CONFIGURABLE_FINANCE
+    if not eligible:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
+    features = getattr(user, "_school_features", {}) or {}
+    if not features.get("finance", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
+    permissions = features.get("role_permissions") or {}
+    for role in eligible:
+        configured = (permissions.get(role) or {}).get("finance")
+        default = role == "finance_officer"
+        if configured if isinstance(configured, bool) else default:
+            return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
 
 
 async def require_secretary(user=Depends(get_current_user)):

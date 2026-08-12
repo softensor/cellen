@@ -362,6 +362,23 @@ the current branch before committing.  GitHub pull requests, checks and merges
 should use the terminal workflow recorded in
 =docs/GITHUB_TERMINAL_RELEASE_RUNBOOK.org=.
 
+* School role access policy
+
+Finreg composition remains authoritative: Cellen cannot activate a module that
+the Finreg owner has not enabled.  A school administrator can narrow local
+access from the administration icon in Finance, under =Acessos e funções=.
+
+The editor shows every configurable Cellen role.  Cellen area switches control
+navigation and workspace availability; endpoint actions remain constrained by
+the role's backend responsibilities.  Finreg switches are enabled only for
+workspaces that the Finreg manifest exposes for the mapped role.  School and
+platform administrators retain non-configurable full administration access.
+
+The policy is stored in =School.features= as separate =role_permissions= and
+=finreg_role_capabilities= maps.  This keeps local RBAC independent from tenant
+composition and makes future Finreg modules manifest-driven rather than
+hard-coded in a vertical host.
+
 * Operational invariants
 
 - Never invent legal identities, NIFs, certificates, fiscal series, or approval
