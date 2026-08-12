@@ -441,6 +441,8 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
   final Map<String, Set<String>> _roleCapabilities = {};
   final Map<String, Set<String>> _roleWorkspaces = {};
   final Map<String, Map<String, bool>> _roleFeatures = {};
+  final Map<String, bool> _schoolFeatures = {};
+  final Map<String, bool> _roleAvailable = {};
   List<String> _available = const [];
   List<String> _featureKeys = const [];
   bool _saving = false;
@@ -461,6 +463,10 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
     }
     _featureKeys =
         List<String>.from(payload['feature_keys'] as List? ?? const []);
+    _schoolFeatures.addAll(
+        Map<String, bool>.from(payload['school_features'] as Map? ?? const {}));
+    _roleAvailable.addAll(
+        Map<String, bool>.from(payload['role_available'] as Map? ?? const {}));
     final features =
         Map<String, dynamic>.from(payload['role_features'] as Map? ?? const {});
     for (final entry in features.entries) {
@@ -514,9 +520,14 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
                 const SizedBox(height: 16),
                 for (final definition in kConfigRoles)
                   ExpansionTile(
+                    enabled: _roleAvailable[definition.key] ?? true,
                     leading: Icon(definition.icon, color: definition.color),
                     title: Text(definition.label),
-                    subtitle: Text(definition.description),
+                    subtitle: Text((_roleAvailable[definition.key] ?? true)
+                        ? definition.description
+                        : (portuguese
+                            ? 'Função desativada para esta escola'
+                            : 'Role disabled for this school')),
                     children: [
                       ListTile(
                         dense: true,
@@ -532,11 +543,13 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
                           value: _roleFeatures[definition.key]?[feature] ??
                               definition.defaultFeatures.contains(feature),
                           title: Text(_humanize(feature)),
-                          onChanged: (selected) => setState(() {
-                            _roleFeatures.putIfAbsent(
-                                    definition.key, () => {})[feature] =
-                                selected == true;
-                          }),
+                          onChanged: _schoolFeatures[feature] == false
+                              ? null
+                              : (selected) => setState(() {
+                                    _roleFeatures.putIfAbsent(
+                                            definition.key, () => {})[feature] =
+                                        selected == true;
+                                  }),
                         ),
                       const Divider(),
                       ListTile(

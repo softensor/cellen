@@ -91,8 +91,11 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     assert "for (final definition in kConfigRoles)" in host
     assert "role_workspaces" in router
     assert "role_features" in router
+    assert "school_features" in router
+    assert "role_available" in router
     assert "Áreas do Cellen" in host
     assert "Módulos financeiros Finreg" in host
+    assert "Função desativada para esta escola" in host
 
 
 def test_finance_policy_is_enforced_by_navigation_and_backend():

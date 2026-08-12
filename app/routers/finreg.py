@@ -485,6 +485,14 @@ async def local_access_policy(
         },
         "role_workspaces": role_workspaces,
         "feature_keys": feature_keys,
+        "school_features": {
+            key: bool(school.resolved_features.get(key, True))
+            for key in feature_keys
+        },
+        "role_available": {
+            role: bool(school.resolved_features.get(f"role_{role}", True))
+            for role in sorted(_LOCAL_ACCESS_ROLES)
+        },
         "role_features": {
             role: {
                 key: bool(value)
