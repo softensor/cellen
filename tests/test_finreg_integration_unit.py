@@ -96,6 +96,9 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     assert "Áreas do Cellen" in host
     assert "Módulos financeiros Finreg" in host
     assert "Função desativada para esta escola" in host
+    settings = Path("mobile/lib/features/admin/school_settings_screen.dart").read_text()
+    assert "showSchoolAccessPolicyDialog" in settings
+    assert "Acessos e funções" in settings
 
 
 def test_finance_policy_is_enforced_by_navigation_and_backend():

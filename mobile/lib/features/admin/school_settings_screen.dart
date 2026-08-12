@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api/api_client.dart';
+import 'finance/finreg_sales_host_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -25,12 +26,10 @@ class SchoolYear {
   factory SchoolYear.fromJson(Map<String, dynamic> json) => SchoolYear(
         id: json['id']?.toString() ?? '',
         yearLabel: json['year_label'] as String? ?? '',
-        startDate:
-            DateTime.tryParse(json['start_date'] as String? ?? '') ??
-                DateTime.now(),
-        endDate:
-            DateTime.tryParse(json['end_date'] as String? ?? '') ??
-                DateTime.now(),
+        startDate: DateTime.tryParse(json['start_date'] as String? ?? '') ??
+            DateTime.now(),
+        endDate: DateTime.tryParse(json['end_date'] as String? ?? '') ??
+            DateTime.now(),
         isActive: json['is_active'] as bool? ?? false,
       );
 }
@@ -60,6 +59,16 @@ class SchoolSettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Anos Lectivos'),
+        actions: [
+          IconButton(
+            tooltip: 'Acessos e funções',
+            icon: const Icon(Icons.manage_accounts_outlined),
+            onPressed: () => showSchoolAccessPolicyDialog(
+              context,
+              ref.read(apiClientProvider),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showCreateYearDialog(context, ref),
@@ -72,8 +81,7 @@ class SchoolSettingsScreen extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline,
-                  size: 48, color: Colors.red),
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 8),
               Text(e.toString(), textAlign: TextAlign.center),
               const SizedBox(height: 16),
@@ -93,9 +101,7 @@ class SchoolSettingsScreen extends ConsumerWidget {
                 children: [
                   Icon(Icons.calendar_today,
                       size: 64,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant),
+                      color: Theme.of(context).colorScheme.outlineVariant),
                   const SizedBox(height: 16),
                   Text(
                     'Nenhum ano lectivo encontrado',
@@ -104,13 +110,8 @@ class SchoolSettingsScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Toque em + para criar o primeiro ano lectivo',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -118,8 +119,7 @@ class SchoolSettingsScreen extends ConsumerWidget {
           }
 
           return RefreshIndicator(
-            onRefresh: () async =>
-                ref.invalidate(schoolYearsProvider),
+            onRefresh: () async => ref.invalidate(schoolYearsProvider),
             child: ListView.builder(
               padding: const EdgeInsets.only(
                   left: 12, right: 12, top: 12, bottom: 88),
@@ -128,8 +128,7 @@ class SchoolSettingsScreen extends ConsumerWidget {
                 final year = years[i];
                 return _SchoolYearCard(
                   year: year,
-                  onActivated: () =>
-                      ref.invalidate(schoolYearsProvider),
+                  onActivated: () => ref.invalidate(schoolYearsProvider),
                 );
               },
             ),
@@ -140,7 +139,8 @@ class SchoolSettingsScreen extends ConsumerWidget {
   }
 
   void _showCreateYearDialog(BuildContext context, WidgetRef ref) {
-    showDialog(useRootNavigator: false, 
+    showDialog(
+      useRootNavigator: false,
       context: context,
       builder: (_) => _CreateSchoolYearDialog(
         onCreated: () => ref.invalidate(schoolYearsProvider),
@@ -156,31 +156,25 @@ class _SchoolYearCard extends ConsumerStatefulWidget {
   final SchoolYear year;
   final VoidCallback onActivated;
 
-  const _SchoolYearCard(
-      {required this.year, required this.onActivated});
+  const _SchoolYearCard({required this.year, required this.onActivated});
 
   @override
-  ConsumerState<_SchoolYearCard> createState() =>
-      _SchoolYearCardState();
+  ConsumerState<_SchoolYearCard> createState() => _SchoolYearCardState();
 }
 
-class _SchoolYearCardState
-    extends ConsumerState<_SchoolYearCard> {
+class _SchoolYearCardState extends ConsumerState<_SchoolYearCard> {
   bool _activating = false;
 
   Future<void> _activate() async {
     setState(() => _activating = true);
     try {
       final api = ref.read(apiClientProvider);
-      await api.post(
-          '/schools/school-years/${widget.year.id}/activate');
+      await api.post('/schools/school-years/${widget.year.id}/activate');
       widget.onActivated();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('Erro ao activar ano lectivo: $e')),
+          SnackBar(content: Text('Erro ao activar ano lectivo: $e')),
         );
       }
     } finally {
@@ -211,8 +205,7 @@ class _SchoolYearCardState
                         style: Theme.of(context)
                             .textTheme
                             .titleMedium
-                            ?.copyWith(
-                                fontWeight: FontWeight.bold),
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       if (year.isActive) ...[
                         const SizedBox(width: 8),
@@ -220,12 +213,10 @@ class _SchoolYearCardState
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.15),
-                            borderRadius:
-                                BorderRadius.circular(10),
+                            color: Colors.green.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                                color:
-                                    Colors.green.withOpacity(0.5)),
+                                color: Colors.green.withValues(alpha: 0.5)),
                           ),
                           child: const Text(
                             'Activo',
@@ -242,13 +233,8 @@ class _SchoolYearCardState
                   const SizedBox(height: 4),
                   Text(
                     '${dateFmt.format(year.startDate)} – ${dateFmt.format(year.endDate)}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -258,8 +244,7 @@ class _SchoolYearCardState
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : OutlinedButton(
                       onPressed: _activate,
                       child: const Text('Activar'),
@@ -289,8 +274,7 @@ class _CreateSchoolYearDialogState
   final _formKey = GlobalKey<FormState>();
   final _labelCtrl = TextEditingController();
   DateTime _startDate = DateTime.now();
-  DateTime _endDate =
-      DateTime.now().add(const Duration(days: 365));
+  DateTime _endDate = DateTime.now().add(const Duration(days: 365));
   bool _isLoading = false;
   String? _error;
 
@@ -326,8 +310,7 @@ class _CreateSchoolYearDialogState
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_endDate.isBefore(_startDate)) {
-      setState(() =>
-          _error = 'A data de fim deve ser após a data de início');
+      setState(() => _error = 'A data de fim deve ser após a data de início');
       return;
     }
 
@@ -373,9 +356,7 @@ class _CreateSchoolYearDialogState
                   prefixIcon: Icon(Icons.label_outline),
                 ),
                 validator: (v) =>
-                    v == null || v.trim().isEmpty
-                        ? 'Campo obrigatório'
-                        : null,
+                    v == null || v.trim().isEmpty ? 'Campo obrigatório' : null,
               ),
               const SizedBox(height: 12),
               InkWell(
@@ -385,8 +366,7 @@ class _CreateSchoolYearDialogState
                     labelText: 'Data de Início *',
                     prefixIcon: Icon(Icons.calendar_today),
                   ),
-                  child:
-                      Text(displayFmt.format(_startDate)),
+                  child: Text(displayFmt.format(_startDate)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -403,10 +383,8 @@ class _CreateSchoolYearDialogState
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_error!,
-                    style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .error)),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
             ],
           ),
@@ -414,8 +392,7 @@ class _CreateSchoolYearDialogState
       ),
       actions: [
         TextButton(
-          onPressed:
-              _isLoading ? null : () => Navigator.pop(context),
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
         FilledButton(
@@ -425,8 +402,7 @@ class _CreateSchoolYearDialogState
                   height: 18,
                   width: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white))
+                      strokeWidth: 2, color: Colors.white))
               : const Text('Criar'),
         ),
       ],

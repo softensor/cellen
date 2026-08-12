@@ -218,12 +218,9 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                 onManageAccess:
                     ref.watch(authProvider).roles.contains(UserRole.schoolAdmin)
                         ? () async {
-                            await showDialog<void>(
-                              context: context,
-                              useRootNavigator: false,
-                              builder: (_) => _FinregAccessPolicyDialog(
-                                api: ref.read(apiClientProvider),
-                              ),
+                            await showSchoolAccessPolicyDialog(
+                              context,
+                              ref.read(apiClientProvider),
                             );
                             _refresh();
                           }
@@ -425,6 +422,16 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
     );
   }
 }
+
+Future<void> showSchoolAccessPolicyDialog(
+  BuildContext context,
+  ApiClient api,
+) =>
+    showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _FinregAccessPolicyDialog(api: api),
+    );
 
 class _FinregAccessPolicyDialog extends StatefulWidget {
   const _FinregAccessPolicyDialog({required this.api});
