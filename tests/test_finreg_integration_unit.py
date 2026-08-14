@@ -23,7 +23,8 @@ def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
     router = (root / "mobile/lib/core/router/router.dart").read_text()
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
 
-    assert "path: '/admin/finance',              builder: (_, __) => const FinregSalesHostScreen()" in router
+    assert "path: '/admin/finance'" in router
+    assert "const FinregSalesHostScreen()" in router
     assert "FinregSchoolBillingModule(" in host
     assert "return const InvoicesScreen()" not in host
 
@@ -74,17 +75,39 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert '_LOCAL_FINREG_ROLES = {"finance_officer"}' in router
+    for role in (
+        "coordinator", "finance_officer", "secretary", "teacher", "nurse",
+        "parent", "student",
+    ):
+        assert f'"{role}"' in router
     assert '@router.get("/local-access-policy")' in router
     assert '@router.put("/local-access-policy")' in router
     assert router.count("user=Depends(require_school_admin)") >= 2
     assert "Local policy cannot grant a capability outside Finreg composition" in router
     assert router.count("Module is not granted to this school role") == 2
     assert "authority\": \"local_access_only" in router
-    assert "Acesso local aos módulos Finreg" in host
+    assert "Acessos e funções" in host
     assert "Não podem ativar módulos" in host
-    assert "'coordinator':" not in host
-    assert "'secretary':" not in host
+    assert "for (final definition in kConfigRoles)" in host
+    assert "role_workspaces" in router
+    assert "role_features" in router
+    assert "school_features" in router
+    assert "role_available" in router
+    assert "Áreas do Cellen" in host
+    assert "Módulos financeiros Finreg" in host
+    assert "Função desativada para esta escola" in host
+    settings = Path("mobile/lib/features/admin/school_settings_screen.dart").read_text()
+    assert "showSchoolAccessPolicyDialog" in settings
+    assert "Acessos e funções" in settings
+
+
+def test_finance_policy_is_enforced_by_navigation_and_backend():
+    dependencies = Path("app/core/dependencies.py").read_text()
+    navigation = Path("mobile/lib/core/router/router.dart").read_text()
+    assert '_CONFIGURABLE_FINANCE = {"coordinator", "finance_officer", "secretary"}' in dependencies
+    assert 'permissions.get(role)' in dependencies
+    assert "roleCanAccessWithDefault" in navigation
+    assert "final hasFinanceAccess" in navigation
 
 
 def test_host_parses_every_authoritative_workspace_without_capability_ids():
@@ -221,7 +244,7 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "a7f8252000b26509299d8afd04d2dc6139137f93"
+    expected = "e2f744e17b0e0618046d5d50380700b0a79014a0"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()

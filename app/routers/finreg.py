@@ -99,9 +99,13 @@ class BillingPlanStateDraft(BaseModel):
 
 class LocalFinregAccessPolicy(BaseModel):
     role_capabilities: dict[str, list[str]] = Field(default_factory=dict)
+    role_features: dict[str, dict[str, bool]] | None = None
 
 
-_LOCAL_FINREG_ROLES = {"finance_officer"}
+_LOCAL_ACCESS_ROLES = {
+    "coordinator", "finance_officer", "secretary", "teacher", "nurse",
+    "parent", "student",
+}
 
 
 def _allowed_local_capabilities(school: School, user, available: set[str]) -> set[str]:
@@ -112,7 +116,7 @@ def _allowed_local_capabilities(school: School, user, available: set[str]) -> se
     if not isinstance(configured, dict):
         return available if "finance_officer" in roles else set()
     allowed: set[str] = set()
-    for role in roles & _LOCAL_FINREG_ROLES:
+    for role in roles & _LOCAL_ACCESS_ROLES:
         values = configured.get(role)
         if isinstance(values, list):
             allowed.update(str(value) for value in values)
@@ -457,12 +461,45 @@ async def local_access_policy(
     configured = (school.features or {}).get("finreg_role_capabilities")
     if not isinstance(configured, dict):
         configured = {"finance_officer": available}
+    role_workspaces = {
+        role: sorted(set(values) & set(available))
+        for role, values in (manifest.get("role_workspaces") or {}).items()
+        if role in _LOCAL_ACCESS_ROLES
+    }
+    role_permissions = (school.features or {}).get("role_permissions")
+    if not isinstance(role_permissions, dict):
+        role_permissions = {}
+    feature_keys = sorted(
+        key for key, value in school.resolved_features.items()
+        if isinstance(value, bool) and not key.startswith("role_")
+    )
     return {
         "available_capabilities": available,
         "workspaces": manifest.get("workspaces") or [],
         "role_capabilities": {
-            role: sorted(set(configured.get(role) or []) & set(available))
-            for role in sorted(_LOCAL_FINREG_ROLES)
+            role: sorted(
+                set(configured.get(role) or [])
+                & set(role_workspaces.get(role) or [])
+            )
+            for role in sorted(_LOCAL_ACCESS_ROLES)
+        },
+        "role_workspaces": role_workspaces,
+        "feature_keys": feature_keys,
+        "school_features": {
+            key: bool(school.resolved_features.get(key, True))
+            for key in feature_keys
+        },
+        "role_available": {
+            role: bool(school.resolved_features.get(f"role_{role}", True))
+            for role in sorted(_LOCAL_ACCESS_ROLES)
+        },
+        "role_features": {
+            role: {
+                key: bool(value)
+                for key, value in (role_permissions.get(role) or {}).items()
+                if key in feature_keys and isinstance(value, bool)
+            }
+            for role in sorted(_LOCAL_ACCESS_ROLES)
         },
         "authority": "local_access_only",
     }
@@ -475,7 +512,10 @@ async def update_local_access_policy(
     school_id=Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
 ):
-    unknown_roles = set(body.role_capabilities) - _LOCAL_FINREG_ROLES
+    unknown_roles = (
+        set(body.role_capabilities)
+        | set(body.role_features or {})
+    ) - _LOCAL_ACCESS_ROLES
     if unknown_roles:
         raise HTTPException(status_code=422, detail="Unsupported local role")
     school = await _school(db, school_id)
@@ -486,24 +526,47 @@ async def update_local_access_policy(
         str(item["capability_id"])
         for item in manifest.get("workspaces") or []
     }
+    role_workspaces = {
+        role: set(values) & available
+        for role, values in (manifest.get("role_workspaces") or {}).items()
+        if role in _LOCAL_ACCESS_ROLES
+    }
     requested = {
         role: sorted(set(values))
         for role, values in body.role_capabilities.items()
     }
-    if any(set(values) - available for values in requested.values()):
+    if any(
+        set(values) - role_workspaces.get(role, set())
+        for role, values in requested.items()
+    ):
         raise HTTPException(
             status_code=422,
             detail="Local policy cannot grant a capability outside Finreg composition",
         )
     features = dict(school.features or {})
     features["finreg_role_capabilities"] = {
-        role: requested.get(role, []) for role in sorted(_LOCAL_FINREG_ROLES)
+        role: requested.get(role, []) for role in sorted(_LOCAL_ACCESS_ROLES)
     }
+    if body.role_features is not None:
+        feature_keys = {
+            key for key, value in school.resolved_features.items()
+            if isinstance(value, bool) and not key.startswith("role_")
+        }
+        if any(
+            set(values) - feature_keys
+            for values in body.role_features.values()
+        ):
+            raise HTTPException(status_code=422, detail="Unsupported Cellen feature")
+        features["role_permissions"] = {
+            role: dict(sorted(body.role_features.get(role, {}).items()))
+            for role in sorted(_LOCAL_ACCESS_ROLES)
+        }
     school.features = features
     await db.commit()
     return {
         "available_capabilities": sorted(available),
         "role_capabilities": features["finreg_role_capabilities"],
+        "role_features": features.get("role_permissions", {}),
         "authority": "local_access_only",
     }
 

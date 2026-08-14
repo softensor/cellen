@@ -10,6 +10,8 @@ import 'package:printing/printing.dart';
 
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
+import '../../../core/models/role_definitions.dart';
+import '../../../core/providers/currency_provider.dart';
 import 'billing_items_screen.dart';
 import 'credit_balances_screen.dart';
 import 'parent_payment_review_screen.dart';
@@ -216,12 +218,9 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                 onManageAccess:
                     ref.watch(authProvider).roles.contains(UserRole.schoolAdmin)
                         ? () async {
-                            await showDialog<void>(
-                              context: context,
-                              useRootNavigator: false,
-                              builder: (_) => _FinregAccessPolicyDialog(
-                                api: ref.read(apiClientProvider),
-                              ),
+                            await showSchoolAccessPolicyDialog(
+                              context,
+                              ref.read(apiClientProvider),
                             );
                             _refresh();
                           }
@@ -424,6 +423,16 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
   }
 }
 
+Future<void> showSchoolAccessPolicyDialog(
+  BuildContext context,
+  ApiClient api,
+) =>
+    showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _FinregAccessPolicyDialog(api: api),
+    );
+
 class _FinregAccessPolicyDialog extends StatefulWidget {
   const _FinregAccessPolicyDialog({required this.api});
 
@@ -437,7 +446,12 @@ class _FinregAccessPolicyDialog extends StatefulWidget {
 class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
   late final Future<void> _load = _loadPolicy();
   final Map<String, Set<String>> _roleCapabilities = {};
+  final Map<String, Set<String>> _roleWorkspaces = {};
+  final Map<String, Map<String, bool>> _roleFeatures = {};
+  final Map<String, bool> _schoolFeatures = {};
+  final Map<String, bool> _roleAvailable = {};
   List<String> _available = const [];
+  List<String> _featureKeys = const [];
   bool _saving = false;
 
   Future<void> _loadPolicy() async {
@@ -449,6 +463,22 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
     for (final entry in roles.entries) {
       _roleCapabilities[entry.key] = Set<String>.from(entry.value as List);
     }
+    final workspaces = Map<String, dynamic>.from(
+        payload['role_workspaces'] as Map? ?? const {});
+    for (final entry in workspaces.entries) {
+      _roleWorkspaces[entry.key] = Set<String>.from(entry.value as List);
+    }
+    _featureKeys =
+        List<String>.from(payload['feature_keys'] as List? ?? const []);
+    _schoolFeatures.addAll(
+        Map<String, bool>.from(payload['school_features'] as Map? ?? const {}));
+    _roleAvailable.addAll(
+        Map<String, bool>.from(payload['role_available'] as Map? ?? const {}));
+    final features =
+        Map<String, dynamic>.from(payload['role_features'] as Map? ?? const {});
+    for (final entry in features.entries) {
+      _roleFeatures[entry.key] = Map<String, bool>.from(entry.value as Map);
+    }
   }
 
   Future<void> _save() async {
@@ -458,7 +488,14 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
         'role_capabilities': _roleCapabilities.map(
           (role, capabilities) => MapEntry(role, capabilities.toList()..sort()),
         ),
+        'role_features': _roleFeatures,
       });
+      // Refresh navigation immediately after policy changes.
+      if (mounted) {
+        // The dialog is hosted by a Consumer screen, so its nearest container
+        // can invalidate the shared school policy provider.
+        ProviderScope.containerOf(context).invalidate(schoolInfoProvider);
+      }
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -468,13 +505,8 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
   @override
   Widget build(BuildContext context) {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
-    const roleLabels = {
-      'finance_officer': {'pt': 'Direção financeira', 'en': 'Finance officer'},
-    };
     return AlertDialog(
-      title: Text(portuguese
-          ? 'Acesso local aos módulos Finreg'
-          : 'Local Finreg module access'),
+      title: Text(portuguese ? 'Acessos e funções' : 'Access and roles'),
       content: SizedBox(
         width: 720,
         height: 520,
@@ -490,32 +522,82 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
             return ListView(
               children: [
                 Text(portuguese
-                    ? 'Estas permissões apenas restringem o acesso dentro da escola. Não podem ativar módulos ou alterar a composição definida pelo proprietário Finreg.'
-                    : 'These permissions only restrict access inside the school. They cannot activate modules or change the composition granted by the Finreg owner.'),
+                    ? 'Estas permissões apenas restringem o acesso dentro da escola. Não podem ativar módulos ou alterar a composição definida pelo proprietário Finreg. Administradores da escola mantêm acesso completo.'
+                    : 'These permissions only restrict access inside the school. They cannot activate modules or change the composition granted by the Finreg owner. School administrators retain full access.'),
                 const SizedBox(height: 16),
-                for (final role in roleLabels.keys) ...[
-                  Text(
-                    roleLabels[role]![portuguese ? 'pt' : 'en']!,
-                    style: Theme.of(context).textTheme.titleMedium,
+                for (final definition in kConfigRoles)
+                  ExpansionTile(
+                    enabled: _roleAvailable[definition.key] ?? true,
+                    leading: Icon(definition.icon, color: definition.color),
+                    title: Text(definition.label),
+                    subtitle: Text((_roleAvailable[definition.key] ?? true)
+                        ? definition.description
+                        : (portuguese
+                            ? 'Função desativada para esta escola'
+                            : 'Role disabled for this school')),
+                    children: [
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                            portuguese ? 'Áreas do Cellen' : 'Cellen areas'),
+                        subtitle: Text(portuguese
+                            ? 'Controla a navegação. As ações continuam protegidas pelo tipo de função.'
+                            : 'Controls navigation. Actions remain protected by the role type.'),
+                      ),
+                      for (final feature in _featureKeys)
+                        CheckboxListTile(
+                          dense: true,
+                          value: _roleFeatures[definition.key]?[feature] ??
+                              definition.defaultFeatures.contains(feature),
+                          title: Text(_humanize(feature)),
+                          onChanged: _schoolFeatures[feature] == false
+                              ? null
+                              : (selected) => setState(() {
+                                    _roleFeatures.putIfAbsent(
+                                            definition.key, () => {})[feature] =
+                                        selected == true;
+                                  }),
+                        ),
+                      const Divider(),
+                      ListTile(
+                        dense: true,
+                        title: Text(portuguese
+                            ? 'Módulos financeiros Finreg'
+                            : 'Finreg financial modules'),
+                        subtitle: Text(
+                          (_roleWorkspaces[definition.key]?.isNotEmpty ?? false)
+                              ? (portuguese
+                                  ? 'Apenas módulos autorizados para esta função pelo Finreg.'
+                                  : 'Only modules authorized for this role by Finreg.')
+                              : (portuguese
+                                  ? 'Esta função não possui um perfil operacional Finreg. O portal contextual permanece no Cellen.'
+                                  : 'This role has no operational Finreg profile. Contextual portal access remains in Cellen.'),
+                        ),
+                      ),
+                      for (final capability in _available)
+                        CheckboxListTile(
+                          dense: true,
+                          value: _roleCapabilities[definition.key]
+                                  ?.contains(capability) ??
+                              false,
+                          title: Text(finregEmbeddedModules[capability]
+                                  ?.label(portuguese ? 'pt' : 'en') ??
+                              capability),
+                          onChanged: _roleWorkspaces[definition.key]
+                                      ?.contains(capability) !=
+                                  true
+                              ? null
+                              : (selected) => setState(() {
+                                    final values =
+                                        _roleCapabilities.putIfAbsent(
+                                            definition.key, () => <String>{});
+                                    selected == true
+                                        ? values.add(capability)
+                                        : values.remove(capability);
+                                  }),
+                        ),
+                    ],
                   ),
-                  for (final capability in _available)
-                    CheckboxListTile(
-                      dense: true,
-                      value: _roleCapabilities[role]?.contains(capability) ??
-                          false,
-                      title: Text(finregEmbeddedModules[capability]
-                              ?.label(portuguese ? 'pt' : 'en') ??
-                          capability),
-                      onChanged: (selected) => setState(() {
-                        final values = _roleCapabilities.putIfAbsent(
-                            role, () => <String>{});
-                        selected == true
-                            ? values.add(capability)
-                            : values.remove(capability);
-                      }),
-                    ),
-                  const Divider(),
-                ],
               ],
             );
           },
@@ -533,6 +615,12 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
       ],
     );
   }
+
+  String _humanize(String value) => value
+      .split('_')
+      .map((part) =>
+          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
 }
 
 class _SchoolContextDefinition {
