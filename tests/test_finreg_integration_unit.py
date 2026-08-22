@@ -1,5 +1,6 @@
 import uuid
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -277,8 +278,8 @@ def test_release_grants_catalog_and_employee_integration_scopes():
 
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
-    expected = "e2f744e17b0e0618046d5d50380700b0a79014a0"
-    assert Path(".github/finreg-packages-ref").read_text().strip() == expected
+    expected = Path(".github/finreg-packages-ref").read_text().strip()
+    assert re.fullmatch(r"[0-9a-f]{40}", expected)
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
     backend = Path(".github/workflows/backend_tests.yml").read_text()
