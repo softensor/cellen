@@ -14,9 +14,7 @@ final employeesProvider =
     FutureProvider.autoDispose<List<Employee>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/employees') as List;
-  return data
-      .map((e) => Employee.fromJson(e as Map<String, dynamic>))
-      .toList();
+  return data.map((e) => Employee.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 // ---------------------------------------------------------------------------
@@ -34,7 +32,8 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
   String _filter = 'all'; // all, or a role key from kStaffRoles
 
   Future<void> _deactivateEmployee(Employee emp) async {
-    final confirmed = await showDialog<bool>(useRootNavigator: false, 
+    final confirmed = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Desactivar Funcionário'),
@@ -70,6 +69,26 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
     }
   }
 
+  Future<void> _syncEmployee(Employee emp) async {
+    try {
+      final result = Map<String, dynamic>.from(await ref
+          .read(apiClientProvider)
+          .post('/finreg/employees/${emp.id}/sync') as Map);
+      if (!mounted) return;
+      final review = result['requires_review'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(review
+            ? 'Vínculo já existente no Finreg. Reveja alterações contratuais em Processamento salarial.'
+            : '${emp.fullName} preparado para processamento salarial no Finreg.'),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Não foi possível preparar ${emp.fullName}: $e'),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final employeesAsync = ref.watch(employeesProvider);
@@ -99,7 +118,8 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                     onSelected: (_) => setState(() => _filter = 'all'),
                   ),
                   for (final role in kStaffRoles.where((r) =>
-                      school?.hasFeature(r.featureFlag) ?? r.alwaysAvailable)) ...[
+                      school?.hasFeature(r.featureFlag) ??
+                      r.alwaysAvailable)) ...[
                     const SizedBox(width: 8),
                     _FilterChip(
                       label: role.label,
@@ -114,8 +134,7 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
 
           Expanded(
             child: employeesAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -137,8 +156,10 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                 final filtered = _filter == 'all'
                     ? employees
                     : employees
-                        .where((e) => e.roles.contains(_filter) ||
-                            (_filter == 'school_admin' && e.employeeType == 'admin') ||
+                        .where((e) =>
+                            e.roles.contains(_filter) ||
+                            (_filter == 'school_admin' &&
+                                e.employeeType == 'admin') ||
                             (e.roles.isEmpty && e.employeeType == _filter))
                         .toList();
 
@@ -149,20 +170,17 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                       children: [
                         Icon(Icons.people,
                             size: 64,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .outlineVariant),
+                            color:
+                                Theme.of(context).colorScheme.outlineVariant),
                         const SizedBox(height: 16),
                         Text(
                           'Nenhum funcionário encontrado',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
                       ],
                     ),
@@ -170,8 +188,7 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: () async =>
-                      ref.invalidate(employeesProvider),
+                  onRefresh: () async => ref.invalidate(employeesProvider),
                   child: ListView.builder(
                     padding: const EdgeInsets.only(bottom: 88),
                     itemCount: filtered.length,
@@ -179,6 +196,7 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                       final emp = filtered[index];
                       return _EmployeeTile(
                         employee: emp,
+                        onSyncFinreg: () => _syncEmployee(emp),
                         onDeactivate: () => _deactivateEmployee(emp),
                       );
                     },
@@ -219,15 +237,19 @@ class _FilterChip extends StatelessWidget {
 class _EmployeeTile extends StatelessWidget {
   final Employee employee;
   final VoidCallback? onDeactivate;
-  const _EmployeeTile({required this.employee, this.onDeactivate});
+  final VoidCallback? onSyncFinreg;
+  const _EmployeeTile({
+    required this.employee,
+    this.onDeactivate,
+    this.onSyncFinreg,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: _EmployeeAvatar(
             photoUrl: employee.photoUrl, name: employee.fullName),
         title: Text(
@@ -250,10 +272,12 @@ class _EmployeeTile extends StatelessWidget {
                         color: def?.color ?? Colors.grey,
                       );
                     }).toList()
-                  : [_RoleChip(
-                      label: employee.employeeTypeLabel,
-                      color: Colors.grey,
-                    )],
+                  : [
+                      _RoleChip(
+                        label: employee.employeeTypeLabel,
+                        color: Colors.grey,
+                      )
+                    ],
             ),
           ],
         ),
@@ -262,8 +286,7 @@ class _EmployeeTile extends StatelessWidget {
           children: [
             if (!employee.isActive)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(12),
@@ -275,8 +298,20 @@ class _EmployeeTile extends StatelessWidget {
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == 'deactivate') onDeactivate!();
+                  if (v == 'sync_finreg') onSyncFinreg?.call();
                 },
                 itemBuilder: (_) => [
+                  if (onSyncFinreg != null)
+                    const PopupMenuItem(
+                      value: 'sync_finreg',
+                      child: Row(
+                        children: [
+                          Icon(Icons.sync, size: 18),
+                          SizedBox(width: 8),
+                          Text('Preparar processamento salarial'),
+                        ],
+                      ),
+                    ),
                   const PopupMenuItem(
                     value: 'deactivate',
                     child: Row(
@@ -292,8 +327,7 @@ class _EmployeeTile extends StatelessWidget {
             const Icon(Icons.chevron_right),
           ],
         ),
-        onTap: () =>
-            context.push('/admin/employees/${employee.id}/edit'),
+        onTap: () => context.push('/admin/employees/${employee.id}/edit'),
       ),
     );
   }
@@ -309,12 +343,13 @@ class _RoleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -340,8 +375,7 @@ class _EmployeeAvatar extends StatelessWidget {
         : '?';
     return CircleAvatar(
       radius: 24,
-      backgroundColor:
-          Theme.of(context).colorScheme.secondaryContainer,
+      backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
       child: Text(
         initials.toUpperCase(),
         style: TextStyle(

@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/models/employee.dart';
 import '../../../core/models/role_definitions.dart';
-import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
 import 'employees_list_screen.dart' show employeesProvider;
 
@@ -20,8 +19,7 @@ class EmployeeFormScreen extends ConsumerStatefulWidget {
   const EmployeeFormScreen({super.key, this.employeeId});
 
   @override
-  ConsumerState<EmployeeFormScreen> createState() =>
-      _EmployeeFormScreenState();
+  ConsumerState<EmployeeFormScreen> createState() => _EmployeeFormScreenState();
 }
 
 class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
@@ -31,14 +29,17 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   final _middleNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _cedulaCtrl = TextEditingController();
+  final _taxIdCtrl = TextEditingController();
+  final _socialSecurityCtrl = TextEditingController();
+  final _salaryCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _positionCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
-  String _employeeType = 'teacher';
-  // Multi-role selection — used for new employees; empty = use _employeeType mapping
+  String _contractType = 'permanent';
+  // Multi-role selection — used for new employees.
   final Set<String> _selectedRoles = {'teacher'};
   DateTime? _hireDate;
   bool _isLoading = false;
@@ -64,14 +65,18 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       _middleNameCtrl.text = emp.middleName ?? '';
       _lastNameCtrl.text = emp.lastName;
       _cedulaCtrl.text = emp.cedula ?? '';
+      _taxIdCtrl.text = emp.taxId ?? '';
+      _socialSecurityCtrl.text = emp.socialSecurity ?? '';
+      _salaryCtrl.text = emp.salary?.toStringAsFixed(2) ?? '';
       _phoneCtrl.text = emp.phone ?? '';
       _emailCtrl.text = emp.email ?? '';
       _positionCtrl.text = emp.position ?? '';
       setState(() {
-        _employeeType = emp.employeeType;
+        _contractType = emp.contractType ?? 'permanent';
         _selectedRoles
           ..clear()
-          ..add(emp.employeeType == 'admin' ? 'school_admin' : emp.employeeType);
+          ..add(
+              emp.employeeType == 'admin' ? 'school_admin' : emp.employeeType);
         _hireDate = emp.hireDate;
         _isLoadingEmployee = false;
       });
@@ -96,7 +101,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   Future<void> _uploadPhoto() async {
     if (!isEditing) return;
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
+    final image =
+        await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
     if (image == null) return;
     try {
       final api = ref.read(apiClientProvider);
@@ -121,13 +127,19 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_hireDate == null) {
+      setState(() =>
+          _error = 'A data de admissão é obrigatória para o vínculo laboral.');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     // Derive employee_type from selected roles for HR stats
-    final primaryRole = _selectedRoles.isEmpty ? 'teacher' : _selectedRoles.first;
+    final primaryRole =
+        _selectedRoles.isEmpty ? 'teacher' : _selectedRoles.first;
     final derivedType = primaryRole == 'school_admin'
         ? 'admin'
         : (primaryRole == 'teacher' ? 'teacher' : 'staff');
@@ -143,10 +155,14 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       body['middle_name'] = _middleNameCtrl.text.trim();
     }
     if (_cedulaCtrl.text.trim().isNotEmpty) {
-      body['cedula'] = _cedulaCtrl.text.trim();
+      body['id_card_number'] = _cedulaCtrl.text.trim();
     }
+    body['tax_id'] = _taxIdCtrl.text.trim();
+    body['social_security'] = _socialSecurityCtrl.text.trim();
+    body['contract_type'] = _contractType;
+    body['salary'] = double.parse(_salaryCtrl.text.trim().replaceAll(',', '.'));
     if (_phoneCtrl.text.trim().isNotEmpty) {
-      body['phone'] = _phoneCtrl.text.trim();
+      body['mobile_first'] = _phoneCtrl.text.trim();
     }
     if (_emailCtrl.text.trim().isNotEmpty) {
       body['email'] = _emailCtrl.text.trim();
@@ -186,6 +202,9 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     _middleNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _cedulaCtrl.dispose();
+    _taxIdCtrl.dispose();
+    _socialSecurityCtrl.dispose();
+    _salaryCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
     _positionCtrl.dispose();
@@ -196,12 +215,10 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
     if (_isLoadingEmployee) {
       return Scaffold(
         appBar: AppBar(
-            title:
-                Text(isEditing ? 'Editar Funcionário' : 'Novo Funcionário')),
+            title: Text(isEditing ? 'Editar Funcionário' : 'Novo Funcionário')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -225,9 +242,13 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       children: [
                         CircleAvatar(
                           radius: 40,
-                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                          child: Icon(Icons.person, size: 40,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          child: Icon(Icons.person,
+                              size: 40,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer),
                         ),
                         Positioned(
                           bottom: 0,
@@ -238,7 +259,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                               color: Theme.of(context).colorScheme.primary,
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(Icons.camera_alt, size: 16,
+                            child: Icon(Icons.camera_alt,
+                                size: 16,
                                 color: Theme.of(context).colorScheme.onPrimary),
                           ),
                         ),
@@ -296,6 +318,19 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
               const SizedBox(height: 12),
 
               TextFormField(
+                controller: _taxIdCtrl,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'NIF *',
+                  prefixIcon: Icon(Icons.receipt_long),
+                ),
+                validator: (v) => v == null || v.trim().isEmpty
+                    ? 'Obrigatório para retenções e declarações fiscais'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
                 controller: _phoneCtrl,
                 textInputAction: TextInputAction.next,
                 keyboardType: TextInputType.phone,
@@ -327,9 +362,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
               const SizedBox(height: 12),
               Builder(builder: (context) {
                 final school = ref.watch(schoolInfoProvider).valueOrNull;
-                final available = kStaffRoles.where((r) =>
-                  r.alwaysAvailable || (school?.hasFeature(r.featureFlag) ?? true)
-                ).toList();
+                final available = kStaffRoles
+                    .where((r) =>
+                        r.alwaysAvailable ||
+                        (school?.hasFeature(r.featureFlag) ?? true))
+                    .toList();
                 if (_selectedRoles.isEmpty && available.isNotEmpty) {
                   _selectedRoles.add(available.first.key);
                 }
@@ -348,7 +385,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       checkmarkColor: Colors.white,
                       labelStyle: TextStyle(
                           color: selected ? Colors.white : null,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.normal,
                           fontSize: 13),
                       onSelected: (on) {
                         setState(() {
@@ -367,7 +405,9 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text('Seleccione pelo menos uma função.',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12)),
                 ),
               const SizedBox(height: 12),
 
@@ -395,12 +435,59 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                         : 'Seleccionar data',
                     style: _hireDate == null
                         ? TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant)
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant)
                         : null,
                   ),
                 ),
+              ),
+              const SizedBox(height: 12),
+
+              DropdownButtonFormField<String>(
+                initialValue: _contractType,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de contrato *',
+                  prefixIcon: Icon(Icons.description),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'permanent', child: Text('Sem termo')),
+                  DropdownMenuItem(value: 'fixed_term', child: Text('A termo')),
+                  DropdownMenuItem(value: 'internship', child: Text('Estágio')),
+                ],
+                onChanged: (value) => setState(() => _contractType = value!),
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _socialSecurityCtrl,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'N.º de inscrição no INSS *',
+                  prefixIcon: Icon(Icons.verified_user),
+                ),
+                validator: (v) => v == null || v.trim().isEmpty
+                    ? 'Obrigatório para o processamento de contribuições'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _salaryCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText:
+                      'Salário base (${ref.watch(schoolInfoProvider).valueOrNull?.currency ?? 'AOA'}) *',
+                  prefixIcon: const Icon(Icons.payments),
+                ),
+                validator: (v) {
+                  final amount =
+                      double.tryParse((v ?? '').replaceAll(',', '.'));
+                  return amount == null || amount <= 0
+                      ? 'Introduza um salário base válido'
+                      : null;
+                },
               ),
 
               // User account — required when creating
@@ -414,7 +501,6 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
-
                 TextFormField(
                   controller: _usernameCtrl,
                   textInputAction: TextInputAction.next,
@@ -422,11 +508,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     labelText: 'Nome de Utilizador *',
                     prefixIcon: Icon(Icons.account_circle),
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Campo obrigatório' : null,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Campo obrigatório'
+                      : null,
                 ),
                 const SizedBox(height: 12),
-
                 TextFormField(
                   controller: _passwordCtrl,
                   obscureText: _obscurePassword,
@@ -438,13 +524,12 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       icon: Icon(_obscurePassword
                           ? Icons.visibility
                           : Icons.visibility_off),
-                      onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: (v) => v == null || v.length < 6
-                      ? 'Mínimo 6 caracteres'
-                      : null,
+                  validator: (v) =>
+                      v == null || v.length < 6 ? 'Mínimo 6 caracteres' : null,
                 ),
               ],
 
@@ -459,9 +544,7 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                   child: Text(
                     _error!,
                     style: TextStyle(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onErrorContainer),
+                        color: Theme.of(context).colorScheme.onErrorContainer),
                   ),
                 ),
               ],
@@ -477,9 +560,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : Text(isEditing
-                        ? 'Guardar Alterações'
-                        : 'Criar Funcionário'),
+                    : Text(
+                        isEditing ? 'Guardar Alterações' : 'Criar Funcionário'),
               ),
 
               if (isEditing) ...[
@@ -504,7 +586,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     bool obscure = true;
     String? dialogError;
 
-    await showDialog(useRootNavigator: false, 
+    await showDialog(
+      useRootNavigator: false,
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -518,7 +601,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                 decoration: InputDecoration(
                   labelText: 'Nova Palavra-passe',
                   suffixIcon: IconButton(
-                    icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+                    icon:
+                        Icon(obscure ? Icons.visibility : Icons.visibility_off),
                     onPressed: () => setDialogState(() => obscure = !obscure),
                   ),
                 ),
@@ -549,13 +633,12 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     '/employees/${widget.employeeId}/set-password',
                     data: {'password': pwCtrl.text},
                   );
+                  if (!mounted) return;
                   if (ctx.mounted) Navigator.of(ctx).pop();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Palavra-passe reposta com sucesso')),
-                    );
-                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Palavra-passe reposta com sucesso')),
+                  );
                 } catch (e) {
                   setDialogState(() => dialogError = e.toString());
                 }

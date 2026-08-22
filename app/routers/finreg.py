@@ -169,6 +169,13 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
     by_id = {item.id: item for item in items}
     if len(by_id) != len(set(item_ids)):
         raise HTTPException(status_code=422, detail="Billing item not found or inactive")
+    missing_tax = [item.name for item in items if not item.finreg_tax_option_code]
+    if missing_tax:
+        raise HTTPException(
+            status_code=422,
+            detail="Select a governed Finreg tax treatment for: "
+            + ", ".join(sorted(missing_tax)),
+        )
     products, lines = [], []
     for line in body.lines:
         item = by_id[line.billing_item_id]
@@ -176,11 +183,13 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
         products.append({"external_id": external_id, "data": {
             "sku": item.code, "name": item.name, "description": item.description,
             "unit_price": str(line.unit_price), "tax_rate": str(item.iva_rate),
+            "tax_option_code": item.finreg_tax_option_code,
             "tax_exemption_reason": item.iva_exemption_reason, "is_service": True,
         }})
         lines.append({"product_external_id": external_id, "description": item.name,
             "quantity": str(line.quantity), "unit_price": str(line.unit_price),
             "discount_pct": str(line.discount_pct), "tax_rate": str(item.iva_rate),
+            "tax_option_code": item.finreg_tax_option_code,
             "tax_exemption_reason": item.iva_exemption_reason})
     context = {"schema": "school/v1", "source_system": "cellen",
         "source_reference": str(body.request_id), "school_id": str(school_id),
@@ -290,6 +299,26 @@ async def billing_guardians(
          "display_name": f"{guardian.first_name} {guardian.last_name}"}
         for guardian in rows
     ]
+
+
+@router.get("/tax-options")
+async def tax_options(
+    on_date: date | None = None,
+    user=Depends(require_finance_access),
+):
+    """Use Finreg's effective tenant catalogue; Cellen never invents tax rates."""
+    path = "tax-options"
+    if on_date:
+        path += f"?on_date={on_date.isoformat()}"
+    try:
+        return await HttpFinregAdapter().request(
+            "GET", path, None, actor_reference=str(user.id)
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
 
 
 @router.get("/guardians/{guardian_id}/pupils")
@@ -601,6 +630,101 @@ async def mappings(school_id=Depends(get_school_id), db: AsyncSession = Depends(
              "status": x.status, "last_error_code": x.last_error_code} for x in rows]
 
 
+@router.post("/employees/{employee_id}/sync")
+async def sync_employee_to_finreg(
+    employee_id: uuid.UUID,
+    user=Depends(require_school_admin),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create the governed Finreg employee record from Cellen's school person.
+
+    Subsequent calls never overwrite an existing employment contract.  They
+    return a review requirement so contractual changes remain explicit in the
+    authoritative payroll workflow.
+    """
+    await _writable_or_shadow_connection(school_id, db)
+    employee = await db.scalar(select(Employee).where(
+        Employee.id == employee_id,
+        Employee.school_id == school_id,
+        Employee.status == "active",
+    ))
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Active employee not found")
+    required = {
+        "tax_id": employee.tax_id,
+        "social_security": employee.social_security,
+        "hire_date": employee.hire_date,
+        "salary": employee.salary if employee.salary and employee.salary > 0 else None,
+    }
+    missing = [name for name, value in required.items() if value is None or value == ""]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "employee_profile_incomplete", "missing_fields": missing},
+        )
+    contract_type = {
+        "permanent": "permanent",
+        "temporary": "fixed_term",
+        "fixed_term": "fixed_term",
+        "intern": "internship",
+        "internship": "internship",
+    }.get(employee.contract_type or "permanent", employee.contract_type or "permanent")
+    payload = {
+        "employee": {
+            "full_name": " ".join(filter(None, [
+                employee.first_name, employee.middle_name, employee.last_name
+            ])),
+            "tax_id": employee.tax_id,
+            "social_security_id": employee.social_security,
+            "email": employee.email,
+            "phone": employee.mobile_first,
+            "position": employee.position,
+            "base_salary": str(employee.salary),
+            "hire_date": employee.hire_date.isoformat(),
+            "contract_type": contract_type,
+            "department": employee.employee_type,
+        },
+        "external_version": employee.updated_at.isoformat(),
+    }
+    revision = hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode()
+    ).hexdigest()[:20]
+    try:
+        response = await HttpFinregAdapter().request(
+            "PUT", f"employees/{employee.id}", payload,
+            idempotency_key=f"cellen-employee-{employee.id}-{revision}",
+            correlation_id=str(uuid.uuid4()), actor_reference=str(user.id),
+        )
+    except FinregError as exc:
+        raise HTTPException(
+            status_code=503 if exc.retryable else 422,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    finreg_id = uuid.UUID(response["id"])
+    mapping = await db.scalar(select(FinregEntityMapping).where(
+        FinregEntityMapping.school_id == school_id,
+        FinregEntityMapping.entity_type == "employee",
+        FinregEntityMapping.cellen_id == employee.id,
+    ))
+    if mapping is None:
+        mapping = FinregEntityMapping(
+            school_id=school_id, entity_type="employee",
+            cellen_id=employee.id, finreg_id=finreg_id,
+        )
+        db.add(mapping)
+    mapping.finreg_id = finreg_id
+    mapping.external_version = payload["external_version"]
+    mapping.status = "review_required" if response.get("requires_review") else "confirmed"
+    mapping.last_error_code = None
+    await db.commit()
+    return {
+        "employee_id": str(employee.id), "finreg_id": str(finreg_id),
+        "status": mapping.status,
+        "requires_review": bool(response.get("requires_review")),
+    }
+
+
 @router.get("/composition-readiness/{capability_id}")
 async def composition_readiness(
     capability_id: str,
@@ -650,17 +774,26 @@ async def composition_readiness(
                 Employee.hire_date.is_not(None),
                 Employee.salary.is_not(None),
                 Employee.salary > 0,
+                Employee.tax_id.is_not(None),
+                Employee.social_security.is_not(None),
+            )
+        )).scalar_one()
+        mapped_total = (await db.execute(
+            select(func.count()).select_from(FinregEntityMapping).where(
+                FinregEntityMapping.school_id == school_id,
+                FinregEntityMapping.entity_type == "employee",
+                FinregEntityMapping.status.in_(["confirmed", "review_required"]),
             )
         )).scalar_one()
         blockers = []
         if ready_total < source_total:
-            blockers.append("missing_hire_date_or_salary")
+            blockers.append("incomplete_statutory_employee_profile")
         return {
             "capability_id": capability_id,
             "source_entity": "employee",
             "source_total": source_total,
             "ready_total": ready_total,
-            "mapped_total": None,
+            "mapped_total": mapped_total,
             "mapping_policy": "review_before_statutory_creation",
             "blockers": blockers,
         }
@@ -710,6 +843,13 @@ async def upsert_billing_plan(
     by_id = {item.id: item for item in items}
     if len(by_id) != len(set(item_ids)):
         raise HTTPException(status_code=422, detail="Billing item not found or inactive")
+    missing_tax = [item.name for item in items if not item.finreg_tax_option_code]
+    if missing_tax:
+        raise HTTPException(
+            status_code=422,
+            detail="Select a governed Finreg tax treatment for: "
+            + ", ".join(sorted(missing_tax)),
+        )
     adapter = HttpFinregAdapter()
     actor = str(user.id)
     correlation = str(uuid.uuid4())
@@ -726,6 +866,7 @@ async def upsert_billing_plan(
             product = await adapter.request("PUT", f"products/{item.id}", {"product": {
                 "sku": item.code, "name": item.name, "description": item.description,
                 "unit_price": str(item.unit_price), "tax_rate": str(item.iva_rate),
+                "tax_option_code": item.finreg_tax_option_code,
                 "tax_exemption_reason": item.iva_exemption_reason, "is_service": True,
             }}, idempotency_key=f"{key}:product:{item.id}", correlation_id=correlation,
                actor_reference=actor)
@@ -752,6 +893,7 @@ async def upsert_billing_plan(
                 "unit_price": str(by_id[line.billing_item_id].unit_price),
                 "discount_pct": str(line.discount_pct),
                 "tax_rate": str(by_id[line.billing_item_id].iva_rate),
+                "tax_option_code": by_id[line.billing_item_id].finreg_tax_option_code,
                 "tax_exemption_reason": by_id[line.billing_item_id].iva_exemption_reason,
             } for line in body.lines],
         }, "context": context, "external_version": "student-billing-plan/v1"}

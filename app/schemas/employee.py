@@ -21,6 +21,7 @@ class EmployeeBase(BaseModel):
     profession: Optional[str] = None
     qualifications: Optional[str] = None
     id_card_number: Optional[str] = None
+    tax_id: Optional[str] = None
     photo_url: Optional[str] = None
     street: Optional[str] = None
     house_number: Optional[str] = None
@@ -64,6 +65,7 @@ class EmployeeUpdate(BaseModel):
     profession: Optional[str] = None
     qualifications: Optional[str] = None
     id_card_number: Optional[str] = None
+    tax_id: Optional[str] = None
     photo_url: Optional[str] = None
     street: Optional[str] = None
     house_number: Optional[str] = None

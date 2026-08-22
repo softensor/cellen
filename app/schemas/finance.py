@@ -18,6 +18,7 @@ class BillingItemCreate(BaseModel):
     description: Optional[str] = None
     unit_price: DecimalFloat = Decimal("0")
     iva_rate: DecimalFloat = Decimal("0")
+    finreg_tax_option_code: Optional[str] = None
     iva_exemption_reason: Optional[str] = None
     iva_exemption_legend: Optional[str] = None
     category: Optional[str] = None
@@ -28,6 +29,7 @@ class BillingItemUpdate(BaseModel):
     description: Optional[str] = None
     unit_price: Optional[DecimalFloat] = None
     iva_rate: Optional[DecimalFloat] = None
+    finreg_tax_option_code: Optional[str] = None
     iva_exemption_reason: Optional[str] = None
     iva_exemption_legend: Optional[str] = None
     category: Optional[str] = None
@@ -43,6 +45,7 @@ class BillingItemResponse(BaseModel):
     description: Optional[str] = None
     unit_price: DecimalFloat
     iva_rate: DecimalFloat
+    finreg_tax_option_code: Optional[str] = None
     iva_exemption_reason: Optional[str] = None
     iva_exemption_legend: Optional[str] = None
     category: Optional[str] = None

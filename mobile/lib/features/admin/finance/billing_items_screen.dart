@@ -9,15 +9,10 @@ import '../../../core/widgets/app_error_widget.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
-final _billingItemsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final _billingItemsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/finance/billing-items') as List;
-  return data.cast<Map<String, dynamic>>();
-});
-
-final _schoolYearsProvider2 = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final api = ref.read(apiClientProvider);
-  final data = await api.get('/schools/school-years') as List;
   return data.cast<Map<String, dynamic>>();
 });
 
@@ -48,10 +43,13 @@ class BillingItemsScreen extends ConsumerWidget {
       ),
       body: itemsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => AppErrorWidget(error: e, onRetry: () => ref.invalidate(_billingItemsProvider)),
+        error: (e, _) => AppErrorWidget(
+            error: e, onRetry: () => ref.invalidate(_billingItemsProvider)),
         data: (items) {
           if (items.isEmpty) {
-            return const Center(child: Text('Nenhum item faturável', style: TextStyle(color: AppTheme.textSecondary)));
+            return const Center(
+                child: Text('Nenhum item faturável',
+                    style: TextStyle(color: AppTheme.textSecondary)));
           }
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(_billingItemsProvider),
@@ -71,7 +69,8 @@ class BillingItemsScreen extends ConsumerWidget {
   }
 
   void _showCreateDialog(BuildContext context, WidgetRef ref) {
-    showDialog(useRootNavigator: false, 
+    showDialog(
+      useRootNavigator: false,
       context: context,
       builder: (_) => _BillingItemDialog(
         onSaved: () => ref.invalidate(_billingItemsProvider),
@@ -87,7 +86,8 @@ class _BillingItemCard extends ConsumerWidget {
   final NumberFormat currency;
   final VoidCallback onChanged;
 
-  const _BillingItemCard({required this.item, required this.currency, required this.onChanged});
+  const _BillingItemCard(
+      {required this.item, required this.currency, required this.onChanged});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -99,19 +99,25 @@ class _BillingItemCard extends ConsumerWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: catColor.withOpacity(0.3)),
+        side: BorderSide(color: catColor.withValues(alpha: 0.3)),
       ),
       child: ListTile(
         leading: Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(color: catColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
-          child: Icon(_categoryIcon(item['category'] as String? ?? 'other'), color: catColor, size: 20),
+          decoration: BoxDecoration(
+              color: catColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10)),
+          child: Icon(_categoryIcon(item['category'] as String? ?? 'other'),
+              color: catColor, size: 20),
         ),
-        title: Text(item['name'] as String? ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(item['name'] as String? ?? '',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(
           '${item['code'] ?? ''} · IVA ${item['iva_rate'] ?? 0}%${!isActive ? ' · Inactivo' : ''}',
-          style: TextStyle(fontSize: 12, color: isActive ? AppTheme.textSecondary : AppTheme.danger),
+          style: TextStyle(
+              fontSize: 12,
+              color: isActive ? AppTheme.textSecondary : AppTheme.danger),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -123,15 +129,40 @@ class _BillingItemCard extends ConsumerWidget {
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 18),
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 18), SizedBox(width: 8), Text('Editar')])),
-                const PopupMenuItem(value: 'prices', child: Row(children: [Icon(Icons.price_change_outlined, size: 18), SizedBox(width: 8), Text('Preços por Ano')])),
-                const PopupMenuItem(value: 'toggle', child: Row(children: [Icon(Icons.toggle_on_outlined, size: 18), SizedBox(width: 8), Text('Activar/Desactivar')])),
+                const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(children: [
+                      Icon(Icons.edit_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Editar')
+                    ])),
+                const PopupMenuItem(
+                    value: 'prices',
+                    child: Row(children: [
+                      Icon(Icons.price_change_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Preços por Ano')
+                    ])),
+                const PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(children: [
+                      Icon(Icons.toggle_on_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Activar/Desactivar')
+                    ])),
               ],
               onSelected: (action) {
                 if (action == 'edit') {
-                  showDialog(useRootNavigator: false, context: context, builder: (_) => _BillingItemDialog(item: item, onSaved: onChanged));
+                  showDialog(
+                      useRootNavigator: false,
+                      context: context,
+                      builder: (_) =>
+                          _BillingItemDialog(item: item, onSaved: onChanged));
                 } else if (action == 'prices') {
-                  showDialog(useRootNavigator: false, context: context, builder: (_) => _PriceTableDialog(item: item, ref: ref));
+                  showDialog(
+                      useRootNavigator: false,
+                      context: context,
+                      builder: (_) => _PriceTableDialog(item: item, ref: ref));
                 } else if (action == 'toggle') {
                   _toggle(context, ref);
                 }
@@ -146,32 +177,34 @@ class _BillingItemCard extends ConsumerWidget {
   Future<void> _toggle(BuildContext context, WidgetRef ref) async {
     try {
       final api = ref.read(apiClientProvider);
-      await api.patch('/finance/billing-items/${item['id']}', data: {'is_active': !(item['is_active'] as bool? ?? true)});
+      await api.patch('/finance/billing-items/${item['id']}',
+          data: {'is_active': !(item['is_active'] as bool? ?? true)});
       onChanged();
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: AppTheme.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Erro: $e'), backgroundColor: AppTheme.danger));
       }
     }
   }
 
   Color _categoryColor(String cat) => switch (cat) {
-    'tuition' => Colors.blue,
-    'meals' => Colors.orange,
-    'transport' => Colors.teal,
-    'materials' => Colors.purple,
-    'activities' => Colors.green,
-    _ => Colors.grey,
-  };
+        'tuition' => Colors.blue,
+        'meals' => Colors.orange,
+        'transport' => Colors.teal,
+        'materials' => Colors.purple,
+        'activities' => Colors.green,
+        _ => Colors.grey,
+      };
 
   IconData _categoryIcon(String cat) => switch (cat) {
-    'tuition' => Icons.school_outlined,
-    'meals' => Icons.restaurant_outlined,
-    'transport' => Icons.directions_bus_outlined,
-    'materials' => Icons.book_outlined,
-    'activities' => Icons.sports_outlined,
-    _ => Icons.receipt_outlined,
-  };
+        'tuition' => Icons.school_outlined,
+        'meals' => Icons.restaurant_outlined,
+        'transport' => Icons.directions_bus_outlined,
+        'materials' => Icons.book_outlined,
+        'activities' => Icons.sports_outlined,
+        _ => Icons.receipt_outlined,
+      };
 }
 
 // ─── Create/Edit Dialog ──────────────────────────────────────────────────────
@@ -197,22 +230,46 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
   bool _isLoading = false;
   String? _error;
   bool _codeManuallyEdited = false;
+  List<Map<String, dynamic>> _taxOptions = [];
+  String? _taxOptionCode;
+  bool _taxOptionsLoading = true;
 
   bool get _isEdit => widget.item != null;
 
   static String _generateCode(String name) {
     const accents = {
-      'á': 'a', 'à': 'a', 'ã': 'a', 'â': 'a', 'ä': 'a',
-      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
-      'ó': 'o', 'ò': 'o', 'õ': 'o', 'ô': 'o', 'ö': 'o',
-      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
-      'ç': 'c', 'ñ': 'n',
+      'á': 'a',
+      'à': 'a',
+      'ã': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'é': 'e',
+      'è': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'í': 'i',
+      'ì': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'ó': 'o',
+      'ò': 'o',
+      'õ': 'o',
+      'ô': 'o',
+      'ö': 'o',
+      'ú': 'u',
+      'ù': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ç': 'c',
+      'ñ': 'n',
     };
     var s = name.toLowerCase();
-    for (final e in accents.entries) s = s.replaceAll(e.key, e.value);
+    for (final e in accents.entries) {
+      s = s.replaceAll(e.key, e.value);
+    }
     final clean = s.replaceAll(RegExp(r'[^a-z0-9\s]'), '');
-    final words = clean.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final words =
+        clean.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     String code;
     if (words.isEmpty) return '';
     if (words.length == 1) {
@@ -228,7 +285,9 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
     if (_isEdit || _codeManuallyEdited) return;
     final generated = _generateCode(_nameCtrl.text);
     if (_codeCtrl.text != generated) {
-      _codeCtrl.value = TextEditingValue(text: generated, selection: TextSelection.collapsed(offset: generated.length));
+      _codeCtrl.value = TextEditingValue(
+          text: generated,
+          selection: TextSelection.collapsed(offset: generated.length));
     }
   }
 
@@ -248,24 +307,73 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
     _codeCtrl = TextEditingController(text: item?['code'] as String? ?? '');
     _nameCtrl = TextEditingController(text: item?['name'] as String? ?? '');
     if (!_isEdit) _nameCtrl.addListener(_syncCode);
-    _priceCtrl = TextEditingController(text: (item?['unit_price'] as num?)?.toStringAsFixed(2) ?? '');
-    _ivaCtrl = TextEditingController(text: (item?['iva_rate'] as num?)?.toStringAsFixed(2) ?? '0');
-    _exemptionCtrl = TextEditingController(text: item?['iva_exemption_reason'] as String? ?? '');
-    _descCtrl = TextEditingController(text: item?['description'] as String? ?? '');
+    _priceCtrl = TextEditingController(
+        text: (item?['unit_price'] as num?)?.toStringAsFixed(2) ?? '');
+    _ivaCtrl = TextEditingController(
+        text: (item?['iva_rate'] as num?)?.toStringAsFixed(2) ?? '0');
+    _exemptionCtrl = TextEditingController(
+        text: item?['iva_exemption_reason'] as String? ?? '');
+    _descCtrl =
+        TextEditingController(text: item?['description'] as String? ?? '');
     _category = item?['category'] as String? ?? 'other';
+    _taxOptionCode = item?['finreg_tax_option_code'] as String?;
+    _loadTaxOptions();
+  }
+
+  Future<void> _loadTaxOptions() async {
+    try {
+      final values = (await ref.read(apiClientProvider).get(
+                '/finreg/tax-options',
+              ) as List)
+          .cast<Map<String, dynamic>>();
+      if (!mounted) return;
+      setState(() {
+        _taxOptions = values;
+        if (_taxOptionCode == null && !_isEdit && values.isNotEmpty) {
+          _taxOptionCode = values.first['code'] as String?;
+          _applyTaxOption();
+        }
+        _taxOptionsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Não foi possível carregar o catálogo fiscal Finreg: $error';
+        _taxOptionsLoading = false;
+      });
+    }
+  }
+
+  void _applyTaxOption() {
+    final selected = _taxOptions.where(
+      (option) => option['code'] == _taxOptionCode,
+    );
+    if (selected.isEmpty) return;
+    final option = selected.first;
+    _ivaCtrl.text = option['rate_percent'].toString();
+    if (option['exemption_reason_required'] != true) {
+      _exemptionCtrl.clear();
+    }
   }
 
   @override
   void dispose() {
     if (!_isEdit) _nameCtrl.removeListener(_syncCode);
-    _codeCtrl.dispose(); _nameCtrl.dispose(); _priceCtrl.dispose();
-    _ivaCtrl.dispose(); _exemptionCtrl.dispose(); _descCtrl.dispose();
+    _codeCtrl.dispose();
+    _nameCtrl.dispose();
+    _priceCtrl.dispose();
+    _ivaCtrl.dispose();
+    _exemptionCtrl.dispose();
+    _descCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final api = ref.read(apiClientProvider);
       final body = {
@@ -273,19 +381,26 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
         'name': _nameCtrl.text.trim(),
         'unit_price': double.tryParse(_priceCtrl.text) ?? 0.0,
         'iva_rate': double.tryParse(_ivaCtrl.text) ?? 0.0,
+        'finreg_tax_option_code': _taxOptionCode,
         'category': _category,
-        if (_exemptionCtrl.text.trim().isNotEmpty) 'iva_exemption_reason': _exemptionCtrl.text.trim(),
-        if (_descCtrl.text.trim().isNotEmpty) 'description': _descCtrl.text.trim(),
+        if (_exemptionCtrl.text.trim().isNotEmpty)
+          'iva_exemption_reason': _exemptionCtrl.text.trim(),
+        if (_descCtrl.text.trim().isNotEmpty)
+          'description': _descCtrl.text.trim(),
       };
       if (_isEdit) {
-        await api.patch('/finance/billing-items/${widget.item!['id']}', data: body);
+        await api.patch('/finance/billing-items/${widget.item!['id']}',
+            data: body);
       } else {
         await api.post('/finance/billing-items', data: body);
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -304,45 +419,83 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
                 if (!_isEdit) ...[
                   TextFormField(
                     controller: _codeCtrl,
-                    decoration: const InputDecoration(labelText: 'Código *', helperText: 'Auto-gerado · Imutável após criação'),
+                    decoration: const InputDecoration(
+                        labelText: 'Código *',
+                        helperText: 'Auto-gerado · Imutável após criação'),
                     textCapitalization: TextCapitalization.characters,
                     onChanged: (v) {
                       final generated = _generateCode(_nameCtrl.text);
                       _codeManuallyEdited = v.isNotEmpty && v != generated;
                     },
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Obrigatório' : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Obrigatório' : null,
                   ),
                   const SizedBox(height: 12),
                 ],
                 TextFormField(
                   controller: _nameCtrl,
                   decoration: const InputDecoration(labelText: 'Nome *'),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Obrigatório' : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _category,
+                  initialValue: _category,
                   decoration: const InputDecoration(labelText: 'Categoria'),
-                  items: _categories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+                  items: _categories.entries
+                      .map((e) =>
+                          DropdownMenuItem(value: e.key, child: Text(e.value)))
+                      .toList(),
                   onChanged: (v) => setState(() => _category = v ?? 'other'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _priceCtrl,
-                  decoration: const InputDecoration(labelText: 'Preço Padrão *', prefixIcon: Icon(Icons.monetization_on_outlined)),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Obrigatório' : null,
+                  decoration: const InputDecoration(
+                      labelText: 'Preço Padrão *',
+                      prefixIcon: Icon(Icons.monetization_on_outlined)),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _ivaCtrl,
-                  decoration: const InputDecoration(labelText: 'Taxa IVA (%)', prefixIcon: Icon(Icons.percent)),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                DropdownButtonFormField<String>(
+                  key: ValueKey(_taxOptionCode),
+                  isExpanded: true,
+                  initialValue: _taxOptions
+                          .any((option) => option['code'] == _taxOptionCode)
+                      ? _taxOptionCode
+                      : null,
+                  decoration: InputDecoration(
+                    labelText: 'Tratamento fiscal *',
+                    prefixIcon: const Icon(Icons.percent),
+                    helperText: _taxOptionsLoading
+                        ? 'A carregar catálogo Finreg…'
+                        : 'Opções vigentes configuradas no Finreg',
+                  ),
+                  items: _taxOptions
+                      .map((option) => DropdownMenuItem<String>(
+                            value: option['code'].toString(),
+                            child: Text(
+                                '${option['label_pt']} · ${option['rate_percent']}%'),
+                          ))
+                      .toList(),
+                  onChanged: _taxOptionsLoading
+                      ? null
+                      : (value) => setState(() {
+                            _taxOptionCode = value;
+                            _applyTaxOption();
+                          }),
+                  validator: (value) => value == null
+                      ? 'Seleccione o tratamento fiscal vigente'
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _exemptionCtrl,
-                  decoration: const InputDecoration(labelText: 'Código Isenção IVA', helperText: 'Ex: M10'),
+                  decoration: const InputDecoration(
+                      labelText: 'Código Isenção IVA', helperText: 'Ex: M10'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -352,7 +505,9 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12)),
+                  Text(_error!,
+                      style: const TextStyle(
+                          color: AppTheme.danger, fontSize: 12)),
                 ],
               ],
             ),
@@ -360,10 +515,18 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _isLoading ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+            onPressed: _isLoading ? null : () => Navigator.pop(context),
+            child: const Text('Cancelar')),
         FilledButton(
           onPressed: _isLoading ? null : _save,
-          child: _isLoading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(_isEdit ? 'Guardar' : 'Criar'),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : Text(_isEdit ? 'Guardar' : 'Criar'),
         ),
       ],
     );
@@ -397,8 +560,8 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
     try {
       final api = ref.read(apiClientProvider);
       final results = await Future.wait([
-        api.get('/finance/billing-items/${widget.item['id']}/prices') as Future,
-        api.get('/schools/school-years') as Future,
+        api.get('/finance/billing-items/${widget.item['id']}/prices'),
+        api.get('/schools/school-years'),
       ]);
       setState(() {
         _prices = (results[0] as List).cast<Map<String, dynamic>>();
@@ -406,25 +569,35 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
         _loading = false;
       });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
   Future<void> _setPrice(Map<String, dynamic> year) async {
     final ctrl = TextEditingController();
-    final confirmed = await showDialog<bool>(useRootNavigator: false, 
+    final confirmed = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (_) => AlertDialog(
         title: Text('Preço para ${year['name']}'),
         content: TextFormField(
           controller: ctrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Preço *', prefixIcon: Icon(Icons.monetization_on_outlined)),
+          decoration: const InputDecoration(
+              labelText: 'Preço *',
+              prefixIcon: Icon(Icons.monetization_on_outlined)),
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Guardar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Guardar')),
         ],
       ),
     );
@@ -438,7 +611,10 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
       });
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: AppTheme.danger));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Erro: $e'), backgroundColor: AppTheme.danger));
+      }
     }
   }
 
@@ -455,7 +631,9 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: _years.map((year) {
-                      final existing = _prices.where((p) => p['school_year_id'] == year['id']).firstOrNull;
+                      final existing = _prices
+                          .where((p) => p['school_year_id'] == year['id'])
+                          .firstOrNull;
                       return ListTile(
                         dense: true,
                         title: Text(year['name'] as String? ?? ''),
@@ -464,11 +642,19 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
                           children: [
                             if (existing != null)
                               Text(
-                                NumberFormat.simpleCurrency(name: 'AOA').format((existing['unit_price'] as num?)?.toDouble() ?? 0),
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                NumberFormat.simpleCurrency(name: 'AOA').format(
+                                    (existing['unit_price'] as num?)
+                                            ?.toDouble() ??
+                                        0),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
                               ),
                             IconButton(
-                              icon: Icon(existing != null ? Icons.edit_outlined : Icons.add, size: 18),
+                              icon: Icon(
+                                  existing != null
+                                      ? Icons.edit_outlined
+                                      : Icons.add,
+                                  size: 18),
                               onPressed: () => _setPrice(year),
                             ),
                           ],
@@ -478,7 +664,9 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
                   ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar')),
       ],
     );
   }

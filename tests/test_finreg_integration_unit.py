@@ -243,6 +243,39 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
     assert "mapping_policy" in Path("app/routers/finreg.py").read_text()
 
 
+def test_school_employee_payroll_handoff_is_complete_and_reviewable():
+    router = Path("app/routers/finreg.py").read_text()
+    employee = Path("app/models/employee.py").read_text()
+    form = Path(
+        "mobile/lib/features/admin/employees/employee_form_screen.dart"
+    ).read_text()
+    listing = Path(
+        "mobile/lib/features/admin/employees/employees_list_screen.dart"
+    ).read_text()
+    assert "tax_id" in employee
+    for required in (
+        '"tax_id": employee.tax_id',
+        '"social_security_id": employee.social_security',
+        '"base_salary": str(employee.salary)',
+        '"hire_date": employee.hire_date.isoformat()',
+        '"employees/{employee.id}"',
+        'mapping.status = "review_required"',
+    ):
+        assert required in router
+    assert "NIF *" in form
+    assert "N.º de inscrição no INSS *" in form
+    assert "Salário base" in form
+    assert "Preparar processamento salarial" in listing
+
+
+def test_release_grants_catalog_and_employee_integration_scopes():
+    deploy = Path("deploy/deploy_finreg_school_finance.sh").read_text()
+    acceptance = Path("deploy/validate_cellen_finreg_release.sh").read_text()
+    for scope in ("products:read", "products:write", "employees:write"):
+        assert scope in deploy
+        assert scope in acceptance
+
+
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
     expected = "e2f744e17b0e0618046d5d50380700b0a79014a0"
     assert Path(".github/finreg-packages-ref").read_text().strip() == expected
