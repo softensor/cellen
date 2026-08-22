@@ -967,7 +967,7 @@ class _ContractsTabState extends ConsumerState<_ContractsTab> {
             action: SnackBarAction(
               label: 'Ver Facturas',
               textColor: Colors.white,
-              onPressed: () {},
+              onPressed: () => context.go('/admin/finance/invoices'),
             ),
           ),
         );

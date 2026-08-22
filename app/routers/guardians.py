@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_school_id, require_school_admin
+from app.core.dependencies import get_school_id, require_parent, require_school_admin
 from app.core.security import hash_password
 from app.models.person import Child, ChildGuardian, Guardian
 from app.models.user import User
@@ -76,6 +76,24 @@ async def create_guardian(
     response = GuardianResponse.model_validate(guardian)
     response.username = body.username
     return response
+
+
+@router.get("/me", response_model=GuardianResponse)
+async def get_own_guardian_profile(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_parent),
+):
+    guardian_id = getattr(user, "guardian_id", None)
+    if guardian_id is None:
+        raise HTTPException(status_code=403, detail="Parent profile required")
+    guardian = await db.scalar(select(Guardian).where(
+        Guardian.id == guardian_id,
+        Guardian.school_id == school_id,
+    ))
+    if guardian is None:
+        raise HTTPException(status_code=404, detail="Guardian not found")
+    return guardian
 
 
 @router.get("/{guardian_id}", response_model=GuardianResponse)

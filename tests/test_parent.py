@@ -97,6 +97,16 @@ async def _make_caderneta(
 
 # ── tests ─────────────────────────────────────────────────────────────────────
 
+async def test_parent_can_read_own_guardian_profile(client: AsyncClient, make_school):
+    school, admin_token, slug, _ = await make_school("profile")
+    guardian, parent_token = await _make_guardian_and_login(
+        client, admin_token, slug
+    )
+    response = await client.get("/guardians/me", headers=auth(parent_token))
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == guardian["id"]
+    assert response.json()["nif"] == guardian["nif"]
+
 async def test_parent_children(client: AsyncClient, make_school):
     school, admin_tok, slug, _ = await make_school("par")
     child = await _make_child(client, admin_tok)

@@ -61,6 +61,7 @@ class BillingItem(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     iva_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    finreg_tax_option_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     iva_exemption_reason: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     iva_exemption_legend: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)

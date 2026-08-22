@@ -5,9 +5,13 @@ class Employee {
   final String? middleName;
   final String lastName;
   final String employeeType; // teacher, staff, admin (HR category)
-  final List<String> roles;  // actual system roles from User.roles
+  final List<String> roles; // actual system roles from User.roles
   final String? position;
   final String? cedula;
+  final String? taxId;
+  final String? socialSecurity;
+  final String? contractType;
+  final double? salary;
   final String? phone;
   final String? email;
   final String? photoUrl;
@@ -25,6 +29,10 @@ class Employee {
     this.roles = const [],
     this.position,
     this.cedula,
+    this.taxId,
+    this.socialSecurity,
+    this.contractType,
+    this.salary,
     this.phone,
     this.email,
     this.photoUrl,
@@ -59,14 +67,18 @@ class Employee {
       employeeType: json['employee_type'] as String? ?? 'staff',
       roles: (json['roles'] as List?)?.map((e) => e.toString()).toList() ?? [],
       position: json['position'] as String?,
-      cedula: json['cedula'] as String?,
-      phone: json['phone'] as String?,
+      cedula: json['id_card_number'] as String?,
+      taxId: json['tax_id'] as String?,
+      socialSecurity: json['social_security'] as String?,
+      contractType: json['contract_type'] as String?,
+      salary: (json['salary'] as num?)?.toDouble(),
+      phone: json['mobile_first'] as String?,
       email: json['email'] as String?,
       photoUrl: json['photo_url'] as String?,
       hireDate: json['hire_date'] != null
           ? DateTime.tryParse(json['hire_date'] as String)
           : null,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: (json['status'] as String? ?? 'active') == 'active',
       userId: json['user_id']?.toString(),
     );
   }
@@ -79,14 +91,18 @@ class Employee {
         'last_name': lastName,
         'employee_type': employeeType,
         if (position != null) 'position': position,
-        if (cedula != null) 'cedula': cedula,
-        if (phone != null) 'phone': phone,
+        if (cedula != null) 'id_card_number': cedula,
+        if (taxId != null) 'tax_id': taxId,
+        if (socialSecurity != null) 'social_security': socialSecurity,
+        if (contractType != null) 'contract_type': contractType,
+        if (salary != null) 'salary': salary,
+        if (phone != null) 'mobile_first': phone,
         if (email != null) 'email': email,
         if (photoUrl != null) 'photo_url': photoUrl,
         if (hireDate != null)
           'hire_date':
               '${hireDate!.year.toString().padLeft(4, '0')}-${hireDate!.month.toString().padLeft(2, '0')}-${hireDate!.day.toString().padLeft(2, '0')}',
-        'is_active': isActive,
+        'status': isActive ? 'active' : 'inactive',
         if (userId != null) 'user_id': userId,
       };
 }

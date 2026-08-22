@@ -19,6 +19,7 @@ class Employee(Base):
     __tablename__ = "employees"
     __table_args__ = (
         UniqueConstraint("school_id", "id_card_number", name="uq_employees_school_idcard"),
+        UniqueConstraint("school_id", "tax_id", name="uq_employees_school_tax_id"),
         Index("ix_employees_school_id", "school_id"),
     )
 
@@ -39,6 +40,7 @@ class Employee(Base):
     profession: Mapped[Optional[str]] = mapped_column(String(255))
     qualifications: Mapped[Optional[str]] = mapped_column(String(255))
     id_card_number: Mapped[Optional[str]] = mapped_column(String(100))
+    tax_id: Mapped[Optional[str]] = mapped_column(String(30))
     photo_url: Mapped[Optional[str]] = mapped_column(String(500))
     # Address
     street: Mapped[Optional[str]] = mapped_column(String(255))
