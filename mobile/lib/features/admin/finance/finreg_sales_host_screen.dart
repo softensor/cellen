@@ -1,29 +1,72 @@
-import 'dart:typed_data';
-
 import 'package:cellen/core/api/api_client.dart';
 import 'package:finreg_app/embedded_modules.dart';
 import 'package:finreg_client_sdk/finreg_client_sdk.dart';
-import 'package:finreg_sales_ui/finreg_sales_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/models/role_definitions.dart';
-import '../../../core/providers/currency_provider.dart';
-import 'billing_items_screen.dart';
-import 'credit_balances_screen.dart';
-import 'parent_payment_review_screen.dart';
-import 'payment_plans_screen.dart';
-import 'payment_references_screen.dart';
-import 'reminders_screen.dart';
-import 'student_billing_plans_screen.dart';
 import '../employees/employees_list_screen.dart';
 import '../guardians/guardians_list_screen.dart';
 
+Future<FinregCapabilities> _loadFinregCapabilities(ApiClient api) async {
+  final value =
+      Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
+  return FinregCapabilities(
+      companyId: value['company_id']?.toString(),
+      apiVersion: value['api_version'] as String,
+      schemaVersion: value['schema_version'] as String,
+      vertical: value['vertical'] as String,
+      terminology: Map<String, String>.from(value['terminology'] as Map? ?? {}),
+      enabledModules: Set<String>.from(value['enabled_modules'] as List? ?? []),
+      configuredCapabilities:
+          Set<String>.from(value['configured_capabilities'] as List? ?? []),
+      effectiveCapabilities:
+          Set<String>.from(value['effective_capabilities'] as List? ?? []),
+      blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
+          .map((key, value) => MapEntry(
+              key.toString(), Set<String>.from(value as List? ?? const []))),
+      hostSurfaces: (value['host_surfaces'] as List? ?? const []).map((raw) {
+        final surface = Map<String, dynamic>.from(raw as Map);
+        return FinregHostSurface(
+            id: surface['id'].toString(),
+            capabilityId: surface['capability_id'].toString(),
+            presentation: surface['presentation'].toString(),
+            labels: Map<String, String>.from(surface['labels'] as Map),
+            icon: surface['icon'].toString(),
+            order: surface['order'] as int,
+            operational: surface['operational'] as bool,
+            blockedReasons: List<String>.from(
+                surface['blocked_reasons'] as List? ?? const []));
+      }).toList(growable: false),
+      workspaces: (value['workspaces'] as List? ?? const []).map((raw) {
+        final workspace = Map<String, dynamic>.from(raw as Map);
+        return FinregWorkspace(
+            capabilityId: workspace['capability_id'].toString(),
+            title: workspace['title'].toString(),
+            description: workspace['description'].toString(),
+            route: workspace['route'].toString(),
+            operational: workspace['operational'] as bool,
+            blockedReasons: List<String>.from(
+                workspace['blocked_reasons'] as List? ?? const []));
+      }).toList(growable: false),
+      manifestFingerprint: value['manifest_fingerprint']?.toString(),
+      countryPack: value['country_pack']?.toString(),
+      agtChannel: value['agt_channel']?.toString() ?? 'disabled',
+      nonFiscal: value['non_fiscal'] as bool? ?? false);
+}
+
 class FinregSalesHostScreen extends ConsumerStatefulWidget {
-  const FinregSalesHostScreen({super.key});
+  const FinregSalesHostScreen({
+    super.key,
+    this.initialCapabilityId = 'billing',
+    this.initialFinregRoute,
+  });
+
+  final String initialCapabilityId;
+  final String? initialFinregRoute;
 
   @override
   ConsumerState<FinregSalesHostScreen> createState() =>
@@ -32,21 +75,19 @@ class FinregSalesHostScreen extends ConsumerStatefulWidget {
 
 class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   late Future<dynamic> _connection;
-  late _CellenFinregAdapter _adapter;
   late Future<FinregCapabilities> _capabilities;
 
   @override
   void initState() {
     super.initState();
-    _adapter = _CellenFinregAdapter(ref.read(apiClientProvider));
     _connection = ref.read(apiClientProvider).get('/finreg/connection');
-    _capabilities = _adapter.capabilities();
+    _capabilities = _loadFinregCapabilities(ref.read(apiClientProvider));
   }
 
   void _refresh() {
     setState(() {
       _connection = ref.read(apiClientProvider).get('/finreg/connection');
-      _capabilities = _adapter.capabilities();
+      _capabilities = _loadFinregCapabilities(ref.read(apiClientProvider));
     });
   }
 
@@ -157,60 +198,41 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                   child: Text(
                       'O perfil financeiro desta organização não é escolar.'));
             }
-            const schoolBillingCapabilities = {
-              'billing',
-              'catalog',
-              'payments',
-              'receivables',
-              'recurring_billing',
-            };
-            final operationalWorkspaces = capabilities.workspaces
+            final workspaces = capabilities.workspaces
                 .where((item) =>
                     item.operational &&
                     finregEmbeddedModules.containsKey(item.capabilityId))
                 .toList(growable: false);
-            final workspaces = operationalWorkspaces
-                .where((workspace) =>
-                    workspace.capabilityId == 'billing' ||
-                    !schoolBillingCapabilities.contains(workspace.capabilityId))
-                .toList(growable: false);
-            final schoolModule = FinregSchoolBillingModule(
-                repository: _adapter,
-                host: _adapter,
-                configuredCapabilities: capabilities.configuredCapabilities,
-                effectiveCapabilities: capabilities.effectiveCapabilities,
-                blockedCapabilities: capabilities.blockedCapabilities,
-                hostSurfaces: capabilities.hostSurfaces,
-                workspaces: const [],
-                onRefreshCapabilities: _refresh,
-                surfaceBuilders: {
-                  'school_student_plans': (_) =>
-                      const StudentBillingPlansScreen(),
-                  'school_services': (_) => const BillingItemsScreen(),
-                  'school_payment_proofs': (_) =>
-                      const ParentPaymentReviewScreen(),
-                  'school_payment_arrangements': (_) =>
-                      const PaymentPlansScreen(),
-                  'school_payment_references': (_) =>
-                      const PaymentReferencesScreen(),
-                  'school_guardian_credits': (_) =>
-                      const CreditBalancesScreen(),
-                  'school_reminders': (_) => const RemindersScreen(),
-                },
-                onOfficialDocument: (name, bytes) =>
-                    Printing.sharePdf(bytes: bytes, filename: name));
-            if (workspaces.isEmpty || value['mode'] == 'fake') {
-              return schoolModule;
+            if (workspaces.isEmpty) {
+              return Center(
+                child: Text(portuguese
+                    ? 'Não existem módulos financeiros disponíveis para este perfil.'
+                    : 'No financial modules are available for this profile.'),
+              );
             }
             return _EmbeddedFinregMenu(
               key: ValueKey(workspaces
                   .map((workspace) => workspace.capabilityId)
                   .join('|')),
               workspaces: workspaces,
-              initialCapabilityId: 'billing',
+              initialCapabilityId: widget.initialCapabilityId,
+              initialFinregRoute: widget.initialFinregRoute,
               sessionForCapability: _createEmbeddedSession,
-              capabilityOverrides: {'billing': schoolModule},
+              capabilityOverrides: const {},
               contextualCapabilities: const {
+                'billing': _SchoolContextDefinition(
+                  labels: {
+                    'pt': 'Finreg — vendas e faturação',
+                    'en': 'Finreg — sales and billing',
+                  },
+                  authoritativeLabels: {
+                    'pt': 'Operações escolares',
+                    'en': 'School operations',
+                  },
+                  authoritativeFirst: true,
+                  showReadiness: false,
+                  child: _SchoolBillingOperations(),
+                ),
                 'parties': _SchoolContextDefinition(
                   labels: {
                     'pt': 'Encarregados e responsáveis',
@@ -263,6 +285,7 @@ class _EmbeddedFinregMenu extends StatefulWidget {
     required this.readinessForCapability,
     this.onManageAccess,
     this.initialCapabilityId,
+    this.initialFinregRoute,
   });
 
   final List<FinregWorkspace> workspaces;
@@ -274,6 +297,7 @@ class _EmbeddedFinregMenu extends StatefulWidget {
       readinessForCapability;
   final VoidCallback? onManageAccess;
   final String? initialCapabilityId;
+  final String? initialFinregRoute;
 
   @override
   State<_EmbeddedFinregMenu> createState() => _EmbeddedFinregMenuState();
@@ -394,10 +418,12 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
       capabilityId: workspace.capabilityId,
       definition: contextDefinition,
       authoritative: _buildAuthoritativeModule(workspace),
-      readiness: _readiness.putIfAbsent(
-        workspace.capabilityId,
-        () => widget.readinessForCapability(workspace.capabilityId),
-      ),
+      readiness: contextDefinition.showReadiness
+          ? _readiness.putIfAbsent(
+              workspace.capabilityId,
+              () => widget.readinessForCapability(workspace.capabilityId),
+            )
+          : null,
       onRetryReadiness: () =>
           setState(() => _readiness.remove(workspace.capabilityId)),
     );
@@ -437,9 +463,13 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
           return const Center(child: CircularProgressIndicator());
         }
         return FinregEmbeddedModuleHost(
-          key: ObjectKey(snapshot.data),
+          key: ValueKey('$capabilityId|${widget.initialFinregRoute}|'
+              '${snapshot.data!.accessToken}'),
           capabilityId: capabilityId,
           session: snapshot.data!,
+          initialRoute: capabilityId == widget.initialCapabilityId
+              ? widget.initialFinregRoute
+              : null,
           onSessionExpired: () {
             if (!mounted) return;
             setState(() => _sessions.remove(capabilityId));
@@ -650,16 +680,124 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
       .join(' ');
 }
 
+class _SchoolBillingOperations extends StatelessWidget {
+  const _SchoolBillingOperations();
+
+  @override
+  Widget build(BuildContext context) {
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    final operations = <({IconData icon, String pt, String en, String route})>[
+      (
+        icon: Icons.school_outlined,
+        pt: 'Planos dos alunos',
+        en: 'Student plans',
+        route: '/admin/finance/contracts'
+      ),
+      (
+        icon: Icons.sell_outlined,
+        pt: 'Serviços e mensalidades',
+        en: 'Services and fees',
+        route: '/admin/finance/billing-items'
+      ),
+      (
+        icon: Icons.receipt_long_outlined,
+        pt: 'Comprovativos de pagamento',
+        en: 'Payment proofs',
+        route: '/admin/finance/payment-proofs'
+      ),
+      (
+        icon: Icons.calendar_month_outlined,
+        pt: 'Acordos de pagamento',
+        en: 'Payment arrangements',
+        route: '/admin/finance/payment-plans'
+      ),
+      (
+        icon: Icons.numbers_outlined,
+        pt: 'Referências de pagamento',
+        en: 'Payment references',
+        route: '/admin/finance/payment-references'
+      ),
+      (
+        icon: Icons.account_balance_wallet_outlined,
+        pt: 'Créditos dos encarregados',
+        en: 'Guardian credits',
+        route: '/admin/finance/credits'
+      ),
+      (
+        icon: Icons.notifications_active_outlined,
+        pt: 'Lembretes de cobrança',
+        en: 'Collection reminders',
+        route: '/admin/finance/reminders'
+      ),
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1000
+          ? 3
+          : constraints.maxWidth >= 620
+              ? 2
+              : 1;
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            portuguese
+                ? 'Operações financeiras da escola'
+                : 'School financial operations',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 6),
+          Text(portuguese
+              ? 'Use estas áreas para os dados escolares. A faturação fiscal, pagamentos e relatórios permanecem no Finreg.'
+              : 'Use these areas for school data. Fiscal billing, payments and reports remain in Finreg.'),
+          const SizedBox(height: 20),
+          GridView.count(
+            crossAxisCount: columns,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: columns == 1 ? 4.3 : 2.6,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            children: [
+              for (final operation in operations)
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => context.push(operation.route),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(children: [
+                        Icon(operation.icon, size: 30),
+                        const SizedBox(width: 14),
+                        Expanded(
+                            child:
+                                Text(portuguese ? operation.pt : operation.en)),
+                        const Icon(Icons.chevron_right),
+                      ]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      );
+    });
+  }
+}
+
 class _SchoolContextDefinition {
   const _SchoolContextDefinition({
     required this.labels,
     required this.authoritativeLabels,
     required this.child,
+    this.authoritativeFirst = false,
+    this.showReadiness = true,
   });
 
   final Map<String, String> labels;
   final Map<String, String> authoritativeLabels;
   final Widget child;
+  final bool authoritativeFirst;
+  final bool showReadiness;
 
   String label(String languageCode) =>
       labels[languageCode] ?? labels['pt'] ?? labels.values.first;
@@ -682,7 +820,7 @@ class _SchoolContextualModule extends StatelessWidget {
   final String capabilityId;
   final _SchoolContextDefinition definition;
   final Widget authoritative;
-  final Future<Map<String, dynamic>> readiness;
+  final Future<Map<String, dynamic>>? readiness;
   final VoidCallback onRetryReadiness;
 
   @override
@@ -692,12 +830,13 @@ class _SchoolContextualModule extends StatelessWidget {
       length: 2,
       child: Column(
         children: [
-          _CompositionReadiness(
-            capabilityId: capabilityId,
-            readiness: readiness,
-            languageCode: languageCode,
-            onRetry: onRetryReadiness,
-          ),
+          if (readiness != null)
+            _CompositionReadiness(
+              capabilityId: capabilityId,
+              readiness: readiness!,
+              languageCode: languageCode,
+              onRetry: onRetryReadiness,
+            ),
           Material(
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
             child: Align(
@@ -706,15 +845,22 @@ class _SchoolContextualModule extends StatelessWidget {
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 tabs: [
-                  Tab(text: definition.label(languageCode)),
-                  Tab(text: definition.authoritativeLabel(languageCode)),
+                  if (definition.authoritativeFirst) ...[
+                    Tab(text: definition.label(languageCode)),
+                    Tab(text: definition.authoritativeLabel(languageCode)),
+                  ] else ...[
+                    Tab(text: definition.label(languageCode)),
+                    Tab(text: definition.authoritativeLabel(languageCode)),
+                  ],
                 ],
               ),
             ),
           ),
           Expanded(
             child: TabBarView(
-              children: [definition.child, authoritative],
+              children: definition.authoritativeFirst
+                  ? [authoritative, definition.child]
+                  : [definition.child, authoritative],
             ),
           ),
         ],
@@ -780,268 +926,4 @@ class _CompositionReadiness extends StatelessWidget {
           );
         },
       );
-}
-
-class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
-  _CellenFinregAdapter(this.api);
-  final ApiClient api;
-  final Map<String, InvoicePreview> _previewsByRequest = {};
-
-  @override
-  Future<FinregCapabilities> capabilities() async {
-    final value =
-        Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
-    return FinregCapabilities(
-        companyId: value['company_id']?.toString(),
-        apiVersion: value['api_version'] as String,
-        schemaVersion: value['schema_version'] as String,
-        vertical: value['vertical'] as String,
-        terminology:
-            Map<String, String>.from(value['terminology'] as Map? ?? {}),
-        enabledModules:
-            Set<String>.from(value['enabled_modules'] as List? ?? []),
-        configuredCapabilities:
-            Set<String>.from(value['configured_capabilities'] as List? ?? []),
-        effectiveCapabilities:
-            Set<String>.from(value['effective_capabilities'] as List? ?? []),
-        blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
-            .map((key, value) => MapEntry(
-                key.toString(), Set<String>.from(value as List? ?? const []))),
-        hostSurfaces: (value['host_surfaces'] as List? ?? const []).map((raw) {
-          final surface = Map<String, dynamic>.from(raw as Map);
-          return FinregHostSurface(
-              id: surface['id'].toString(),
-              capabilityId: surface['capability_id'].toString(),
-              presentation: surface['presentation'].toString(),
-              labels: Map<String, String>.from(surface['labels'] as Map),
-              icon: surface['icon'].toString(),
-              order: surface['order'] as int,
-              operational: surface['operational'] as bool,
-              blockedReasons: List<String>.from(
-                  surface['blocked_reasons'] as List? ?? const []));
-        }).toList(growable: false),
-        workspaces: (value['workspaces'] as List? ?? const []).map((raw) {
-          final workspace = Map<String, dynamic>.from(raw as Map);
-          return FinregWorkspace(
-              capabilityId: workspace['capability_id'].toString(),
-              title: workspace['title'].toString(),
-              description: workspace['description'].toString(),
-              route: workspace['route'].toString(),
-              operational: workspace['operational'] as bool,
-              blockedReasons: List<String>.from(
-                  workspace['blocked_reasons'] as List? ?? const []));
-        }).toList(growable: false),
-        manifestFingerprint: value['manifest_fingerprint']?.toString(),
-        countryPack: value['country_pack']?.toString(),
-        agtChannel: value['agt_channel']?.toString() ?? 'disabled',
-        nonFiscal: value['non_fiscal'] as bool? ?? false);
-  }
-
-  @override
-  Future<SchoolFinanceContext> currentSchool() async {
-    final now = DateTime.now();
-    return SchoolFinanceContext(
-        schoolExternalId: 'current',
-        billingPeriod: '${now.year}-${now.month.toString().padLeft(2, '0')}');
-  }
-
-  @override
-  Future<List<ExternalReference>> searchGuardians(String query) async {
-    final rows = await api.get(
-      '/finreg/guardians',
-      queryParameters: query.trim().isEmpty ? null : {'search': query.trim()},
-    ) as List;
-    return rows.map((raw) {
-      final v = Map<String, dynamic>.from(raw as Map);
-      return ExternalReference(
-          id: v['id'].toString(), displayName: v['display_name'].toString());
-    }).toList();
-  }
-
-  @override
-  Future<List<ExternalReference>> searchPupils(String query) async {
-    final rows = await api.get('/children') as List;
-    return rows
-        .map((raw) {
-          final v = Map<String, dynamic>.from(raw as Map);
-          return ExternalReference(
-              id: v['id'].toString(),
-              displayName: '${v['first_name']} ${v['last_name']}');
-        })
-        .where((x) => x.displayName.toLowerCase().contains(query.toLowerCase()))
-        .toList();
-  }
-
-  @override
-  Future<List<ExternalReference>> pupilsForGuardian(String guardianId) async {
-    final rows = await api.get('/finreg/guardians/$guardianId/pupils') as List;
-    return rows.map((raw) {
-      final value = Map<String, dynamic>.from(raw as Map);
-      return ExternalReference(
-        id: value['id'].toString(),
-        displayName: value['display_name'].toString(),
-      );
-    }).toList(growable: false);
-  }
-
-  @override
-  Future<List<FinregProduct>> searchProducts(String query) async {
-    final rows = await api.get('/finance/billing-items') as List;
-    return rows
-        .map((raw) {
-          final v = Map<String, dynamic>.from(raw as Map);
-          return FinregProduct(
-              id: v['id'].toString(),
-              code: v['code'].toString(),
-              name: v['name'].toString(),
-              unitPrice: v['unit_price'] as num,
-              taxRate: v['iva_rate'] as num);
-        })
-        .where((x) =>
-            '${x.code} ${x.name}'.toLowerCase().contains(query.toLowerCase()))
-        .toList();
-  }
-
-  Map<String, dynamic> _payload(InvoiceDraft draft) => {
-        'request_id': draft.externalReference,
-        'guardian_id': draft.customerId,
-        'pupil_id': draft.context.pupilExternalId,
-        'academic_year_id': draft.context.academicYearExternalId,
-        'academic_year_label': draft.context.academicYearLabel,
-        'billing_period': draft.context.billingPeriod,
-        'lines': draft.lines
-            .map((x) => {
-                  'billing_item_id': x.productId,
-                  'quantity': x.quantity,
-                  'unit_price': x.unitPrice,
-                  'discount_pct': 0
-                })
-            .toList(),
-      };
-
-  @override
-  Future<InvoicePreview> previewInvoice(InvoiceDraft draft) async {
-    final v = Map<String, dynamic>.from(
-        await api.post('/finreg/sales/preview', data: _payload(draft)) as Map);
-    final preview = InvoicePreview(
-        netTotal: v['net_total'] as num,
-        taxTotal: v['tax_total'] as num,
-        grossTotal: v['gross_total'] as num);
-    _previewsByRequest[draft.externalReference] = preview;
-    return preview;
-  }
-
-  @override
-  Future<FiscalDocument> issueInvoice(InvoiceDraft draft,
-      {required String idempotencyKey}) async {
-    if (idempotencyKey != draft.externalReference) {
-      throw const FinregException(
-          'invalid_idempotency_key', 'The invoice request identity changed.');
-    }
-    final v = Map<String, dynamic>.from(
-        await api.post('/finreg/sales/issue', data: _payload(draft)) as Map);
-    final documentId = v['finreg_document_id']?.toString();
-    if (documentId == null || documentId.isEmpty) {
-      throw const FinregException('issuance_pending',
-          'A emissão está a ser confirmada. Tente novamente para consultar o mesmo pedido.',
-          retryable: true, unknownOutcome: true);
-    }
-    final preview = _previewsByRequest[draft.externalReference];
-    return FiscalDocument(
-        id: documentId,
-        status: v['status'].toString(),
-        externalReference: draft.externalReference,
-        grossTotal: preview?.grossTotal ??
-            draft.lines.fold<num>(
-                0,
-                (total, line) =>
-                    total +
-                    line.quantity * line.unitPrice * (1 + line.taxRate / 100)));
-  }
-
-  @override
-  Future<void> recordMapping(
-      String entityType, String externalId, String finregId) async {}
-  @override
-  Future<Uint8List> downloadOfficialDocument(String documentId) =>
-      api.getBytes('/finreg/documents/$documentId/pdf');
-  @override
-  Future<PaymentResult> registerPayment(RegisterPayment command,
-      {required String idempotencyKey}) async {
-    final value =
-        Map<String, dynamic>.from(await api.post('/finreg/payments', data: {
-      'document_id': command.documentId,
-      'amount': command.amount,
-      'method': command.method,
-      'external_reference': command.externalReference,
-    }) as Map);
-    return PaymentResult(
-        id: value['id'].toString(),
-        status: value['status'].toString(),
-        receiptId: value['receipt_id']?.toString(),
-        receiptExternalReference: command.externalReference);
-  }
-
-  @override
-  Future<List<FinregInstruction>> listInstructions() async {
-    final rows = await api.get('/finreg/instructions') as List;
-    return rows.map((raw) {
-      final value = Map<String, dynamic>.from(raw as Map);
-      return FinregInstruction(
-          externalReference: value['id'].toString(),
-          status: value['status'].toString(),
-          createdAt: DateTime.parse(value['created_at'].toString()),
-          documentId: value['finreg_document_id']?.toString(),
-          errorCode: value['error_code']?.toString(),
-          errorDetail: value['error_detail']?.toString());
-    }).toList();
-  }
-
-  @override
-  Future<JsonMap> documentDetail(String externalReference) async =>
-      Map<String, Object?>.from(
-          await api.get('/finreg/documents/$externalReference') as Map);
-
-  @override
-  Future<JsonMap> correctDocument(CorrectDocument command,
-          {required String idempotencyKey}) async =>
-      Map<String, Object?>.from(await api.post(
-          '/finreg/documents/${command.documentExternalReference}/corrections',
-          data: {
-            'external_reference': command.correctionExternalReference,
-            'reason': command.reason
-          }) as Map);
-
-  @override
-  Future<Uint8List> downloadReceipt(String paymentExternalReference) =>
-      api.getBytes('/finreg/receipts/$paymentExternalReference/pdf');
-
-  String _date(DateTime value) => value.toIso8601String().split('T').first;
-
-  @override
-  Future<JsonMap> customerStatement(String customerExternalId,
-          {required DateTime from, required DateTime to}) async =>
-      Map<String, Object?>.from(await api.get(
-              '/finreg/customers/$customerExternalId/statement',
-              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
-          as Map);
-
-  @override
-  Future<JsonMap> salesSummary(
-          {required DateTime from, required DateTime to}) async =>
-      Map<String, Object?>.from(await api.get('/finreg/reports/sales-summary',
-              queryParameters: {'date_from': _date(from), 'date_to': _date(to)})
-          as Map);
-
-  @override
-  Future<JsonMap> delinquentReport({DateTime? asOf}) async =>
-      Map<String, Object?>.from(await api.get('/finreg/reports/delinquent',
-              queryParameters: asOf == null ? null : {'as_of': _date(asOf)})
-          as Map);
-
-  @override
-  Future<Uint8List> downloadSaftSales(
-          {required DateTime from, required DateTime to}) =>
-      api.getBytes('/finreg/reports/saft-sales'
-          '?date_from=${_date(from)}&date_to=${_date(to)}');
 }

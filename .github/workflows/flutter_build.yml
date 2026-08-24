@@ -171,6 +171,12 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Validate current Flutter implementation
+        working-directory: mobile
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test
+
       - name: Build web
         working-directory: mobile
         # base-href must match the repo path on GitHub Pages: /<repo-name>/
