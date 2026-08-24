@@ -254,6 +254,7 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                     'pt': 'Contratos e salários',
                     'en': 'Contracts and payroll',
                   },
+                  authoritativeFirst: true,
                   child: EmployeesListScreen(),
                 ),
               },
