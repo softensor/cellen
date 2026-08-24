@@ -51,6 +51,12 @@ import '../../features/photos/photos_screen.dart';
 import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
 import '../../features/admin/finance/student_billing_plans_screen.dart';
+import '../../features/admin/finance/billing_items_screen.dart';
+import '../../features/admin/finance/credit_balances_screen.dart';
+import '../../features/admin/finance/parent_payment_review_screen.dart';
+import '../../features/admin/finance/payment_plans_screen.dart';
+import '../../features/admin/finance/payment_references_screen.dart';
+import '../../features/admin/finance/reminders_screen.dart';
 import '../../features/announcements/announcements_screen.dart';
 import '../../features/documents/documents_screen.dart';
 import '../../features/appointments/appointments_screen.dart';
@@ -1088,7 +1094,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(
               path: '/admin/finance/invoices',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'billing',
+                    initialFinregRoute: '/billing/invoices',
+                  )),
           GoRoute(
               path: '/admin/finance/expenses',
               builder: (_, __) => const ExpensesScreen()),
@@ -1097,40 +1106,64 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const StudentBillingPlansScreen()),
           GoRoute(
               path: '/admin/finance/receipts',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'payments',
+                    initialFinregRoute: '/accounting/payments',
+                  )),
           GoRoute(
               path: '/admin/finance/credit-notes',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'billing',
+                    initialFinregRoute: '/billing/credit-notes',
+                  )),
           GoRoute(
               path: '/admin/finance/saft',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'reporting',
+                    initialFinregRoute: '/reports/control',
+                  )),
           GoRoute(
               path: '/admin/finance/delinquent',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'reporting',
+                    initialFinregRoute: '/reports/control',
+                  )),
           GoRoute(
               path: '/admin/finance/billing-items',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const BillingItemsScreen()),
+          GoRoute(
+              path: '/admin/finance/payment-proofs',
+              builder: (_, __) => const ParentPaymentReviewScreen()),
           GoRoute(
               path: '/admin/finance/credits',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const CreditBalancesScreen()),
           GoRoute(
               path: '/admin/finance/payment-plans',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const PaymentPlansScreen()),
           GoRoute(
               path: '/admin/finance/reminders',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const RemindersScreen()),
           GoRoute(
               path: '/admin/finance/statement',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'receivables',
+                    initialFinregRoute: '/billing/reports',
+                  )),
           GoRoute(
               path: '/admin/finance/audit-log',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'reporting',
+                    initialFinregRoute: '/reports/control',
+                  )),
           GoRoute(
               path: '/admin/finance/payment-references',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const PaymentReferencesScreen()),
           GoRoute(
               path: '/admin/finance/cash-sessions',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const FinregSalesHostScreen(
+                    initialCapabilityId: 'cash_sessions',
+                    initialFinregRoute: '/billing/pos/sessions',
+                  )),
           GoRoute(
               path: '/admin/finance/legacy',
               builder: (_, __) => const FinanceDashboardScreen()),

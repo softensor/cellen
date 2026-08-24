@@ -26,7 +26,9 @@ def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
 
     assert "path: '/admin/finance'" in router
     assert "const FinregSalesHostScreen()" in router
-    assert "FinregSchoolBillingModule(" in host
+    assert "FinregEmbeddedModuleHost(" in host
+    assert "FinregSchoolBillingModule(" not in host
+    assert "capabilityOverrides: const {}" in host
     assert "return const InvoicesScreen()" not in host
 
 
@@ -39,15 +41,12 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     root = Path(__file__).resolve().parents[1]
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
-    assert "hostSurfaces: capabilities.hostSurfaces" in host
     assert "FinregEmbeddedModuleHost(" in host
     assert "finregEmbeddedModules.containsKey" in host
     assert "onOpenWorkspace: _openWorkspace" not in host
     assert "package:url_launcher/url_launcher.dart" not in host
-    assert "surfaceBuilders:" in host
-    assert "configuredCapabilities: capabilities.configuredCapabilities" in host
-    assert "blockedCapabilities: capabilities.blockedCapabilities" in host
-    assert "onRefreshCapabilities: _refresh" in host
+    assert "_SchoolBillingOperations" in host
+    assert "'/admin/finance/payment-proofs'" in host
     assert "FinregAccountingOverviewScreen" not in host
     assert "FinregCashSessionsScreen" not in host
     assert "final canPay = invoice.status != 'paid'" in parent
@@ -122,20 +121,22 @@ def test_host_parses_every_authoritative_workspace_without_capability_ids():
     assert "finregEmbeddedModules[workspace.capabilityId]" in host
 
 
-def test_each_capability_has_one_menu_entry_and_billing_uses_school_extension():
+def test_each_capability_has_one_menu_entry_and_uses_current_finreg_ui():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
     assert "length: widget.workspaces.length" in host
     assert "widget.workspaces[_selected]" in host
-    assert "capabilityOverrides: {'billing': schoolModule}" in host
+    assert "capabilityOverrides: const {}" in host
+    assert "FinregSchoolBillingModule(" not in host
     assert "const Tab(icon: Icon(Icons.school_outlined)" not in host
     assert "widget.capabilityOverrides[workspace.capabilityId]" in host
     assert "widget.sessionForCapability(capabilityId)" in host
     assert "_sessions.putIfAbsent" in host
     assert "final Set<String> _visitedCapabilityIds" in host
     assert "child: IndexedStack(" in host
-    assert "key: ObjectKey(snapshot.data)" in host
+    assert "initialRoute:" in host
+    assert "key: ValueKey(" in host
     assert "onSessionExpired:" in host
     assert "_sessions.remove(capabilityId)" in host
 
@@ -151,22 +152,18 @@ def test_school_billing_resolves_and_validates_payer_learner_relationships():
     assert "ChildGuardian.guardian_id == Guardian.id" in router
     assert "The learner is not associated with the selected payer" in router
     assert router.count("await _linked_guardian_child(") == 2
-    assert "pupilsForGuardian(String guardianId)" in host
-    assert "'/finreg/guardians'" in host
-    assert "'/finreg/guardians/$guardianId/pupils'" in host
+    assert "FinregEmbeddedModuleHost(" in host
+    assert "_CellenFinregAdapter" not in host
 
 
-def test_vertical_sales_adapter_preserves_operation_identity_and_pending_state():
+def test_vertical_host_does_not_reimplement_finreg_sales_state():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert "final Map<String, InvoicePreview> _previewsByRequest" in host
-    assert "_previewsByRequest[draft.externalReference] = preview" in host
-    assert "idempotencyKey != draft.externalReference" in host
-    assert "v['finreg_document_id']?.toString()" in host
-    assert "'issuance_pending'" in host
-    assert "unknownOutcome: true" in host
-    assert "lastPreview" not in host
+    assert "_CellenFinregAdapter" not in host
+    assert "FinregSalesRepository" not in host
+    assert "FinregEmbeddedModuleHost(" in host
+    assert "session: snapshot.data!" in host
 
 
 @pytest.mark.asyncio
@@ -234,14 +231,9 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert "schoolBillingCapabilities" in host
-    for capability in (
-        "'catalog'",
-        "'payments'",
-        "'receivables'",
-        "'recurring_billing'",
-    ):
-        assert capability in host
+    assert "schoolBillingCapabilities" not in host
+    assert "capabilities.workspaces" in host
+    assert "finregEmbeddedModules.containsKey" in host
     assert "GuardiansListScreen()" in host
     assert "EmployeesListScreen()" in host
     assert "_SchoolContextualModule" in host
@@ -328,8 +320,10 @@ def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
     assert '@router.get("/reports/saft-sales")' in router
-    assert "downloadSaftSales" in host
-    assert "/finreg/reports/saft-sales" in host
+    navigation = Path("mobile/lib/core/router/router.dart").read_text()
+    assert "initialCapabilityId: 'reporting'" in navigation
+    assert "initialFinregRoute: '/reports/control'" in navigation
+    assert "FinregEmbeddedModuleHost(" in host
 
 
 def test_legacy_reduced_operational_finreg_screen_is_not_shipped():
