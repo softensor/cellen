@@ -20,6 +20,10 @@ logic or maintain a second fiscal ledger.
 
 * Documents
 
+- =ENGINEERING_AND_FINREG_INTEGRATION_HANDBOOK.md= — start here for repository
+  ownership, extension rules, validation, coordinated release, VPS deployment,
+  acceptance, and incident recovery.
+
 - =FINREG_AGT_MODE_RUNBOOK.org= — authoritative fiscal/transport state matrix
   and promotion commands.
 

@@ -272,6 +272,15 @@ def test_school_employee_payroll_handoff_is_complete_and_reviewable():
     assert "N.º de inscrição no INSS *" in form
     assert "Salário base" in form
     assert "Preparar processamento salarial" in listing
+    assert "'payroll': _SchoolContextDefinition(" in Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    payroll_block = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text().split("'payroll': _SchoolContextDefinition(", 1)[1].split(
+        "child: EmployeesListScreen()", 1
+    )[0]
+    assert "authoritativeFirst: true" in payroll_block
 
 
 def test_release_grants_catalog_and_employee_integration_scopes():
