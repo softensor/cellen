@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/models/role_definitions.dart';
+import '../../../core/providers/currency_provider.dart';
 import '../employees/employees_list_screen.dart';
 import '../guardians/guardians_list_screen.dart';
 
