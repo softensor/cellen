@@ -90,146 +90,167 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<dynamic>(
-        future: _connection,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                    'Não foi possível abrir o Finreg: ${snapshot.error}',
+  Widget build(BuildContext context) {
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    return FutureBuilder<dynamic>(
+      future: _connection,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(
+                    portuguese
+                        ? 'Não foi possível abrir o Finreg.'
+                        : 'Finreg could not be opened.',
                     textAlign: TextAlign.center),
-              ),
-            );
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final value = Map<String, dynamic>.from(snapshot.data as Map);
-          if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'A faturação Finreg ainda não está configurada para esta escola. '
-                  'Contacte o administrador da plataforma.',
-                  textAlign: TextAlign.center,
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(portuguese ? 'Tentar novamente' : 'Retry'),
                 ),
-              ),
-            );
-          }
-          return FutureBuilder<FinregCapabilities>(
-            future: _capabilities,
-            builder: (context, capabilitySnapshot) {
-              if (capabilitySnapshot.hasError) {
-                return Center(
-                    child: Text(
-                        'Não foi possível validar o perfil Finreg: ${capabilitySnapshot.error}'));
-              }
-              if (!capabilitySnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final capabilities = capabilitySnapshot.data!;
-              if (capabilities.vertical != 'school') {
-                return const Center(
-                    child: Text(
-                        'O perfil financeiro desta organização não é escolar.'));
-              }
-              const schoolBillingCapabilities = {
-                'billing',
-                'catalog',
-                'payments',
-                'receivables',
-                'recurring_billing',
-              };
-              final operationalWorkspaces = capabilities.workspaces
-                  .where((item) =>
-                      item.operational &&
-                      finregEmbeddedModules.containsKey(item.capabilityId))
-                  .toList(growable: false);
-              final workspaces = operationalWorkspaces
-                  .where((workspace) =>
-                      workspace.capabilityId == 'billing' ||
-                      !schoolBillingCapabilities
-                          .contains(workspace.capabilityId))
-                  .toList(growable: false);
-              final schoolModule = FinregSchoolBillingModule(
-                  repository: _adapter,
-                  host: _adapter,
-                  configuredCapabilities: capabilities.configuredCapabilities,
-                  effectiveCapabilities: capabilities.effectiveCapabilities,
-                  blockedCapabilities: capabilities.blockedCapabilities,
-                  hostSurfaces: capabilities.hostSurfaces,
-                  workspaces: const [],
-                  onRefreshCapabilities: _refresh,
-                  surfaceBuilders: {
-                    'school_student_plans': (_) =>
-                        const StudentBillingPlansScreen(),
-                    'school_services': (_) => const BillingItemsScreen(),
-                    'school_payment_proofs': (_) =>
-                        const ParentPaymentReviewScreen(),
-                    'school_payment_arrangements': (_) =>
-                        const PaymentPlansScreen(),
-                    'school_payment_references': (_) =>
-                        const PaymentReferencesScreen(),
-                    'school_guardian_credits': (_) =>
-                        const CreditBalancesScreen(),
-                    'school_reminders': (_) => const RemindersScreen(),
-                  },
-                  onOfficialDocument: (name, bytes) =>
-                      Printing.sharePdf(bytes: bytes, filename: name));
-              if (workspaces.isEmpty || value['mode'] == 'fake') {
-                return schoolModule;
-              }
-              return _EmbeddedFinregMenu(
-                key: ValueKey(workspaces
-                    .map((workspace) => workspace.capabilityId)
-                    .join('|')),
-                workspaces: workspaces,
-                initialCapabilityId: 'billing',
-                sessionForCapability: _createEmbeddedSession,
-                capabilityOverrides: {'billing': schoolModule},
-                contextualCapabilities: const {
-                  'parties': _SchoolContextDefinition(
-                    labels: {
-                      'pt': 'Encarregados e responsáveis',
-                      'en': 'Guardians and responsible payers',
-                    },
-                    authoritativeLabels: {
-                      'pt': 'Registos fiscais',
-                      'en': 'Fiscal records',
-                    },
-                    child: GuardiansListScreen(),
-                  ),
-                  'payroll': _SchoolContextDefinition(
-                    labels: {
-                      'pt': 'Professores e funcionários',
-                      'en': 'Teachers and employees',
-                    },
-                    authoritativeLabels: {
-                      'pt': 'Contratos e salários',
-                      'en': 'Contracts and payroll',
-                    },
-                    child: EmployeesListScreen(),
-                  ),
-                },
-                readinessForCapability: _compositionReadiness,
-                onManageAccess:
-                    ref.watch(authProvider).roles.contains(UserRole.schoolAdmin)
-                        ? () async {
-                            await showSchoolAccessPolicyDialog(
-                              context,
-                              ref.read(apiClientProvider),
-                            );
-                            _refresh();
-                          }
-                        : null,
-              );
-            },
+              ]),
+            ),
           );
-        },
-      );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final value = Map<String, dynamic>.from(snapshot.data as Map);
+        if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'A faturação Finreg ainda não está configurada para esta escola. '
+                'Contacte o administrador da plataforma.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        return FutureBuilder<FinregCapabilities>(
+          future: _capabilities,
+          builder: (context, capabilitySnapshot) {
+            if (capabilitySnapshot.hasError) {
+              return Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(portuguese
+                    ? 'Não foi possível validar o perfil Finreg.'
+                    : 'The Finreg profile could not be validated.'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(portuguese ? 'Tentar novamente' : 'Retry'),
+                ),
+              ]));
+            }
+            if (!capabilitySnapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final capabilities = capabilitySnapshot.data!;
+            if (capabilities.vertical != 'school') {
+              return const Center(
+                  child: Text(
+                      'O perfil financeiro desta organização não é escolar.'));
+            }
+            const schoolBillingCapabilities = {
+              'billing',
+              'catalog',
+              'payments',
+              'receivables',
+              'recurring_billing',
+            };
+            final operationalWorkspaces = capabilities.workspaces
+                .where((item) =>
+                    item.operational &&
+                    finregEmbeddedModules.containsKey(item.capabilityId))
+                .toList(growable: false);
+            final workspaces = operationalWorkspaces
+                .where((workspace) =>
+                    workspace.capabilityId == 'billing' ||
+                    !schoolBillingCapabilities.contains(workspace.capabilityId))
+                .toList(growable: false);
+            final schoolModule = FinregSchoolBillingModule(
+                repository: _adapter,
+                host: _adapter,
+                configuredCapabilities: capabilities.configuredCapabilities,
+                effectiveCapabilities: capabilities.effectiveCapabilities,
+                blockedCapabilities: capabilities.blockedCapabilities,
+                hostSurfaces: capabilities.hostSurfaces,
+                workspaces: const [],
+                onRefreshCapabilities: _refresh,
+                surfaceBuilders: {
+                  'school_student_plans': (_) =>
+                      const StudentBillingPlansScreen(),
+                  'school_services': (_) => const BillingItemsScreen(),
+                  'school_payment_proofs': (_) =>
+                      const ParentPaymentReviewScreen(),
+                  'school_payment_arrangements': (_) =>
+                      const PaymentPlansScreen(),
+                  'school_payment_references': (_) =>
+                      const PaymentReferencesScreen(),
+                  'school_guardian_credits': (_) =>
+                      const CreditBalancesScreen(),
+                  'school_reminders': (_) => const RemindersScreen(),
+                },
+                onOfficialDocument: (name, bytes) =>
+                    Printing.sharePdf(bytes: bytes, filename: name));
+            if (workspaces.isEmpty || value['mode'] == 'fake') {
+              return schoolModule;
+            }
+            return _EmbeddedFinregMenu(
+              key: ValueKey(workspaces
+                  .map((workspace) => workspace.capabilityId)
+                  .join('|')),
+              workspaces: workspaces,
+              initialCapabilityId: 'billing',
+              sessionForCapability: _createEmbeddedSession,
+              capabilityOverrides: {'billing': schoolModule},
+              contextualCapabilities: const {
+                'parties': _SchoolContextDefinition(
+                  labels: {
+                    'pt': 'Encarregados e responsáveis',
+                    'en': 'Guardians and responsible payers',
+                  },
+                  authoritativeLabels: {
+                    'pt': 'Registos fiscais',
+                    'en': 'Fiscal records',
+                  },
+                  child: GuardiansListScreen(),
+                ),
+                'payroll': _SchoolContextDefinition(
+                  labels: {
+                    'pt': 'Professores e funcionários',
+                    'en': 'Teachers and employees',
+                  },
+                  authoritativeLabels: {
+                    'pt': 'Contratos e salários',
+                    'en': 'Contracts and payroll',
+                  },
+                  child: EmployeesListScreen(),
+                ),
+              },
+              readinessForCapability: _compositionReadiness,
+              onManageAccess:
+                  ref.watch(authProvider).roles.contains(UserRole.schoolAdmin)
+                      ? () async {
+                          await showSchoolAccessPolicyDialog(
+                            context,
+                            ref.read(apiClientProvider),
+                          );
+                          _refresh();
+                        }
+                      : null,
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 class _EmbeddedFinregMenu extends StatefulWidget {
@@ -377,6 +398,8 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
         workspace.capabilityId,
         () => widget.readinessForCapability(workspace.capabilityId),
       ),
+      onRetryReadiness: () =>
+          setState(() => _readiness.remove(workspace.capabilityId)),
     );
   }
 
@@ -390,17 +413,21 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
       future: session,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          final portuguese =
+              Localizations.localeOf(context).languageCode == 'pt';
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Não foi possível abrir este módulo.'),
+                Text(portuguese
+                    ? 'Não foi possível abrir este módulo.'
+                    : 'This module could not be opened.'),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () =>
                       setState(() => _sessions.remove(capabilityId)),
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Tentar novamente'),
+                  label: Text(portuguese ? 'Tentar novamente' : 'Retry'),
                 ),
               ],
             ),
@@ -649,12 +676,14 @@ class _SchoolContextualModule extends StatelessWidget {
     required this.definition,
     required this.authoritative,
     required this.readiness,
+    required this.onRetryReadiness,
   });
 
   final String capabilityId;
   final _SchoolContextDefinition definition;
   final Widget authoritative;
   final Future<Map<String, dynamic>> readiness;
+  final VoidCallback onRetryReadiness;
 
   @override
   Widget build(BuildContext context) {
@@ -667,6 +696,7 @@ class _SchoolContextualModule extends StatelessWidget {
             capabilityId: capabilityId,
             readiness: readiness,
             languageCode: languageCode,
+            onRetry: onRetryReadiness,
           ),
           Material(
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -698,17 +728,33 @@ class _CompositionReadiness extends StatelessWidget {
     required this.capabilityId,
     required this.readiness,
     required this.languageCode,
+    required this.onRetry,
   });
 
   final String capabilityId;
   final Future<Map<String, dynamic>> readiness;
   final String languageCode;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
         future: readiness,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const SizedBox.shrink();
+          if (snapshot.hasError) {
+            final portuguese = languageCode == 'pt';
+            return ListTile(
+              leading: const Icon(Icons.error_outline),
+              title: Text(portuguese
+                  ? 'Não foi possível validar a preparação dos dados.'
+                  : 'Data readiness could not be checked.'),
+              trailing: IconButton(
+                tooltip: portuguese ? 'Tentar novamente' : 'Retry',
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+              ),
+            );
+          }
+          if (!snapshot.hasData) return const LinearProgressIndicator();
           final value = snapshot.data!;
           final source = value['source_total'] as int? ?? 0;
           final ready = value['ready_total'] as int? ?? 0;
@@ -739,7 +785,7 @@ class _CompositionReadiness extends StatelessWidget {
 class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
   _CellenFinregAdapter(this.api);
   final ApiClient api;
-  InvoicePreview? lastPreview;
+  final Map<String, InvoicePreview> _previewsByRequest = {};
 
   @override
   Future<FinregCapabilities> capabilities() async {
@@ -877,22 +923,40 @@ class _CellenFinregAdapter implements FinregSalesRepository, FinregHostAdapter {
   Future<InvoicePreview> previewInvoice(InvoiceDraft draft) async {
     final v = Map<String, dynamic>.from(
         await api.post('/finreg/sales/preview', data: _payload(draft)) as Map);
-    return lastPreview = InvoicePreview(
+    final preview = InvoicePreview(
         netTotal: v['net_total'] as num,
         taxTotal: v['tax_total'] as num,
         grossTotal: v['gross_total'] as num);
+    _previewsByRequest[draft.externalReference] = preview;
+    return preview;
   }
 
   @override
   Future<FiscalDocument> issueInvoice(InvoiceDraft draft,
       {required String idempotencyKey}) async {
+    if (idempotencyKey != draft.externalReference) {
+      throw const FinregException(
+          'invalid_idempotency_key', 'The invoice request identity changed.');
+    }
     final v = Map<String, dynamic>.from(
         await api.post('/finreg/sales/issue', data: _payload(draft)) as Map);
+    final documentId = v['finreg_document_id']?.toString();
+    if (documentId == null || documentId.isEmpty) {
+      throw const FinregException('issuance_pending',
+          'A emissão está a ser confirmada. Tente novamente para consultar o mesmo pedido.',
+          retryable: true, unknownOutcome: true);
+    }
+    final preview = _previewsByRequest[draft.externalReference];
     return FiscalDocument(
-        id: (v['finreg_document_id'] ?? v['id']).toString(),
+        id: documentId,
         status: v['status'].toString(),
         externalReference: draft.externalReference,
-        grossTotal: lastPreview?.grossTotal ?? 0);
+        grossTotal: preview?.grossTotal ??
+            draft.lines.fold<num>(
+                0,
+                (total, line) =>
+                    total +
+                    line.quantity * line.unitPrice * (1 + line.taxRate / 100)));
   }
 
   @override

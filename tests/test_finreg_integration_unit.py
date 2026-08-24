@@ -156,6 +156,19 @@ def test_school_billing_resolves_and_validates_payer_learner_relationships():
     assert "'/finreg/guardians/$guardianId/pupils'" in host
 
 
+def test_vertical_sales_adapter_preserves_operation_identity_and_pending_state():
+    host = Path(
+        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    ).read_text()
+    assert "final Map<String, InvoicePreview> _previewsByRequest" in host
+    assert "_previewsByRequest[draft.externalReference] = preview" in host
+    assert "idempotencyKey != draft.externalReference" in host
+    assert "v['finreg_document_id']?.toString()" in host
+    assert "'issuance_pending'" in host
+    assert "unknownOutcome: true" in host
+    assert "lastPreview" not in host
+
+
 @pytest.mark.asyncio
 async def test_unlinked_payer_learner_pair_is_rejected_before_finreg():
     class EmptyResult:
