@@ -15,7 +15,8 @@ import 'children_list_screen.dart' show childrenProvider;
 // ---------------------------------------------------------------------------
 class ChildFormScreen extends ConsumerStatefulWidget {
   final String? childId;
-  const ChildFormScreen({super.key, this.childId});
+  final ValueChanged<Map<String, dynamic>>? onCreated;
+  const ChildFormScreen({super.key, this.childId, this.onCreated});
 
   @override
   ConsumerState<ChildFormScreen> createState() => _ChildFormScreenState();
@@ -157,7 +158,13 @@ class _ChildFormScreenState extends ConsumerState<ChildFormScreen> {
         await api.patch('/children/${widget.childId}', data: body);
         ref.invalidate(childProvider(widget.childId!));
       } else {
-        await api.post('/children', data: body);
+        final created = await api.post('/children', data: body);
+        if (!mounted) return;
+        ref.invalidate(childrenProvider);
+        if (widget.onCreated != null) {
+          widget.onCreated!(created as Map<String, dynamic>);
+          return;
+        }
       }
       ref.invalidate(childrenProvider);
       if (mounted) context.pop();

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
+import '../children/child_form_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -317,6 +318,24 @@ class _CreateEnrollmentSheetState
     ]);
   }
 
+  Future<void> _registerChild() async {
+    final child = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (formContext) => ChildFormScreen(
+          onCreated: (child) => Navigator.of(formContext).pop(child),
+        ),
+      ),
+    );
+    if (!mounted || child == null) return;
+    setState(() {
+      final id = child['id'].toString();
+      _children.removeWhere((existing) => existing['id'].toString() == id);
+      _children.add(child);
+      _selectedChildId = id;
+      _error = null;
+    });
+  }
+
   Future<void> _loadChildren(dynamic api) async {
     try {
       final data = await api.get('/children') as List;
@@ -474,6 +493,17 @@ class _CreateEnrollmentSheetState
                               fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 16),
+
+                    OutlinedButton.icon(
+                      onPressed: _isLoading ? null : _registerChild,
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: Text('Registar ${terms.student.toLowerCase()}'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Registe ${terms.student == 'Criança' ? 'uma nova criança' : 'um novo aluno'} ou seleccione um registo existente para reconfirmação.',
+                    ),
+                    const SizedBox(height: 12),
 
                     // Child dropdown
                     DropdownButtonFormField<String>(
