@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SchoolBase(BaseModel):
@@ -42,6 +42,23 @@ class SchoolUpdate(BaseModel):
     wa_access_token: Optional[str] = None
     segment: Optional[str] = None
     features: Optional[dict[str, Any]] = None
+
+
+    @field_validator("features")
+    @classmethod
+    def validate_custom_roles(cls, value):
+        if value is None or "custom_roles" not in value:
+            return value
+        from app.core.custom_roles import CustomRole
+        raw = value["custom_roles"]
+        if not isinstance(raw, list) or len(raw) > 50:
+            raise ValueError("custom_roles deve ser uma lista com até 50 funções")
+        roles = [CustomRole.model_validate(role).model_dump() for role in raw]
+        keys = [role["key"] for role in roles]
+        labels = [role["label"].casefold() for role in roles]
+        if len(set(keys)) != len(keys) or len(set(labels)) != len(labels):
+            raise ValueError("As funções personalizadas devem ter nomes e identificadores únicos")
+        return {**value, "custom_roles": roles}
 
 
 class SchoolResponse(SchoolBase):

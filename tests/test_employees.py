@@ -97,6 +97,69 @@ async def test_update_employee(client: AsyncClient, make_school):
     assert r.json()["position"] == "Director"
 
 
+async def test_custom_role_assignment_and_live_revocation(
+    client: AsyncClient, make_school, padmin_token: str
+):
+    school, admin_token, slug, _ = await make_school("custom-role")
+    role = {
+        "key": "custom_reception",
+        "label": "Recepção",
+        "base_role": "secretary",
+        "enabled": True,
+    }
+    configured = await client.patch(
+        f"/platform/schools/{school['id']}",
+        json={"features": {"custom_roles": [role]}},
+        headers=auth(padmin_token),
+    )
+    assert configured.status_code == 200, configured.text
+
+    username = f"reception-{uid()}"
+    created = await client.post(
+        "/employees",
+        json={
+            "first_name": "Rosa",
+            "last_name": "Manuel",
+            "employee_type": "staff",
+            "username": username,
+            "password": "Reception1!",
+            "roles": [role["key"]],
+        },
+        headers=auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["roles"] == [role["key"]]
+
+    login_response = await client.post(
+        "/auth/login",
+        json={
+            "username": username,
+            "password": "Reception1!",
+            "school_slug": slug,
+        },
+    )
+    assert login_response.status_code == 200, login_response.text
+    tokens = login_response.json()
+    assert tokens["roles"] == ["secretary"]
+    assert (await client.get(
+        "/auth/me", headers=auth(tokens["access_token"])
+    )).status_code == 200
+
+    role["enabled"] = False
+    disabled = await client.patch(
+        f"/platform/schools/{school['id']}",
+        json={"features": {"custom_roles": [role]}},
+        headers=auth(padmin_token),
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert (await client.get(
+        "/auth/me", headers=auth(tokens["access_token"])
+    )).status_code == 403
+    assert (await client.post(
+        "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )).status_code == 403
+
+
 async def test_employee_salary_is_number(client: AsyncClient, make_school):
     school, token, slug, _ = await make_school("empsal")
     cr = await client.post(

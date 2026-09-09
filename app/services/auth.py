@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import verify_password, create_access_token, create_refresh_token
 from app.models.school import PlatformUser, School
 from app.models.user import User
+from app.core.custom_roles import resolve_roles
 
 
 async def authenticate_school_user(
@@ -40,9 +41,9 @@ async def get_school_by_slug(db: AsyncSession, slug: str) -> Optional[School]:
     return result.scalar_one_or_none()
 
 
-def build_tokens_for_school_user(user: User) -> dict:
-    primary_role = user.role  # uses the @property (roles[0])
-    roles = list(user.roles)
+def build_tokens_for_school_user(user: User, features: dict | None = None) -> dict:
+    roles = resolve_roles(list(user.roles), features)
+    primary_role = roles[0] if roles else ""
     token_data = {
         "sub": str(user.id),
         "role": primary_role,  # compat: primary role

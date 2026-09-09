@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.custom_roles import validate_assignments
+from app.models.school import School
 from app.core.dependencies import get_school_id, require_school_admin
 from app.core.security import hash_password
 from app.models.employee import Employee
@@ -63,16 +65,19 @@ async def create_employee(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Nome de utilizador já existe nesta escola")
 
+    school = await db.get(School, school_id)
+    try:
+        assigned_roles = validate_assignments(
+            body.roles if body.roles is not None else [_EMPLOYEE_TYPE_TO_ROLE.get(body.employee_type, "staff")],
+            school.resolved_features if school else {},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     employee_data = body.model_dump(exclude={"username", "password", "roles"})
     employee = Employee(school_id=school_id, **employee_data)
     db.add(employee)
-    await db.flush()  # get employee.id before creating user
+    await db.flush()
 
-    # Use explicitly provided roles, or fall back to employee_type mapping
-    if body.roles:
-        assigned_roles = body.roles
-    else:
-        assigned_roles = [_EMPLOYEE_TYPE_TO_ROLE.get(body.employee_type, "staff")]
     user = User(
         school_id=school_id,
         username=body.username,
@@ -81,8 +86,10 @@ async def create_employee(
         employee_id=employee.id,
     )
     db.add(user)
+    employee.user = user
     await db.commit()
     await db.refresh(employee)
+    await db.refresh(employee, attribute_names=["user"])
     return employee
 
 
@@ -119,11 +126,23 @@ async def update_employee(
     if employee is None:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    if body.roles is not None:
+        if employee.user is None:
+            raise HTTPException(status_code=422, detail="Funcionário sem conta de acesso")
+        school = await db.get(School, school_id)
+        try:
+            employee.user.roles = validate_assignments(
+                body.roles, school.resolved_features if school else {}, employee.user.roles,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    for field, value in body.model_dump(exclude_unset=True, exclude={"roles"}).items():
         setattr(employee, field, value)
 
     await db.commit()
     await db.refresh(employee)
+    await db.refresh(employee, attribute_names=["user"])
     return employee
 
 
