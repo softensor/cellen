@@ -150,6 +150,21 @@ Run the release-specific, version-controlled deployment/acceptance script after
 the pull.  Never deploy an unmerged integration branch as the normal production
 procedure.
 
+For a Cellen-only release that does not change the pinned Finreg revision, run:
+
+#+begin_src sh
+cd /var/www/cellen
+git switch master
+git pull --ff-only origin master
+sudo bash deploy/release_cellen_from_vps.sh [expected-master-sha]
+#+end_src
+
+The optional SHA binds the deployment to the reviewed merged revision.  The
+script backs up PostgreSQL before applying migrations, installs the pinned
+Python dependencies, restarts =cellen-api=, and checks both local and public
+health endpoints.  Use =release_cellen_finreg_from_vps.sh= when Finreg itself or
+the pinned Finreg Web artifact changes.
+
 * Common errors
 
 | Message | Meaning | Resolution |
