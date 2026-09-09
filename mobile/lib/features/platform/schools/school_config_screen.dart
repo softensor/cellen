@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/models/role_definitions.dart';
+import '../../../core/models/custom_role.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -28,59 +29,164 @@ import '../../../core/theme/app_theme.dart';
 
 const _segmentDefaults = <String, Map<String, bool>>{
   'preschool': {
-    'checkin': true, 'caderneta': true, 'evaluations': true, 'activities': true,
-    'timetable_k12': false, 'lesson_attendance': false, 'grades': false, 'subjects': false,
-    'report_cards': false, 'appointments': true,
-    'health': true, 'immunizations': true, 'med_report': false, 'incidents': true,
-    'meal_orders': true, 'trip_auth': true, 'pickup_auth': true,
-    'photos': true, 'events': true, 'documents': true,
-    'announcements': true, 'messages': true, 'finance': true,
-    'absences': true, 'role_teacher': true, 'role_coordinator': true, 'role_finance_officer': true,
-    'role_secretary': true, 'role_nurse': true, 'role_student': false,
+    'checkin': true,
+    'caderneta': true,
+    'evaluations': true,
+    'activities': true,
+    'timetable_k12': false,
+    'lesson_attendance': false,
+    'grades': false,
+    'subjects': false,
+    'report_cards': false,
+    'appointments': true,
+    'health': true,
+    'immunizations': true,
+    'med_report': false,
+    'incidents': true,
+    'meal_orders': true,
+    'trip_auth': true,
+    'pickup_auth': true,
+    'photos': true,
+    'events': true,
+    'documents': true,
+    'announcements': true,
+    'messages': true,
+    'finance': true,
+    'absences': true,
+    'role_teacher': true,
+    'role_coordinator': true,
+    'role_finance_officer': true,
+    'role_secretary': true,
+    'role_nurse': true,
+    'role_student': false,
   },
   'primary': {
-    'checkin': false, 'caderneta': false, 'evaluations': false, 'activities': false,
-    'timetable_k12': true, 'lesson_attendance': true, 'grades': true, 'subjects': true,
-    'report_cards': true, 'appointments': true,
-    'health': true, 'immunizations': true, 'med_report': true, 'incidents': true,
-    'meal_orders': true, 'trip_auth': true, 'pickup_auth': true,
-    'photos': true, 'events': true, 'documents': true,
-    'announcements': true, 'messages': true, 'finance': true,
-    'absences': true, 'role_teacher': true, 'role_coordinator': true, 'role_finance_officer': true,
-    'role_secretary': true, 'role_nurse': true, 'role_student': false,
+    'checkin': false,
+    'caderneta': false,
+    'evaluations': false,
+    'activities': false,
+    'timetable_k12': true,
+    'lesson_attendance': true,
+    'grades': true,
+    'subjects': true,
+    'report_cards': true,
+    'appointments': true,
+    'health': true,
+    'immunizations': true,
+    'med_report': true,
+    'incidents': true,
+    'meal_orders': true,
+    'trip_auth': true,
+    'pickup_auth': true,
+    'photos': true,
+    'events': true,
+    'documents': true,
+    'announcements': true,
+    'messages': true,
+    'finance': true,
+    'absences': true,
+    'role_teacher': true,
+    'role_coordinator': true,
+    'role_finance_officer': true,
+    'role_secretary': true,
+    'role_nurse': true,
+    'role_student': false,
   },
   'secondary': {
-    'checkin': false, 'caderneta': false, 'evaluations': false, 'activities': false,
-    'timetable_k12': true, 'lesson_attendance': true, 'grades': true, 'subjects': true,
-    'report_cards': true, 'appointments': false,
-    'health': true, 'immunizations': false, 'med_report': true, 'incidents': true,
-    'meal_orders': false, 'trip_auth': false, 'pickup_auth': false,
-    'photos': false, 'events': true, 'documents': true,
-    'announcements': true, 'messages': true, 'finance': true,
-    'absences': true, 'role_teacher': true, 'role_coordinator': true, 'role_finance_officer': true,
-    'role_secretary': true, 'role_nurse': false, 'role_student': true,
+    'checkin': false,
+    'caderneta': false,
+    'evaluations': false,
+    'activities': false,
+    'timetable_k12': true,
+    'lesson_attendance': true,
+    'grades': true,
+    'subjects': true,
+    'report_cards': true,
+    'appointments': false,
+    'health': true,
+    'immunizations': false,
+    'med_report': true,
+    'incidents': true,
+    'meal_orders': false,
+    'trip_auth': false,
+    'pickup_auth': false,
+    'photos': false,
+    'events': true,
+    'documents': true,
+    'announcements': true,
+    'messages': true,
+    'finance': true,
+    'absences': true,
+    'role_teacher': true,
+    'role_coordinator': true,
+    'role_finance_officer': true,
+    'role_secretary': true,
+    'role_nurse': false,
+    'role_student': true,
   },
   'combined': {
-    'checkin': false, 'caderneta': false, 'evaluations': false, 'activities': false,
-    'timetable_k12': true, 'lesson_attendance': true, 'grades': true, 'subjects': true,
-    'report_cards': true, 'appointments': true,
-    'health': true, 'immunizations': true, 'med_report': true, 'incidents': true,
-    'meal_orders': true, 'trip_auth': true, 'pickup_auth': true,
-    'photos': true, 'events': true, 'documents': true,
-    'announcements': true, 'messages': true, 'finance': true,
-    'absences': true, 'role_teacher': true, 'role_coordinator': true, 'role_finance_officer': true,
-    'role_secretary': true, 'role_nurse': true, 'role_student': true,
+    'checkin': false,
+    'caderneta': false,
+    'evaluations': false,
+    'activities': false,
+    'timetable_k12': true,
+    'lesson_attendance': true,
+    'grades': true,
+    'subjects': true,
+    'report_cards': true,
+    'appointments': true,
+    'health': true,
+    'immunizations': true,
+    'med_report': true,
+    'incidents': true,
+    'meal_orders': true,
+    'trip_auth': true,
+    'pickup_auth': true,
+    'photos': true,
+    'events': true,
+    'documents': true,
+    'announcements': true,
+    'messages': true,
+    'finance': true,
+    'absences': true,
+    'role_teacher': true,
+    'role_coordinator': true,
+    'role_finance_officer': true,
+    'role_secretary': true,
+    'role_nurse': true,
+    'role_student': true,
   },
   'full': {
-    'checkin': true, 'caderneta': true, 'evaluations': true, 'activities': true,
-    'timetable_k12': true, 'lesson_attendance': true, 'grades': true, 'subjects': true,
-    'report_cards': true, 'appointments': true,
-    'health': true, 'immunizations': true, 'med_report': true, 'incidents': true,
-    'meal_orders': true, 'trip_auth': true, 'pickup_auth': true,
-    'photos': true, 'events': true, 'documents': true,
-    'announcements': true, 'messages': true, 'finance': true,
-    'absences': true, 'role_teacher': true, 'role_coordinator': true, 'role_finance_officer': true,
-    'role_secretary': true, 'role_nurse': true, 'role_student': true,
+    'checkin': true,
+    'caderneta': true,
+    'evaluations': true,
+    'activities': true,
+    'timetable_k12': true,
+    'lesson_attendance': true,
+    'grades': true,
+    'subjects': true,
+    'report_cards': true,
+    'appointments': true,
+    'health': true,
+    'immunizations': true,
+    'med_report': true,
+    'incidents': true,
+    'meal_orders': true,
+    'trip_auth': true,
+    'pickup_auth': true,
+    'photos': true,
+    'events': true,
+    'documents': true,
+    'announcements': true,
+    'messages': true,
+    'finance': true,
+    'absences': true,
+    'role_teacher': true,
+    'role_coordinator': true,
+    'role_finance_officer': true,
+    'role_secretary': true,
+    'role_nurse': true,
+    'role_student': true,
   },
 };
 
@@ -101,85 +207,248 @@ class _Feat {
 
 const _allFeatures = <_Feat>[
   // Pedagógico
-  _Feat('checkin',      'Presenças',                   'Registo diário de entradas e saídas dos alunos',                 _Cat.pedagogical, Icons.fact_check_outlined),
-  _Feat('caderneta',    'Caderneta Diária',             'Relatório diário do educador / professor',                        _Cat.pedagogical, Icons.menu_book_outlined),
-  _Feat('evaluations',  'Avaliações de Desenvolvimento','Fichas de avaliação por dimensões (Cognitivo, Motor…)',           _Cat.pedagogical, Icons.school_outlined),
-  _Feat('activities',   'Actividades',                  'Planificação de actividades e horário semanal por grupo',         _Cat.pedagogical, Icons.sports_soccer_outlined),
-  _Feat('timetable_k12',     'Horário Lectivo',          'Grade de horário: período × dia × disciplina × professor',        _Cat.pedagogical, Icons.table_chart_outlined),
-  _Feat('lesson_attendance', 'Livro de Ponto',           'Registo de presenças e faltas por aula (K-12)',                   _Cat.pedagogical, Icons.how_to_reg_outlined),
-  _Feat('grades',            'Notas',                   'Lançamento de notas por disciplina',                              _Cat.pedagogical, Icons.grade_outlined),
-  _Feat('subjects',     'Disciplinas',                  'Cadastro de disciplinas e afectação por turma',                   _Cat.pedagogical, Icons.book_outlined),
-  _Feat('report_cards', 'Boletins',                     'Geração e exportação de boletins escolares',                      _Cat.pedagogical, Icons.assignment_outlined),
-  _Feat('appointments', 'Marcações',                    'Marcações e consultas com professores / coordenação',             _Cat.pedagogical, Icons.event_available_outlined),
-  _Feat('absences',     'Faltas de Funcionários',        'Registo de faltas e ausências do pessoal docente e não-docente',  _Cat.pedagogical, Icons.event_busy_outlined),
+  _Feat(
+      'checkin',
+      'Presenças',
+      'Registo diário de entradas e saídas dos alunos',
+      _Cat.pedagogical,
+      Icons.fact_check_outlined),
+  _Feat(
+      'caderneta',
+      'Caderneta Diária',
+      'Relatório diário do educador / professor',
+      _Cat.pedagogical,
+      Icons.menu_book_outlined),
+  _Feat(
+      'evaluations',
+      'Avaliações de Desenvolvimento',
+      'Fichas de avaliação por dimensões (Cognitivo, Motor…)',
+      _Cat.pedagogical,
+      Icons.school_outlined),
+  _Feat(
+      'activities',
+      'Actividades',
+      'Planificação de actividades e horário semanal por grupo',
+      _Cat.pedagogical,
+      Icons.sports_soccer_outlined),
+  _Feat(
+      'timetable_k12',
+      'Horário Lectivo',
+      'Grade de horário: período × dia × disciplina × professor',
+      _Cat.pedagogical,
+      Icons.table_chart_outlined),
+  _Feat(
+      'lesson_attendance',
+      'Livro de Ponto',
+      'Registo de presenças e faltas por aula (K-12)',
+      _Cat.pedagogical,
+      Icons.how_to_reg_outlined),
+  _Feat('grades', 'Notas', 'Lançamento de notas por disciplina',
+      _Cat.pedagogical, Icons.grade_outlined),
+  _Feat(
+      'subjects',
+      'Disciplinas',
+      'Cadastro de disciplinas e afectação por turma',
+      _Cat.pedagogical,
+      Icons.book_outlined),
+  _Feat(
+      'report_cards',
+      'Boletins',
+      'Geração e exportação de boletins escolares',
+      _Cat.pedagogical,
+      Icons.assignment_outlined),
+  _Feat(
+      'appointments',
+      'Marcações',
+      'Marcações e consultas com professores / coordenação',
+      _Cat.pedagogical,
+      Icons.event_available_outlined),
+  _Feat(
+      'absences',
+      'Faltas de Funcionários',
+      'Registo de faltas e ausências do pessoal docente e não-docente',
+      _Cat.pedagogical,
+      Icons.event_busy_outlined),
   // Saúde
-  _Feat('health',       'Saúde',                        'Registos de saúde, febre, medicamentos e bem-estar',              _Cat.health, Icons.health_and_safety_outlined),
-  _Feat('immunizations','Vacinação',                    'Calendário vacinal e registos de imunização',                     _Cat.health, Icons.vaccines_outlined),
-  _Feat('med_report',   'Relatório Médico',             'Relatório de saúde escolar e ficha médica',                       _Cat.health, Icons.medical_information_outlined),
-  _Feat('incidents',    'Ocorrências',                  'Incidentes, acidentes e comportamentos notáveis',                 _Cat.health, Icons.report_outlined),
+  _Feat('health', 'Saúde', 'Registos de saúde, febre, medicamentos e bem-estar',
+      _Cat.health, Icons.health_and_safety_outlined),
+  _Feat(
+      'immunizations',
+      'Vacinação',
+      'Calendário vacinal e registos de imunização',
+      _Cat.health,
+      Icons.vaccines_outlined),
+  _Feat(
+      'med_report',
+      'Relatório Médico',
+      'Relatório de saúde escolar e ficha médica',
+      _Cat.health,
+      Icons.medical_information_outlined),
+  _Feat(
+      'incidents',
+      'Ocorrências',
+      'Incidentes, acidentes e comportamentos notáveis',
+      _Cat.health,
+      Icons.report_outlined),
   // Operacional
-  _Feat('meal_orders',  'Refeições',                    'Gestão de cantina e encomenda de refeições',                      _Cat.operational, Icons.restaurant_menu_outlined),
-  _Feat('trip_auth',    'Autorizações de Visita',       'Autorizações digitais para visitas de estudo',                    _Cat.operational, Icons.directions_bus_outlined),
-  _Feat('pickup_auth',  'Autorizações de Levantamento', 'Controlo de quem pode levantar o aluno',                         _Cat.operational, Icons.transfer_within_a_station_outlined),
-  _Feat('photos',       'Galeria de Fotos',             'Galeria partilhada de fotos da escola',                           _Cat.operational, Icons.photo_library_outlined),
-  _Feat('events',       'Calendário',                   'Eventos escolares e calendário partilhado',                       _Cat.operational, Icons.calendar_month_outlined),
-  _Feat('documents',    'Documentos',                   'Repositório de documentos e circulares',                          _Cat.operational, Icons.folder_outlined),
+  _Feat(
+      'meal_orders',
+      'Refeições',
+      'Gestão de cantina e encomenda de refeições',
+      _Cat.operational,
+      Icons.restaurant_menu_outlined),
+  _Feat(
+      'trip_auth',
+      'Autorizações de Visita',
+      'Autorizações digitais para visitas de estudo',
+      _Cat.operational,
+      Icons.directions_bus_outlined),
+  _Feat(
+      'pickup_auth',
+      'Autorizações de Levantamento',
+      'Controlo de quem pode levantar o aluno',
+      _Cat.operational,
+      Icons.transfer_within_a_station_outlined),
+  _Feat('photos', 'Galeria de Fotos', 'Galeria partilhada de fotos da escola',
+      _Cat.operational, Icons.photo_library_outlined),
+  _Feat('events', 'Calendário', 'Eventos escolares e calendário partilhado',
+      _Cat.operational, Icons.calendar_month_outlined),
+  _Feat('documents', 'Documentos', 'Repositório de documentos e circulares',
+      _Cat.operational, Icons.folder_outlined),
   // Comunicação
-  _Feat('announcements','Comunicados',                  'Anúncios e comunicados enviados a toda a comunidade',             _Cat.comms, Icons.campaign_outlined),
-  _Feat('messages',     'Mensagens',                    'Mensagens privadas entre utilizadores',                           _Cat.comms, Icons.chat_bubble_outline),
+  _Feat(
+      'announcements',
+      'Comunicados',
+      'Anúncios e comunicados enviados a toda a comunidade',
+      _Cat.comms,
+      Icons.campaign_outlined),
+  _Feat('messages', 'Mensagens', 'Mensagens privadas entre utilizadores',
+      _Cat.comms, Icons.chat_bubble_outline),
   // Financeiro
-  _Feat('finance',      'Módulo Financeiro',            'Facturas, contratos, despesas, caixa e exportação SAF-T',        _Cat.finance, Icons.account_balance_wallet_outlined),
+  _Feat(
+      'finance',
+      'Módulo Financeiro',
+      'Facturas, contratos, despesas, caixa e exportação SAF-T',
+      _Cat.finance,
+      Icons.account_balance_wallet_outlined),
   // Funções disponíveis
-  _Feat('role_teacher',        'Professor / Educador',  'Função de docente: caderneta, presenças, notas e saúde',         _Cat.roles, Icons.school_outlined),
-  _Feat('role_coordinator',    'Coordenador Pedagógico','Acesso à gestão académica e relatórios pedagógicos',             _Cat.roles, Icons.manage_accounts_outlined),
-  _Feat('role_finance_officer','Director Financeiro',   'Acesso completo ao módulo financeiro',                            _Cat.roles, Icons.account_balance_outlined),
-  _Feat('role_secretary',      'Secretaria',            'Matrículas, comunicação e dados de alunos',                      _Cat.roles, Icons.badge_outlined),
-  _Feat('role_nurse',          'Enfermagem',            'Módulo de saúde, ocorrências e registos médicos',                 _Cat.roles, Icons.medical_services_outlined),
-  _Feat('role_student',        'Portal do Aluno',       'Acesso self-service: boletim, documentos, calendário',           _Cat.roles, Icons.person_outlined),
+  _Feat(
+      'role_teacher',
+      'Professor / Educador',
+      'Função de docente: caderneta, presenças, notas e saúde',
+      _Cat.roles,
+      Icons.school_outlined),
+  _Feat(
+      'role_coordinator',
+      'Coordenador Pedagógico',
+      'Acesso à gestão académica e relatórios pedagógicos',
+      _Cat.roles,
+      Icons.manage_accounts_outlined),
+  _Feat(
+      'role_finance_officer',
+      'Director Financeiro',
+      'Acesso completo ao módulo financeiro',
+      _Cat.roles,
+      Icons.account_balance_outlined),
+  _Feat(
+      'role_secretary',
+      'Secretaria',
+      'Matrículas, comunicação e dados de alunos',
+      _Cat.roles,
+      Icons.badge_outlined),
+  _Feat(
+      'role_nurse',
+      'Enfermagem',
+      'Módulo de saúde, ocorrências e registos médicos',
+      _Cat.roles,
+      Icons.medical_services_outlined),
+  _Feat(
+      'role_student',
+      'Portal do Aluno',
+      'Acesso self-service: boletim, documentos, calendário',
+      _Cat.roles,
+      Icons.person_outlined),
 ];
 
 const _catLabels = {
   _Cat.pedagogical: 'Pedagógico',
-  _Cat.health:      'Saúde & Incidentes',
+  _Cat.health: 'Saúde & Incidentes',
   _Cat.operational: 'Operacional',
-  _Cat.comms:       'Comunicação',
-  _Cat.finance:     'Financeiro',
-  _Cat.roles:       'Funções Disponíveis',
+  _Cat.comms: 'Comunicação',
+  _Cat.finance: 'Financeiro',
+  _Cat.roles: 'Funções Disponíveis',
 };
 
 const _catIcons = {
   _Cat.pedagogical: Icons.menu_book_outlined,
-  _Cat.health:      Icons.health_and_safety_outlined,
+  _Cat.health: Icons.health_and_safety_outlined,
   _Cat.operational: Icons.settings_outlined,
-  _Cat.comms:       Icons.forum_outlined,
-  _Cat.finance:     Icons.account_balance_wallet_outlined,
-  _Cat.roles:       Icons.people_outline,
+  _Cat.comms: Icons.forum_outlined,
+  _Cat.finance: Icons.account_balance_wallet_outlined,
+  _Cat.roles: Icons.people_outline,
 };
 
 // _rolePermDefs removed — using kConfigRoles from role_definitions.dart (single source of truth)
 
 // Feature labels for the role permission matrix (shorter, for chips/cells)
 const _featLabel = <String, String>{
-  'checkin': 'Entradas/Saídas', 'caderneta': 'Caderneta',
-  'evaluations': 'Avaliações Dev.', 'activities': 'Actividades',
-  'timetable_k12': 'Horário', 'grades': 'Notas',
-  'subjects': 'Disciplinas', 'report_cards': 'Boletins',
-  'appointments': 'Marcações', 'health': 'Saúde',
-  'immunizations': 'Vacinas', 'med_report': 'Rel. Médico',
-  'incidents': 'Ocorrências', 'meal_orders': 'Refeições',
-  'trip_auth': 'Visit. Estudo', 'pickup_auth': 'Levantamento',
-  'photos': 'Galeria', 'events': 'Calendário',
-  'documents': 'Documentos', 'announcements': 'Comunicados',
-  'messages': 'Mensagens', 'finance': 'Financeiro',
-  'lesson_attendance': 'Livro de Ponto', 'absences': 'Faltas Funcionários',
+  'checkin': 'Entradas/Saídas',
+  'caderneta': 'Caderneta',
+  'evaluations': 'Avaliações Dev.',
+  'activities': 'Actividades',
+  'timetable_k12': 'Horário',
+  'grades': 'Notas',
+  'subjects': 'Disciplinas',
+  'report_cards': 'Boletins',
+  'appointments': 'Marcações',
+  'health': 'Saúde',
+  'immunizations': 'Vacinas',
+  'med_report': 'Rel. Médico',
+  'incidents': 'Ocorrências',
+  'meal_orders': 'Refeições',
+  'trip_auth': 'Visit. Estudo',
+  'pickup_auth': 'Levantamento',
+  'photos': 'Galeria',
+  'events': 'Calendário',
+  'documents': 'Documentos',
+  'announcements': 'Comunicados',
+  'messages': 'Mensagens',
+  'finance': 'Financeiro',
+  'lesson_attendance': 'Livro de Ponto',
+  'absences': 'Faltas Funcionários',
 };
 
 const _segments = [
-  (value: 'preschool', label: 'Pré-Escolar',          icon: Icons.child_care_outlined,    color: Colors.pink),
-  (value: 'primary',   label: 'Ensino Primário',       icon: Icons.menu_book_outlined,     color: Colors.blue),
-  (value: 'secondary', label: 'Ensino Secundário',     icon: Icons.school_outlined,        color: Colors.indigo),
-  (value: 'combined',  label: 'Primário + Secundário', icon: Icons.account_balance_outlined, color: Colors.teal),
-  (value: 'full',      label: 'Escola Completa',       icon: Icons.domain_outlined,        color: Colors.deepPurple),
+  (
+    value: 'preschool',
+    label: 'Pré-Escolar',
+    icon: Icons.child_care_outlined,
+    color: Colors.pink
+  ),
+  (
+    value: 'primary',
+    label: 'Ensino Primário',
+    icon: Icons.menu_book_outlined,
+    color: Colors.blue
+  ),
+  (
+    value: 'secondary',
+    label: 'Ensino Secundário',
+    icon: Icons.school_outlined,
+    color: Colors.indigo
+  ),
+  (
+    value: 'combined',
+    label: 'Primário + Secundário',
+    icon: Icons.account_balance_outlined,
+    color: Colors.teal
+  ),
+  (
+    value: 'full',
+    label: 'Escola Completa',
+    icon: Icons.domain_outlined,
+    color: Colors.deepPurple
+  ),
 ];
 
 // ---------------------------------------------------------------------------
@@ -220,6 +489,8 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
   final Map<String, bool?> _featureOverrides = {};
   // Role permission overrides: role → feature → bool (false = denied)
   final Map<String, Map<String, bool>> _rolePerms = {};
+  final Map<String, dynamic> _otherFeatures = {};
+  final List<CustomRole> _customRoles = [];
   bool _saving = false;
   String? _error;
   bool _initialised = false;
@@ -241,6 +512,13 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
     _initialised = true;
     _segment = school['segment'] as String? ?? 'preschool';
     final raw = school['features'] as Map<String, dynamic>? ?? {};
+    _otherFeatures.addAll(raw);
+    for (final feature in _allFeatures) {
+      _otherFeatures.remove(feature.key);
+    }
+    _otherFeatures.remove('role_permissions');
+    _otherFeatures.remove('custom_roles');
+    _customRoles.addAll(customRolesFromFeatures(raw));
     for (final entry in raw.entries) {
       if (entry.key == 'role_permissions') {
         final rp = entry.value;
@@ -319,12 +597,35 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
     });
   }
 
+  Future<void> _editCustomRole([CustomRole? existing]) async {
+    final result = await showDialog<CustomRole>(
+      context: context,
+      builder: (_) =>
+          _CustomRoleDialog(existing: existing, roles: _customRoles),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      final index = _customRoles.indexWhere((role) => role.key == result.key);
+      if (index < 0) {
+        _customRoles.add(result);
+      } else {
+        _customRoles[index] = result;
+      }
+    });
+  }
+
   Future<void> _save() async {
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       // Build feature overrides dict — only include keys that differ from segment default.
       // Sending null values would corrupt resolved_features (null overrides the default).
-      final featOverrides = <String, dynamic>{};
+      final featOverrides = <String, dynamic>{
+        ..._otherFeatures,
+        'custom_roles': _customRoles.map((role) => role.toJson()).toList(),
+      };
       for (final f in _allFeatures) {
         final def = (_segmentDefaults[_segment] ?? {})[f.key] ?? true;
         final eff = _effectiveFeat(f.key);
@@ -364,15 +665,18 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
   Widget build(BuildContext context) {
     final async = ref.watch(_schoolDetailProvider(widget.schoolId));
     return async.when(
-      loading: () => Scaffold(appBar: AppBar(title: Text(widget.schoolName)),
+      loading: () => Scaffold(
+          appBar: AppBar(title: Text(widget.schoolName)),
           body: const Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(appBar: AppBar(title: Text(widget.schoolName)),
+      error: (e, _) => Scaffold(
+          appBar: AppBar(title: Text(widget.schoolName)),
           body: Center(child: Text('Erro: $e'))),
       data: (school) {
         _initFromSchool(school);
         return Scaffold(
           appBar: AppBar(
-            title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            title:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.schoolName),
               const Text('Configuração da Escola',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
@@ -381,13 +685,18 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
               controller: _tabs,
               tabs: const [
                 Tab(icon: Icon(Icons.tune, size: 18), text: 'Funcionalidades'),
-                Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Permissões por Função'),
+                Tab(
+                    icon: Icon(Icons.people_outline, size: 18),
+                    text: 'Permissões por Função'),
               ],
             ),
             actions: [
               if (_saving)
-                const Padding(padding: EdgeInsets.all(16),
-                    child: SizedBox(width: 20, height: 20,
+                const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2)))
               else
                 FilledButton.icon(
@@ -408,11 +717,22 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
                 effectiveFeat: _effectiveFeat,
                 isOverridden: _isOverridden,
                 toggleFeat: _toggleFeat,
+                customRoles: _customRoles,
+                onAddRole: () => _editCustomRole(),
+                onEditRole: _editCustomRole,
+                onToggleRole: (role, enabled) => setState(() {
+                  final index = _customRoles.indexOf(role);
+                  _customRoles[index] = CustomRole(
+                      key: role.key,
+                      label: role.label,
+                      baseRole: role.baseRole,
+                      enabled: enabled);
+                }),
               ),
               _RolePermsTab(
                 enabledFeatures: {
                   for (final f in _allFeatures)
-                    if (_effectiveFeat(f.key)) f.key,
+                    if (f.cat != _Cat.roles && _effectiveFeat(f.key)) f.key,
                 },
                 roleCanAccess: _roleCanAccess,
                 isRolePermOverridden: _isRolePermOverridden,
@@ -438,6 +758,11 @@ class _FeaturesTab extends StatelessWidget {
   final bool Function(String) isOverridden;
   final void Function(String, bool) toggleFeat;
 
+  final List<CustomRole> customRoles;
+  final VoidCallback onAddRole;
+  final ValueChanged<CustomRole> onEditRole;
+  final void Function(CustomRole, bool) onToggleRole;
+
   const _FeaturesTab({
     required this.segment,
     required this.onSegmentChange,
@@ -445,6 +770,10 @@ class _FeaturesTab extends StatelessWidget {
     required this.effectiveFeat,
     required this.isOverridden,
     required this.toggleFeat,
+    required this.customRoles,
+    required this.onAddRole,
+    required this.onEditRole,
+    required this.onToggleRole,
   });
 
   @override
@@ -458,31 +787,43 @@ class _FeaturesTab extends StatelessWidget {
         ],
 
         // Segment selector
-        _SectionHeader(icon: Icons.category_outlined, label: 'Tipo de Escola',
-            subtitle: 'Define os valores predefinidos para todas as funcionalidades'),
+        _SectionHeader(
+            icon: Icons.category_outlined,
+            label: 'Tipo de Escola',
+            subtitle:
+                'Define os valores predefinidos para todas as funcionalidades'),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 8, runSpacing: 8,
+          spacing: 8,
+          runSpacing: 8,
           children: _segments.map((seg) {
             final sel = segment == seg.value;
             return GestureDetector(
               onTap: () => onSegmentChange(seg.value),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: sel ? seg.color.withOpacity(0.12) : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: sel ? seg.color : Colors.grey.shade300, width: sel ? 2 : 1),
+                  border: Border.all(
+                      color: sel ? seg.color : Colors.grey.shade300,
+                      width: sel ? 2 : 1),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(seg.icon, size: 18, color: sel ? seg.color : Colors.grey.shade600),
+                  Icon(seg.icon,
+                      size: 18, color: sel ? seg.color : Colors.grey.shade600),
                   const SizedBox(width: 8),
-                  Text(seg.label, style: TextStyle(fontSize: 13,
-                      fontWeight: sel ? FontWeight.w700 : FontWeight.normal,
-                      color: sel ? seg.color : null)),
-                  if (sel) ...[const SizedBox(width: 6),
-                    Icon(Icons.check_circle, size: 16, color: seg.color)],
+                  Text(seg.label,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: sel ? FontWeight.w700 : FontWeight.normal,
+                          color: sel ? seg.color : null)),
+                  if (sel) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.check_circle, size: 16, color: seg.color)
+                  ],
                 ]),
               ),
             );
@@ -509,23 +850,74 @@ class _FeaturesTab extends StatelessWidget {
                 final overridden = isOverridden(f.key);
                 final def = (_segmentDefaults[segment] ?? {})[f.key] ?? true;
                 return ListTile(
-                  leading: Icon(f.icon, color: val ? AppTheme.primary : Colors.grey.shade400, size: 22),
+                  leading: Icon(f.icon,
+                      color: val ? AppTheme.primary : Colors.grey.shade400,
+                      size: 22),
                   title: Row(children: [
-                    Expanded(child: Text(f.label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14))),
+                    Expanded(
+                        child: Text(f.label,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w500, fontSize: 14))),
                     const SizedBox(width: 8),
                     _StatusChip(overridden: overridden, defaultValue: def),
                   ]),
-                  subtitle: Text(f.description, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                  trailing: Switch(value: val, onChanged: (v) => toggleFeat(f.key, v)),
+                  subtitle: Text(f.description,
+                      style: TextStyle(
+                          fontSize: 12, color: AppTheme.textSecondary)),
+                  trailing: Switch(
+                      value: val, onChanged: (v) => toggleFeat(f.key, v)),
                 );
               }).toList(),
             ),
           ),
         ],
 
+        const SizedBox(height: 12),
+        for (final role in [
+          kStaffRoles.first,
+          kConfigRoles.firstWhere((role) => role.key == 'parent')
+        ])
+          ListTile(
+            leading: Icon(role.icon),
+            title: Text(role.label),
+            subtitle: Text(role.description),
+            trailing: const Chip(label: Text('Sempre disponível')),
+          ),
+        const SizedBox(height: 16),
+        _SectionHeader(
+            icon: Icons.person_add_alt_1,
+            label: 'Funções personalizadas',
+            subtitle:
+                'Crie funções com nome próprio e escolha o perfil de acesso. '
+                'As permissões são as do perfil escolhido, configuradas no separador Permissões.'),
+        const SizedBox(height: 8),
+        for (final role in customRoles)
+          Card(
+              child: ListTile(
+            leading: Icon(role.definition.icon),
+            title: Text(role.label),
+            subtitle: Text(role.definition.description),
+            onTap: () => onEditRole(role),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: 'Editar função',
+                  onPressed: () => onEditRole(role)),
+              Switch(
+                  value: role.enabled,
+                  onChanged: (value) => onToggleRole(role, value)),
+            ]),
+          )),
+        OutlinedButton.icon(
+          onPressed: customRoles.length < 50 ? onAddRole : null,
+          icon: const Icon(Icons.add),
+          label: const Text('Adicionar função'),
+        ),
         const SizedBox(height: 24),
         Row(children: [
-          _LegendChip(color: Colors.blue, label: 'Valor predefinido pelo tipo de escola'),
+          _LegendChip(
+              color: Colors.blue,
+              label: 'Valor predefinido pelo tipo de escola'),
           const SizedBox(width: 16),
           _LegendChip(color: Colors.orange, label: 'Valor personalizado'),
         ]),
@@ -566,7 +958,8 @@ class _RolePermsTab extends StatelessWidget {
           child: const Row(children: [
             Icon(Icons.info_outline, size: 18, color: Colors.blue),
             SizedBox(width: 8),
-            Expanded(child: Text(
+            Expanded(
+                child: Text(
               'Cada função tem um conjunto predefinido de funcionalidades. '
               'Use os controlos abaixo para conceder acesso a funcionalidades extra ou restringir funcionalidades predefinidas, por função e por escola.',
               style: TextStyle(fontSize: 12, color: Colors.blue),
@@ -574,7 +967,6 @@ class _RolePermsTab extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 16),
-
         for (final role in kConfigRoles) ...[
           const SizedBox(height: 8),
           _RolePermCard(
@@ -624,11 +1016,13 @@ class _RolePermCardState extends State<_RolePermCard> {
       });
 
     final deniedCount = allFeats
-        .where((f) => widget.role.defaultFeatures.contains(f) &&
+        .where((f) =>
+            widget.role.defaultFeatures.contains(f) &&
             !widget.roleCanAccess(widget.role.key, f))
         .length;
     final grantedExtras = allFeats
-        .where((f) => !widget.role.defaultFeatures.contains(f) &&
+        .where((f) =>
+            !widget.role.defaultFeatures.contains(f) &&
             widget.roleCanAccess(widget.role.key, f))
         .length;
     final hasOverrides = deniedCount > 0 || grantedExtras > 0;
@@ -636,7 +1030,8 @@ class _RolePermCardState extends State<_RolePermCard> {
     String subtitle;
     Color subtitleColor;
     if (deniedCount > 0 && grantedExtras > 0) {
-      subtitle = '$deniedCount restrição(ões) · $grantedExtras extra(s) concedido(s)';
+      subtitle =
+          '$deniedCount restrição(ões) · $grantedExtras extra(s) concedido(s)';
       subtitleColor = Colors.orange;
     } else if (deniedCount > 0) {
       subtitle = '$deniedCount restrição(ões) activa(s)';
@@ -645,7 +1040,8 @@ class _RolePermCardState extends State<_RolePermCard> {
       subtitle = '$grantedExtras funcionalidade(s) extra concedida(s)';
       subtitleColor = Colors.blue;
     } else {
-      subtitle = 'Acesso predefinido a ${widget.role.defaultFeatures.where(widget.enabledFeatures.contains).length} funcionalidade(s)';
+      subtitle =
+          'Acesso predefinido a ${widget.role.defaultFeatures.where(widget.enabledFeatures.contains).length} funcionalidade(s)';
       subtitleColor = AppTheme.textSecondary;
     }
 
@@ -673,16 +1069,25 @@ class _RolePermCardState extends State<_RolePermCard> {
                   color: widget.role.color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(widget.role.icon, color: widget.role.color, size: 22),
+                child:
+                    Icon(widget.role.icon, color: widget.role.color, size: 22),
               ),
               const SizedBox(width: 12),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.role.label,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(subtitle,
-                    style: TextStyle(fontSize: 12, color: subtitleColor,
-                        fontWeight: hasOverrides ? FontWeight.w600 : FontWeight.normal)),
-              ])),
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text(widget.role.label,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15)),
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: subtitleColor,
+                            fontWeight: hasOverrides
+                                ? FontWeight.w600
+                                : FontWeight.normal)),
+                  ])),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more,
                   color: Colors.grey.shade500),
             ]),
@@ -692,7 +1097,8 @@ class _RolePermCardState extends State<_RolePermCard> {
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(14),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               // ── Default features ──────────────────────────────────────────
               if (allFeats.any(widget.role.defaultFeatures.contains)) ...[
                 _PermSection(
@@ -700,7 +1106,9 @@ class _RolePermCardState extends State<_RolePermCard> {
                   subtitle: 'Activo para esta função salvo restrição explícita',
                   color: Colors.green,
                   icon: Icons.check_circle_outline,
-                  features: allFeats.where(widget.role.defaultFeatures.contains).toList(),
+                  features: allFeats
+                      .where(widget.role.defaultFeatures.contains)
+                      .toList(),
                   roleKey: widget.role.key,
                   roleCanAccess: widget.roleCanAccess,
                   isOverridden: widget.isOverridden,
@@ -709,13 +1117,17 @@ class _RolePermCardState extends State<_RolePermCard> {
                 const SizedBox(height: 16),
               ],
               // ── Extra features (not in defaults) ─────────────────────────
-              if (allFeats.any((f) => !widget.role.defaultFeatures.contains(f))) ...[
+              if (allFeats
+                  .any((f) => !widget.role.defaultFeatures.contains(f))) ...[
                 _PermSection(
                   label: 'Funcionalidades adicionais',
-                  subtitle: 'Inactivo por defeito — active para conceder acesso extra',
+                  subtitle:
+                      'Inactivo por defeito — active para conceder acesso extra',
                   color: Colors.blue,
                   icon: Icons.add_circle_outline,
-                  features: allFeats.where((f) => !widget.role.defaultFeatures.contains(f)).toList(),
+                  features: allFeats
+                      .where((f) => !widget.role.defaultFeatures.contains(f))
+                      .toList(),
                   roleKey: widget.role.key,
                   roleCanAccess: widget.roleCanAccess,
                   isOverridden: widget.isOverridden,
@@ -724,7 +1136,8 @@ class _RolePermCardState extends State<_RolePermCard> {
               ],
               if (allFeats.isEmpty)
                 Text('Nenhuma funcionalidade activa nesta escola.',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    style:
+                        TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
             ]),
           ),
         ],
@@ -763,7 +1176,8 @@ class _PermSection extends StatelessWidget {
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
         Text(label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: color)),
       ]),
       const SizedBox(height: 2),
       Text(subtitle,
@@ -785,14 +1199,15 @@ class _PermSection extends StatelessWidget {
                   fontWeight: overridden ? FontWeight.w600 : FontWeight.normal,
                 )),
             selected: allowed,
-            selectedColor: overridden
-                ? color.withOpacity(0.15)
-                : color.withOpacity(0.10),
+            selectedColor:
+                overridden ? color.withOpacity(0.15) : color.withOpacity(0.10),
             checkmarkColor: color,
             onSelected: (v) => onToggle(roleKey, f, v),
             side: BorderSide(
               color: allowed
-                  ? (overridden ? color.withOpacity(0.6) : color.withOpacity(0.3))
+                  ? (overridden
+                      ? color.withOpacity(0.6)
+                      : color.withOpacity(0.3))
                   : Colors.red.withOpacity(0.4),
             ),
           );
@@ -810,18 +1225,23 @@ class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String label;
   final String? subtitle;
-  const _SectionHeader({required this.icon, required this.label, this.subtitle});
+  const _SectionHeader(
+      {required this.icon, required this.label, this.subtitle});
 
   @override
   Widget build(BuildContext context) {
     return Row(children: [
       Icon(icon, size: 20, color: AppTheme.primary),
       const SizedBox(width: 8),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-        if (subtitle != null)
-          Text(subtitle!, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-      ]),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          if (subtitle != null)
+            Text(subtitle!,
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        ]),
+      ),
     ]);
   }
 }
@@ -841,14 +1261,16 @@ class _StatusChip extends StatelessWidget {
   }
 
   Widget _chip(String text, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: color.withOpacity(0.3)),
-    ),
-    child: Text(text, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      );
 }
 
 class _ErrorBanner extends StatelessWidget {
@@ -867,7 +1289,9 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(children: [
         Icon(Icons.error_outline, color: AppTheme.danger, size: 18),
         const SizedBox(width: 8),
-        Expanded(child: Text(message, style: TextStyle(color: AppTheme.danger, fontSize: 13))),
+        Expanded(
+            child: Text(message,
+                style: TextStyle(color: AppTheme.danger, fontSize: 13))),
       ]),
     );
   }
@@ -881,10 +1305,113 @@ class _LegendChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 10, height: 10,
+      Container(
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
       const SizedBox(width: 6),
-      Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+      Text(label,
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
     ]);
   }
+}
+
+class _CustomRoleDialog extends StatefulWidget {
+  final CustomRole? existing;
+  final List<CustomRole> roles;
+  const _CustomRoleDialog({this.existing, required this.roles});
+  @override
+  State<_CustomRoleDialog> createState() => _CustomRoleDialogState();
+}
+
+class _CustomRoleDialogState extends State<_CustomRoleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late String _baseRole;
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.existing?.label ?? '');
+    _baseRole = widget.existing?.baseRole ?? 'secretary';
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(
+            widget.existing == null ? 'Adicionar função' : 'Editar função'),
+        content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+                child: Form(
+              key: _formKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(
+                    controller: _name,
+                    autofocus: true,
+                    maxLength: 80,
+                    decoration: const InputDecoration(
+                        labelText: 'Nome da função',
+                        hintText: 'Ex.: Assistente de Secretaria'),
+                    validator: (value) {
+                      final name = value?.trim() ?? '';
+                      if (name.isEmpty) return 'Indique o nome da função';
+                      if ([
+                        ...kStaffRoles.map((role) => role.label),
+                        ...kConfigRoles.map((role) => role.label),
+                        ...widget.roles
+                            .where((role) => role.key != widget.existing?.key)
+                            .map((role) => role.label)
+                      ].any((label) =>
+                          label.toLowerCase() == name.toLowerCase())) {
+                        return 'Já existe uma função com este nome';
+                      }
+                      return null;
+                    }),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _baseRole,
+                  decoration:
+                      const InputDecoration(labelText: 'Perfil de acesso'),
+                  isExpanded: true,
+                  items: kStaffRoles
+                      .where((role) => role.key != 'school_admin')
+                      .map((role) => DropdownMenuItem(
+                          value: role.key, child: Text(role.label)))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _baseRole = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                    'Esta função terá os mesmos acessos do perfil escolhido. '
+                    'Alterar o perfil afecta os funcionários com esta função.'),
+              ]),
+            ))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () {
+                if (!_formKey.currentState!.validate()) return;
+                Navigator.pop(
+                    context,
+                    CustomRole(
+                      key: widget.existing?.key ??
+                          'custom_${DateTime.now().microsecondsSinceEpoch}',
+                      label: _name.text.trim(),
+                      baseRole: _baseRole,
+                      enabled: widget.existing?.enabled ?? true,
+                    ));
+              },
+              child: const Text('Guardar função')),
+        ],
+      );
 }

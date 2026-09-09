@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/models/employee.dart';
-import '../../../core/models/role_definitions.dart';
+import '../../../core/models/custom_role.dart';
 import '../../../core/providers/currency_provider.dart';
 import 'employees_list_screen.dart' show employeesProvider;
 
@@ -75,8 +75,13 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
         _contractType = emp.contractType ?? 'permanent';
         _selectedRoles
           ..clear()
-          ..add(
-              emp.employeeType == 'admin' ? 'school_admin' : emp.employeeType);
+          ..addAll(emp.roles.isNotEmpty
+              ? emp.roles
+              : [
+                  emp.employeeType == 'admin'
+                      ? 'school_admin'
+                      : emp.employeeType
+                ]);
         _hireDate = emp.hireDate;
         _isLoadingEmployee = false;
       });
@@ -137,9 +142,20 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       _error = null;
     });
 
+    if (_selectedRoles.isEmpty) {
+      setState(() {
+        _error = 'Seleccione pelo menos uma função.';
+        _isLoading = false;
+      });
+      return;
+    }
     // Derive employee_type from selected roles for HR stats
+    final selected = _selectedRoles.first;
+    final custom = customRolesFromFeatures(
+        ref.read(schoolInfoProvider).valueOrNull?.resolvedFeatures ?? {});
     final primaryRole =
-        _selectedRoles.isEmpty ? 'teacher' : _selectedRoles.first;
+        custom.where((role) => role.key == selected).firstOrNull?.baseRole ??
+            selected;
     final derivedType = primaryRole == 'school_admin'
         ? 'admin'
         : (primaryRole == 'teacher' ? 'teacher' : 'staff');
@@ -148,8 +164,7 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       'first_name': _firstNameCtrl.text.trim(),
       'last_name': _lastNameCtrl.text.trim(),
       'employee_type': derivedType,
-      if (!isEditing && _selectedRoles.isNotEmpty)
-        'roles': _selectedRoles.toList(),
+      if (_selectedRoles.isNotEmpty) 'roles': _selectedRoles.toList(),
     };
     if (_middleNameCtrl.text.trim().isNotEmpty) {
       body['middle_name'] = _middleNameCtrl.text.trim();
@@ -362,14 +377,17 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
               const SizedBox(height: 12),
               Builder(builder: (context) {
                 final school = ref.watch(schoolInfoProvider).valueOrNull;
-                final available = kStaffRoles
+                final custom =
+                    customRolesFromFeatures(school?.resolvedFeatures ?? {});
+                final available = staffRolesForFeatures(
+                        school?.resolvedFeatures ?? {})
                     .where((r) =>
-                        r.alwaysAvailable ||
-                        (school?.hasFeature(r.featureFlag) ?? true))
+                        _selectedRoles.contains(r.key) ||
+                        ((r.alwaysAvailable ||
+                                (school?.hasFeature(r.featureFlag) ?? true)) &&
+                            !custom.any(
+                                (role) => role.key == r.key && !role.enabled)))
                     .toList();
-                if (_selectedRoles.isEmpty && available.isNotEmpty) {
-                  _selectedRoles.add(available.first.key);
-                }
                 return Wrap(
                   spacing: 8,
                   runSpacing: 8,

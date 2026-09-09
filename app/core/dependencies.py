@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.custom_roles import resolve_roles
 from app.core.security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -98,7 +99,17 @@ async def get_current_user(
         user._school_id = uuid.UUID(school_id_str) if school_id_str else None
         from app.models.school import School
         school = await db.get(School, user._school_id) if user._school_id else None
-        user._school_features = school.resolved_features if school else {}
+        if school is None or not school.is_active or user.school_id != school.id:
+            raise HTTPException(status_code=401, detail="Invalid school context")
+        user._school_features = school.resolved_features
+        # Use current stored assignments so disabling or changing a custom role
+        # takes effect even for previously issued access/refresh tokens.
+        effective_roles = resolve_roles(list(user.roles), user._school_features)
+        if not effective_roles:
+            raise HTTPException(status_code=403, detail="Nenhuma função de acesso activa")
+        user._roles = set(effective_roles)
+        user._roles_list = effective_roles
+        user._role = effective_roles[0]
         return user
 
 

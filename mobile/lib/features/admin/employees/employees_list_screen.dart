@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/models/employee.dart';
-import '../../../core/models/role_definitions.dart';
+import '../../../core/models/custom_role.dart';
 import '../../../core/providers/currency_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -117,9 +117,11 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
                     selected: _filter == 'all',
                     onSelected: (_) => setState(() => _filter = 'all'),
                   ),
-                  for (final role in kStaffRoles.where((r) =>
-                      school?.hasFeature(r.featureFlag) ??
-                      r.alwaysAvailable)) ...[
+                  for (final role
+                      in staffRolesForFeatures(school?.resolvedFeatures ?? {})
+                          .where((r) =>
+                              school?.hasFeature(r.featureFlag) ??
+                              r.alwaysAvailable)) ...[
                     const SizedBox(width: 8),
                     _FilterChip(
                       label: role.label,
@@ -234,7 +236,7 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _EmployeeTile extends StatelessWidget {
+class _EmployeeTile extends ConsumerWidget {
   final Employee employee;
   final VoidCallback? onDeactivate;
   final VoidCallback? onSyncFinreg;
@@ -245,7 +247,9 @@ class _EmployeeTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final definitions = staffRolesForFeatures(
+        ref.watch(schoolInfoProvider).valueOrNull?.resolvedFeatures ?? {});
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
@@ -266,7 +270,9 @@ class _EmployeeTile extends StatelessWidget {
               runSpacing: 4,
               children: employee.roles.isNotEmpty
                   ? employee.roles.map((r) {
-                      final def = roleDefByKey(r);
+                      final def = definitions
+                          .where((role) => role.key == r)
+                          .firstOrNull;
                       return _RoleChip(
                         label: def?.label ?? r,
                         color: def?.color ?? Colors.grey,

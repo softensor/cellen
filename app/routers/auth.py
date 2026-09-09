@@ -39,7 +39,10 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials",
             )
-        return build_tokens_for_school_user(user)
+        tokens = build_tokens_for_school_user(user, school.resolved_features)
+        if not tokens["roles"]:
+            raise HTTPException(status_code=403, detail="Nenhuma função de acesso activa")
+        return tokens
     else:
         # Platform admin login
         user = await authenticate_platform_user(db, body.username, body.password)
@@ -52,14 +55,28 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
-async def refresh_token(body: RefreshRequest):
+async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     payload = decode_token(body.refresh_token)
     if payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",
         )
-    # Build new access token preserving all original claims
+    # Refresh school roles from current assignments and custom-role definitions.
+    if payload.get("school_id"):
+        import uuid
+        from app.models.user import User
+        from app.models.school import School
+        user = await db.get(User, uuid.UUID(payload["sub"]))
+        school = await db.get(School, uuid.UUID(payload["school_id"]))
+        if (user is None or not user.is_active or school is None or
+                not school.is_active or user.school_id != school.id):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        tokens = build_tokens_for_school_user(user, school.resolved_features)
+        if not tokens["roles"]:
+            raise HTTPException(status_code=403, detail="Nenhuma função de acesso activa")
+        return {"access_token": tokens["access_token"], "token_type": "bearer"}
+    # Platform token claims are unchanged.
     role = payload.get("role", "")
     roles = payload.get("roles") or ([role] if role else [])
     token_data = {
