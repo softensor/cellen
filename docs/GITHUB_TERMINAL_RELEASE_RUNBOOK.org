@@ -161,8 +161,8 @@ sudo bash deploy/release_cellen_from_vps.sh [expected-master-sha]
 
 The optional SHA binds the deployment to the reviewed merged revision.  The
 script backs up PostgreSQL before applying migrations, installs the pinned
-Python dependencies, restarts =cellen-api=, and checks both local and public
-health endpoints.  Use =release_cellen_finreg_from_vps.sh= when Finreg itself or
+Python dependencies, restarts =cellen-api=, and checks its supported local and
+public health endpoints.  Use =release_cellen_finreg_from_vps.sh= when Finreg itself or
 the pinned Finreg Web artifact changes.
 
 * Common errors

@@ -386,6 +386,16 @@ def test_combined_vps_release_is_single_command_and_identity_checked():
     assert "systemctl is-active finreg-api finreg-worker finreg-beat cellen-api" in source
 
 
+def test_cellen_only_release_uses_the_supported_health_endpoint():
+    source = Path("deploy/release_cellen_from_vps.sh").read_text()
+
+    assert "http://127.0.0.1:8001/health" in source
+    assert "https://167.235.158.77.nip.io/health" in source
+    assert "8001/ready" not in source
+    assert "pg_dump -Fc" in source
+    assert 'alembic" upgrade head' in source
+
+
 def test_finreg_promotions_use_bounded_readiness_polling():
     helper = Path("deploy/lib/wait_for_finreg_services.sh").read_text()
     assert "wait_for_finreg_services()" in helper

@@ -17,9 +17,7 @@ DB_NAME=${CELLEN_DB_NAME:-cellen}
 BACKUP_DIR=${CELLEN_BACKUP_DIR:-/home/$DEPLOY_USER/backups}
 SERVICE_NAME=${CELLEN_SERVICE_NAME:-cellen-api}
 LOCAL_HEALTH_URL=${CELLEN_LOCAL_HEALTH_URL:-http://127.0.0.1:8001/health}
-LOCAL_READY_URL=${CELLEN_LOCAL_READY_URL:-http://127.0.0.1:8001/ready}
 PUBLIC_HEALTH_URL=${CELLEN_PUBLIC_HEALTH_URL:-https://167.235.158.77.nip.io/health}
-PUBLIC_READY_URL=${CELLEN_PUBLIC_READY_URL:-https://167.235.158.77.nip.io/ready}
 EXPECTED_SHA=${1:-}
 STARTED_AT=$(date --iso-8601=seconds)
 BACKUP_FILE=
@@ -136,8 +134,7 @@ echo "==> Waiting for Cellen health"
 healthy=0
 for ((attempt = 1; attempt <= 30; attempt++)); do
   if systemctl is-active --quiet "$SERVICE_NAME" \
-      && curl --fail --silent --show-error "$LOCAL_HEALTH_URL" >/dev/null \
-      && curl --fail --silent --show-error "$LOCAL_READY_URL" >/dev/null; then
+      && curl --fail --silent --show-error "$LOCAL_HEALTH_URL" >/dev/null; then
     healthy=1
     break
   fi
@@ -149,12 +146,9 @@ done
 }
 
 curl --fail --silent --show-error "$PUBLIC_HEALTH_URL" >/dev/null
-curl --fail --silent --show-error "$PUBLIC_READY_URL" >/dev/null
 
 echo "Cellen deployment completed successfully."
 echo "Revision: $DEPLOYED_SHA"
 echo "Database backup: $BACKUP_FILE"
 echo "Local health: $LOCAL_HEALTH_URL"
-echo "Local readiness: $LOCAL_READY_URL"
 echo "Public health: $PUBLIC_HEALTH_URL"
-echo "Public readiness: $PUBLIC_READY_URL"
