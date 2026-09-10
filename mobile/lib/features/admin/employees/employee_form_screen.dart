@@ -156,11 +156,16 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     final customRole = custom.where((role) => role.key == selected).firstOrNull;
     final primaryRole = customRole == null
         ? selected
-        : (customRole.permissions.contains('school_administration')
-            ? 'school_admin'
-            : (customRole.permissions.contains('teaching')
-                ? 'teacher'
-                : 'staff'));
+        : (customRole.permissions.any({
+            'checkin',
+            'caderneta',
+            'evaluations',
+            'activities',
+            'lesson_attendance',
+            'grades',
+          }.contains)
+            ? 'teacher'
+            : 'staff');
     final derivedType = primaryRole == 'school_admin'
         ? 'admin'
         : (primaryRole == 'teacher' ? 'teacher' : 'staff');

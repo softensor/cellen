@@ -37,7 +37,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   Widget build(BuildContext context) {
     final threadsAsync = ref.watch(messageThreadsProvider);
     final authState = ref.watch(authProvider);
-    final canBroadcast = authState.isAdmin || authState.isTeacher;
+    final canBroadcast = authState.isAdmin ||
+        authState.isTeacher ||
+        authState.hasCustomPermission('messages');
 
     return Scaffold(
       appBar: AppBar(

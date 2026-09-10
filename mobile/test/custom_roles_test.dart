@@ -1,4 +1,5 @@
 import 'package:cellen/core/api/api_client.dart';
+import 'package:cellen/core/auth/auth_state.dart';
 import 'package:cellen/core/models/custom_role.dart';
 import 'package:cellen/features/platform/schools/school_config_screen.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +32,21 @@ class _SchoolApi extends ApiClient {
 }
 
 void main() {
+  test('custom permission state does not require a predefined role', () {
+    const auth = AuthState(
+      isAuthenticated: true,
+      isLoading: false,
+      customPermissions: {'finance'},
+    );
+    expect(auth.roles, isEmpty);
+    expect(auth.homeRoute, '/admin/finance');
+    expect(auth.canManageFinance, isTrue);
+    expect(auth.canManageAcademic, isFalse);
+    expect(auth.isAdmin, isFalse);
+    expect(auth.isTeacher, isFalse);
+    expect(auth.hasCustomPermission('finance'), isTrue);
+  });
+
   test('custom roles store independent permissions and migrate legacy data',
       () {
     final role = CustomRole.fromJson({
@@ -47,8 +63,8 @@ void main() {
       'label': 'Antiga',
       'base_role': 'teacher',
     });
-    expect(legacy.permissions, ['teaching']);
-    expect(legacy.toJson()['permissions'], ['teaching']);
+    expect(legacy.permissions, containsAll(['checkin', 'grades']));
+    expect(legacy.permissions, isNot(contains('teaching')));
   });
 
   testWidgets(
@@ -72,7 +88,7 @@ void main() {
     await tester.tap(find.text('Adicionar função'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), 'Recepção');
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Secretaria'));
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Pessoas'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar função'));
     await tester.pumpAndSettle();
@@ -80,7 +96,7 @@ void main() {
     await tester.pumpAndSettle();
     final roles = api.features['custom_roles'] as List;
     expect(roles.single['label'], 'Recepção');
-    expect(roles.single['permissions'], ['secretariat']);
+    expect(roles.single['permissions'], ['people']);
     expect(api.features['external_setting'], {'enabled': true});
     final key = roles.single['key'];
     await tester.ensureVisible(find.text('Recepção'));

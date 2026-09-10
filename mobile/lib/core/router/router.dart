@@ -752,7 +752,47 @@ const _pathFeatureMap = {
   '/parent/grades': 'report_cards',
 };
 
-List<SidebarItem> _buildSidebarItems(Set<UserRole> roles, [School? school]) {
+bool _customCanAccessPath(Set<String> permissions, String path) {
+  if (path == '/notifications') return true;
+  if (path == '/admin') return permissions.isNotEmpty;
+  if (path == '/teacher') {
+    return permissions.any({
+      'checkin',
+      'caderneta',
+      'evaluations',
+      'activities',
+      'timetable_k12',
+      'lesson_attendance',
+      'grades',
+    }.contains);
+  }
+  if (path == '/admin/people') return permissions.contains('people');
+  if (path == '/admin/academic') return permissions.contains('academic');
+  if (path == '/admin/health-hub') {
+    return permissions
+        .any({'health', 'immunizations', 'med_report', 'incidents'}.contains);
+  }
+  if (path == '/admin/comms') {
+    return permissions
+        .any({'announcements', 'messages', 'documents', 'events'}.contains);
+  }
+  if (path == '/admin/food-hub') return permissions.contains('meal_orders');
+  if (path == '/admin/reports/med') return permissions.contains('med_report');
+  if (path == '/admin/school-settings') {
+    return permissions.contains('school_settings');
+  }
+  if (path == '/admin/school-profile') {
+    return permissions.contains('school_settings');
+  }
+  final feature = _pathFeatureMap.entries
+      .where((entry) => path == entry.key || path.startsWith('${entry.key}/'))
+      .map((entry) => entry.value)
+      .firstOrNull;
+  return feature != null && permissions.contains(feature);
+}
+
+List<SidebarItem> _buildSidebarItems(Set<UserRole> roles, School? school,
+    [Set<String> customPermissions = const {}]) {
   final seen = <String>{};
   final result = <SidebarItem>[];
   for (final (role, items) in _roleItemOrder) {
@@ -778,6 +818,21 @@ List<SidebarItem> _buildSidebarItems(Set<UserRole> roles, [School? school]) {
       }
     }
   }
+  if (customPermissions.isNotEmpty) {
+    for (final items in [
+      _adminItems,
+      _teacherItems,
+      _nurseItems,
+      _secretaryItems
+    ]) {
+      for (final item in items) {
+        if (!_customCanAccessPath(customPermissions, item.path)) continue;
+        final feature = _pathFeatureMap[item.path];
+        if (feature != null && !(school?.hasFeature(feature) ?? true)) continue;
+        if (seen.add(item.path)) result.add(item);
+      }
+    }
+  }
   return result;
 }
 
@@ -798,26 +853,6 @@ String _titleForPath(String path, List<SidebarItem> items) {
 }
 
 // ---------------------------------------------------------------------------
-// Role home routes (used by redirect logic)
-// ---------------------------------------------------------------------------
-
-String _roleHome(Set<UserRole> roles) => _buildHomeFromRoles(roles);
-
-String _buildHomeFromRoles(Set<UserRole> roles) {
-  // Uses same priority order as AuthState.homeRoute
-  if (roles.contains(UserRole.platformAdmin)) return '/platform';
-  if (roles.contains(UserRole.schoolAdmin)) return '/admin';
-  if (roles.contains(UserRole.coordinator)) return '/admin';
-  if (roles.contains(UserRole.financeOfficer)) return '/admin/finance';
-  if (roles.contains(UserRole.secretary)) return '/admin/people';
-  if (roles.contains(UserRole.teacher)) return '/teacher';
-  if (roles.contains(UserRole.nurse)) return '/health';
-  if (roles.contains(UserRole.parent)) return '/parent';
-  if (roles.contains(UserRole.student)) return '/parent/grades';
-  return '/login';
-}
-
-// ---------------------------------------------------------------------------
 // Unified Shell — single widget, selects nav items by role
 // ---------------------------------------------------------------------------
 
@@ -833,7 +868,8 @@ class _UnifiedShell extends ConsumerWidget {
 
     final unread = ref.watch(unreadNotifCountProvider).valueOrNull ?? 0;
 
-    final baseItems = _buildSidebarItems(auth.roles, school);
+    final baseItems =
+        _buildSidebarItems(auth.roles, school, auth.customPermissions);
 
     // Inject notification badge count into the Notificações item
     final items = unread > 0
@@ -857,8 +893,11 @@ class _UnifiedShell extends ConsumerWidget {
       schoolName: !auth.hasRole(UserRole.platformAdmin) ? school?.name : null,
       schoolLogoUrl:
           !auth.hasRole(UserRole.platformAdmin) ? school?.logoUrl : null,
-      onSchoolTap:
-          auth.isAdmin ? () => context.go('/admin/school-profile') : null,
+      onSchoolTap: (auth.hasRole(UserRole.schoolAdmin) ||
+              auth.hasRole(UserRole.platformAdmin) ||
+              auth.customPermissions.contains('school_settings'))
+          ? () => context.go('/admin/school-profile')
+          : null,
       actions: [
         IconButton(
           icon: const Icon(Icons.lock_outline),
@@ -902,10 +941,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isAuthenticated && !isLoginPage) return '/login';
 
       // Authenticated on login page → home
-      if (isAuthenticated && isLoginPage) return _roleHome(authState.roles);
+      if (isAuthenticated && isLoginPage) return authState.homeRoute;
 
       // ── Role-based route guards ──────────────────────────────────────────
       final roles = authState.roles;
+      final customPermissions = authState.customPermissions;
       const adminAreaRoles = {
         UserRole.schoolAdmin,
         UserRole.coordinator,
@@ -916,12 +956,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Platform routes: only platform admin
       if (path.startsWith('/platform') &&
           !roles.contains(UserRole.platformAdmin)) {
-        return _roleHome(roles);
+        return authState.homeRoute;
       }
 
       // Admin area: admin-tier roles only
-      if (path.startsWith('/admin') && !roles.any(adminAreaRoles.contains)) {
-        return _roleHome(roles);
+      if (path.startsWith('/admin') &&
+          !roles.any(adminAreaRoles.contains) &&
+          !_customCanAccessPath(customPermissions, path)) {
+        return authState.homeRoute;
       }
 
       // Finance routes: must have finance access
@@ -930,7 +972,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         UserRole.financeOfficer: 'finance_officer',
         UserRole.secretary: 'secretary',
       };
-      final hasFinanceAccess = roles.contains(UserRole.schoolAdmin) ||
+      final hasFinanceAccess = customPermissions.contains('finance') ||
+          roles.contains(UserRole.schoolAdmin) ||
           financeRoles.entries.any((entry) {
             if (!roles.contains(entry.key)) return false;
             final defaultAccess = entry.key == UserRole.financeOfficer;
@@ -939,13 +982,14 @@ final routerProvider = Provider<GoRouter>((ref) {
                 defaultAccess;
           });
       if (path.startsWith('/admin/finance') && !hasFinanceAccess) {
-        return _roleHome(roles);
+        return authState.homeRoute;
       }
 
       // School settings: school admin only
       if (path.startsWith('/admin/school-settings') &&
-          !roles.contains(UserRole.schoolAdmin)) {
-        return _roleHome(roles);
+          !roles.contains(UserRole.schoolAdmin) &&
+          !customPermissions.contains('school_settings')) {
+        return authState.homeRoute;
       }
 
       // Teacher area: not for parent or student
@@ -956,7 +1000,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             UserRole.coordinator,
             UserRole.schoolAdmin
           }.contains)) {
-        return _roleHome(roles);
+        return authState.homeRoute;
       }
 
       // Parent-only routes
@@ -964,7 +1008,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           !roles.contains(UserRole.parent) &&
           !roles.any(adminAreaRoles.contains) &&
           !roles.contains(UserRole.platformAdmin)) {
-        return _roleHome(roles);
+        return authState.homeRoute;
+      }
+
+      if (roles.isEmpty &&
+          customPermissions.isNotEmpty &&
+          !_customCanAccessPath(customPermissions, path)) {
+        return authState.homeRoute;
       }
 
       return null;

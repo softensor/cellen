@@ -79,7 +79,9 @@ class TripAuthorizationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authsAsync = ref.watch(tripAuthorizationsProvider);
     final authState = ref.watch(authProvider);
-    final canCreate = authState.isAdmin || authState.isTeacher;
+    final canCreate = authState.isAdmin ||
+        authState.isTeacher ||
+        authState.hasCustomPermission('trip_auth');
     final isParent = authState.isParent;
 
     return Scaffold(

@@ -81,7 +81,9 @@ class AnnouncementsScreen extends ConsumerWidget {
     final announcementsAsync = ref.watch(announcementsProvider);
     final pinnedAsync = ref.watch(pinnedAnnouncementsProvider);
     final auth = ref.watch(authProvider);
-    final canPost = auth.isAdmin || auth.isTeacher;
+    final canPost = auth.isAdmin ||
+        auth.isTeacher ||
+        auth.hasCustomPermission('announcements');
 
     return Scaffold(
       appBar: AppBar(

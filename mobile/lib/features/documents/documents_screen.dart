@@ -95,7 +95,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
   Widget build(BuildContext context) {
     final documentsAsync = ref.watch(documentsProvider);
     final auth = ref.watch(authProvider);
-    final isAdmin = auth.isAdmin;
+    final isAdmin = auth.isAdmin || auth.hasCustomPermission('documents');
 
     return Scaffold(
       appBar: AppBar(

@@ -1,9 +1,42 @@
-"""Independent school-specific roles and their explicit access permissions."""
-from typing import Literal
+"""Independent school-specific roles and their explicit function permissions."""
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-STAFF_ROLES = {"school_admin", "coordinator", "finance_officer", "secretary", "teacher", "nurse", "staff"}
+STAFF_ROLES = {
+    "school_admin", "coordinator", "finance_officer", "secretary",
+    "teacher", "nurse", "staff",
+}
+
+CUSTOM_PERMISSIONS = {
+    "people", "academic", "checkin", "caderneta", "evaluations",
+    "activities", "timetable_k12", "lesson_attendance", "grades",
+    "subjects", "report_cards", "appointments", "absences", "health",
+    "immunizations", "med_report", "incidents", "meal_orders", "trip_auth",
+    "pickup_auth", "photos", "events", "documents", "announcements",
+    "messages", "finance", "reports", "school_settings",
+}
+
+_AREA_PERMISSIONS = {
+    "school_administration": CUSTOM_PERMISSIONS,
+    "academic_coordination": {
+        "academic", "checkin", "caderneta", "evaluations", "activities",
+        "timetable_k12", "lesson_attendance", "grades", "subjects",
+        "report_cards", "appointments", "absences", "reports",
+    },
+    "finance": {"finance"},
+    "secretariat": {
+        "people", "academic", "appointments", "absences", "events",
+        "documents", "announcements", "messages",
+    },
+    "teaching": {
+        "academic", "checkin", "caderneta", "evaluations", "activities",
+        "timetable_k12", "lesson_attendance", "grades", "appointments",
+    },
+    "staff_services": {
+        "appointments", "meal_orders", "photos", "events", "documents",
+        "announcements", "messages",
+    },
+}
 
 _LEGACY_PERMISSION = {
     "coordinator": "academic_coordination",
@@ -13,30 +46,20 @@ _LEGACY_PERMISSION = {
     "nurse": "health",
 }
 
-_PERMISSION_CLIENT_ROLE = {
-    "school_administration": "school_admin",
-    "academic_coordination": "coordinator",
-    "finance": "finance_officer",
-    "secretariat": "secretary",
-    "teaching": "teacher",
-    "staff_services": "secretary",
-    "health": "nurse",
-}
+def _expand_permissions(values) -> list[str]:
+    expanded: list[str] = []
+    for value in values or []:
+        for permission in sorted(_AREA_PERMISSIONS.get(value, {value})):
+            if permission not in expanded:
+                expanded.append(permission)
+    return expanded
 
 
 class CustomRole(BaseModel):
     model_config = ConfigDict(extra="forbid")
     key: str = Field(pattern=r"^custom_[a-z0-9_]{1,64}$")
     label: str = Field(min_length=1, max_length=80)
-    permissions: list[Literal[
-        "school_administration",
-        "academic_coordination",
-        "finance",
-        "secretariat",
-        "teaching",
-        "staff_services",
-        "health",
-    ]] = Field(max_length=7)
+    permissions: list[str] = Field(max_length=len(CUSTOM_PERMISSIONS))
     enabled: bool = True
 
     @field_validator("label", mode="before")
@@ -44,12 +67,18 @@ class CustomRole(BaseModel):
     def trim_label(cls, value):
         return value.strip() if isinstance(value, str) else value
 
-    @field_validator("permissions")
+    @field_validator("permissions", mode="before")
     @classmethod
-    def unique_permissions(cls, value):
-        if len(set(value)) != len(value):
+    def valid_permissions(cls, value):
+        if not isinstance(value, list):
+            raise ValueError("permissions deve ser uma lista")
+        if len(value) != len(set(value)):
             raise ValueError("As permissões da função não podem ser repetidas")
-        return value
+        expanded = _expand_permissions(value)
+        unknown = set(expanded) - CUSTOM_PERMISSIONS
+        if unknown:
+            raise ValueError("Permissão desconhecida: " + sorted(unknown)[0])
+        return expanded
 
 
 def custom_roles(features: dict | None) -> dict[str, dict]:
@@ -71,31 +100,25 @@ def resolve_roles(roles: list[str], features: dict | None) -> list[str]:
 
 
 def resolve_permissions(roles: list[str], features: dict | None) -> set[str]:
-    """Return permissions explicitly granted by active custom-role definitions."""
+    """Return function permissions granted by active custom-role definitions."""
     definitions = custom_roles(features)
     permissions: set[str] = set()
     for role in roles:
         definition = definitions.get(role)
-        if definition and definition.get("enabled", True):
-            explicit = definition.get("permissions")
-            if isinstance(explicit, list):
-                permissions.update(explicit)
-            elif definition.get("base_role") in _LEGACY_PERMISSION:
-                # Read compatibility for definitions saved by the first release.
-                # The next platform-admin save writes the explicit format.
-                permissions.add(_LEGACY_PERMISSION[definition["base_role"]])
+        if not definition or not definition.get("enabled", True):
+            continue
+        explicit = definition.get("permissions")
+        if isinstance(explicit, list):
+            permissions.update(_expand_permissions(explicit))
+        elif definition.get("base_role") in _LEGACY_PERMISSION:
+            legacy = _LEGACY_PERMISSION[definition["base_role"]]
+            permissions.update(_AREA_PERMISSIONS.get(legacy, {legacy}))
     return permissions
 
 
 def client_navigation_roles(roles: list[str], features: dict | None) -> list[str]:
-    """Return legacy role hints for clients; these are never authorization input."""
-    resolved = resolve_roles(roles, features)
-    result = [role for role in resolved if not role.startswith("custom_")]
-    for permission in sorted(resolve_permissions(roles, features)):
-        role = _PERMISSION_CLIENT_ROLE[permission]
-        if role not in result:
-            result.append(role)
-    return result
+    """Return assigned identities without translating custom roles to built-in roles."""
+    return resolve_roles(roles, features)
 
 
 def validate_assignments(roles: list[str], features: dict | None, existing=()) -> list[str]:

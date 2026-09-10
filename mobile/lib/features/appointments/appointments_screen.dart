@@ -122,7 +122,10 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen>
     final appointmentsAsync = ref.watch(appointmentsProvider);
     final auth = ref.watch(authProvider);
     final isParent = auth.isParent;
-    final isStaffOrAdmin = auth.isAdmin || auth.isTeacher || auth.isStaff;
+    final isStaffOrAdmin = auth.isAdmin ||
+        auth.isTeacher ||
+        auth.isStaff ||
+        auth.hasCustomPermission('appointments');
 
     return Scaffold(
       appBar: AppBar(

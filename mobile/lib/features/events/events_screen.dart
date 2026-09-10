@@ -53,7 +53,9 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
   Widget build(BuildContext context) {
     final eventsAsync = ref.watch(eventsProvider);
     final auth = ref.read(authProvider);
-    final isAdmin = auth.isAdmin || auth.canManageAcademic;
+    final isAdmin = auth.isAdmin ||
+        auth.canManageAcademic ||
+        auth.hasCustomPermission('events');
 
     return Scaffold(
       appBar: AppBar(

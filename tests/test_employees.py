@@ -104,7 +104,7 @@ async def test_custom_role_assignment_and_live_revocation(
     role = {
         "key": "custom_reception",
         "label": "Recepção",
-        "permissions": ["secretariat"],
+        "permissions": ["people"],
         "enabled": True,
     }
     configured = await client.patch(
@@ -140,10 +140,16 @@ async def test_custom_role_assignment_and_live_revocation(
     )
     assert login_response.status_code == 200, login_response.text
     tokens = login_response.json()
-    assert tokens["roles"] == ["secretary"]
+    assert tokens["roles"] == ["custom_reception"]
     assert (await client.get(
         "/auth/me", headers=auth(tokens["access_token"])
     )).status_code == 200
+    assert (await client.get(
+        "/employees", headers=auth(tokens["access_token"])
+    )).status_code == 200
+    assert (await client.get(
+        "/finance/billing-items", headers=auth(tokens["access_token"])
+    )).status_code == 403
 
     role["enabled"] = False
     disabled = await client.patch(

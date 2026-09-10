@@ -3,15 +3,15 @@
 // ---------------------------------------------------------------------------
 
 enum UserRole {
-  platformAdmin,   // platform owner — cross-school
-  schoolAdmin,     // full school management
-  coordinator,     // academic coordination — no finance, no user mgmt
-  financeOfficer,  // finance module only
-  secretary,       // read + comms — enrollment lookup, no create/delete
-  teacher,         // classroom: attendance, grades, caderneta
-  nurse,           // health events + immunizations only
-  parent,          // their children only
-  student,         // own boletim/timetable (secondary only)
+  platformAdmin, // platform owner — cross-school
+  schoolAdmin, // full school management
+  coordinator, // academic coordination — no finance, no user mgmt
+  financeOfficer, // finance module only
+  secretary, // read + comms — enrollment lookup, no create/delete
+  teacher, // classroom: attendance, grades, caderneta
+  nurse, // health events + immunizations only
+  parent, // their children only
+  student, // own boletim/timetable (secondary only)
 }
 
 // ---------------------------------------------------------------------------
@@ -20,31 +20,51 @@ enum UserRole {
 
 UserRole? _roleFromString(String? s) {
   switch (s) {
-    case 'platform_admin':  return UserRole.platformAdmin;
-    case 'school_admin':    return UserRole.schoolAdmin;
-    case 'coordinator':     return UserRole.coordinator;
-    case 'finance_officer': return UserRole.financeOfficer;
-    case 'secretary':       return UserRole.secretary;
-    case 'teacher':         return UserRole.teacher;
-    case 'nurse':           return UserRole.nurse;
-    case 'parent':          return UserRole.parent;
-    case 'student':         return UserRole.student;
-    default:                return null;
+    case 'platform_admin':
+      return UserRole.platformAdmin;
+    case 'school_admin':
+      return UserRole.schoolAdmin;
+    case 'coordinator':
+      return UserRole.coordinator;
+    case 'finance_officer':
+      return UserRole.financeOfficer;
+    case 'secretary':
+      return UserRole.secretary;
+    case 'teacher':
+      return UserRole.teacher;
+    case 'nurse':
+      return UserRole.nurse;
+    case 'parent':
+      return UserRole.parent;
+    case 'student':
+      return UserRole.student;
+    default:
+      return null;
   }
 }
 
 String? _roleToString(UserRole? role) {
   switch (role) {
-    case UserRole.platformAdmin:  return 'platform_admin';
-    case UserRole.schoolAdmin:    return 'school_admin';
-    case UserRole.coordinator:    return 'coordinator';
-    case UserRole.financeOfficer: return 'finance_officer';
-    case UserRole.secretary:      return 'secretary';
-    case UserRole.teacher:        return 'teacher';
-    case UserRole.nurse:          return 'nurse';
-    case UserRole.parent:         return 'parent';
-    case UserRole.student:        return 'student';
-    case null:                    return null;
+    case UserRole.platformAdmin:
+      return 'platform_admin';
+    case UserRole.schoolAdmin:
+      return 'school_admin';
+    case UserRole.coordinator:
+      return 'coordinator';
+    case UserRole.financeOfficer:
+      return 'finance_officer';
+    case UserRole.secretary:
+      return 'secretary';
+    case UserRole.teacher:
+      return 'teacher';
+    case UserRole.nurse:
+      return 'nurse';
+    case UserRole.parent:
+      return 'parent';
+    case UserRole.student:
+      return 'student';
+    case null:
+      return null;
   }
 }
 
@@ -73,16 +93,16 @@ UserRole? _primaryRole(Set<UserRole> roles) {
 
 String _rolesHomeRoute(Set<UserRole> roles) {
   return switch (_primaryRole(roles)) {
-    UserRole.platformAdmin  => '/platform',
-    UserRole.schoolAdmin    => '/admin',
-    UserRole.coordinator    => '/admin',
+    UserRole.platformAdmin => '/platform',
+    UserRole.schoolAdmin => '/admin',
+    UserRole.coordinator => '/admin',
     UserRole.financeOfficer => '/admin/finance',
-    UserRole.secretary      => '/admin/people',
-    UserRole.teacher        => '/teacher',
-    UserRole.nurse          => '/health',
-    UserRole.parent         => '/parent',
-    UserRole.student        => '/parent/grades',
-    null                    => '/login',
+    UserRole.secretary => '/admin/people',
+    UserRole.teacher => '/teacher',
+    UserRole.nurse => '/health',
+    UserRole.parent => '/parent',
+    UserRole.student => '/parent/grades',
+    null => '/login',
   };
 }
 
@@ -96,6 +116,7 @@ class AuthState {
   final String? accessToken;
   final String? refreshToken;
   final Set<UserRole> roles;
+  final Set<String> customPermissions;
   final String? userId;
   final String? schoolId;
   final String? username;
@@ -109,6 +130,7 @@ class AuthState {
     this.accessToken,
     this.refreshToken,
     this.roles = const {},
+    this.customPermissions = const {},
     this.userId,
     this.schoolId,
     this.username,
@@ -123,6 +145,7 @@ class AuthState {
         accessToken = null,
         refreshToken = null,
         roles = const {},
+        customPermissions = const {},
         userId = null,
         schoolId = null,
         username = null,
@@ -136,6 +159,7 @@ class AuthState {
         accessToken = null,
         refreshToken = null,
         roles = const {},
+        customPermissions = const {},
         userId = null,
         schoolId = null,
         username = null,
@@ -149,6 +173,7 @@ class AuthState {
         accessToken = null,
         refreshToken = null,
         roles = const {},
+        customPermissions = const {},
         userId = null,
         schoolId = null,
         username = null,
@@ -169,17 +194,32 @@ class AuthState {
   UserRole? get role => primaryRole;
 
   /// Home route based on primary role.
-  String get homeRoute => _rolesHomeRoute(roles);
+  String get homeRoute {
+    if (roles.isNotEmpty) return _rolesHomeRoute(roles);
+    if (customPermissions.contains('people') ||
+        customPermissions.contains('academic') ||
+        customPermissions.contains('school_settings')) {
+      return '/admin';
+    }
+    if (customPermissions.contains('finance')) return '/admin/finance';
+    if (customPermissions.any(_teachingPermissions.contains)) return '/teacher';
+    if (customPermissions.any(_healthPermissions.contains)) return '/health';
+    if (customPermissions.contains('messages')) return '/messages';
+    if (customPermissions.contains('announcements')) return '/announcements';
+    return '/notifications';
+  }
 
   // ── Convenience booleans ─────────────────────────────────────────────────
 
-  bool get isAdmin => hasAnyRole([UserRole.schoolAdmin, UserRole.platformAdmin]);
+  bool get isAdmin =>
+      hasAnyRole([UserRole.schoolAdmin, UserRole.platformAdmin]);
   bool get canManageFinance =>
-      hasAnyRole([UserRole.schoolAdmin, UserRole.financeOfficer]);
+      hasAnyRole([UserRole.schoolAdmin, UserRole.financeOfficer]) ||
+      customPermissions.contains('finance');
   bool get canManageAcademic =>
       hasAnyRole([UserRole.schoolAdmin, UserRole.coordinator]);
-  bool get isTeacherRole =>
-      hasAnyRole([UserRole.teacher, UserRole.coordinator, UserRole.schoolAdmin]);
+  bool get isTeacherRole => hasAnyRole(
+      [UserRole.teacher, UserRole.coordinator, UserRole.schoolAdmin]);
   bool get isParent => hasRole(UserRole.parent);
   bool get isSchoolStaff => hasAnyRole([
         UserRole.schoolAdmin,
@@ -193,6 +233,9 @@ class AuthState {
   /// Compat: true if user has the teacher role specifically.
   bool get isTeacher => hasRole(UserRole.teacher);
 
+  bool hasCustomPermission(String permission) =>
+      customPermissions.contains(permission);
+
   /// Compat: true for any school staff (replaces old staff-role check).
   bool get isStaff => isSchoolStaff;
 
@@ -204,6 +247,7 @@ class AuthState {
     String? accessToken,
     String? refreshToken,
     Set<UserRole>? roles,
+    Set<String>? customPermissions,
     String? userId,
     String? schoolId,
     String? username,
@@ -217,6 +261,7 @@ class AuthState {
       accessToken: accessToken ?? this.accessToken,
       refreshToken: refreshToken ?? this.refreshToken,
       roles: roles ?? this.roles,
+      customPermissions: customPermissions ?? this.customPermissions,
       userId: userId ?? this.userId,
       schoolId: schoolId ?? this.schoolId,
       username: username ?? this.username,
@@ -235,3 +280,20 @@ class AuthState {
   // Kept for backward compat with auth_service storage key migration
   static String roleStorageKey(UserRole? role) => _roleToString(role) ?? '';
 }
+
+const _teachingPermissions = {
+  'checkin',
+  'caderneta',
+  'evaluations',
+  'activities',
+  'timetable_k12',
+  'lesson_attendance',
+  'grades',
+};
+
+const _healthPermissions = {
+  'health',
+  'immunizations',
+  'med_report',
+  'incidents'
+};

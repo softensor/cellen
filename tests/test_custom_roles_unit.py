@@ -15,7 +15,7 @@ from app.schemas.employee import EmployeeUpdate
 
 def definition(**overrides):
     return {"key": "custom_reception", "label": "Recepção",
-            "permissions": ["secretariat", "staff_services"],
+            "permissions": ["people", "messages"],
             "enabled": True, **overrides}
 
 
@@ -31,7 +31,7 @@ class CustomRoleTests(unittest.TestCase):
     def test_invalid_definitions_are_rejected(self):
         for changes in ({"key": "school_admin"}, {"label": "  "},
                         {"permissions": ["platform_admin"]},
-                        {"permissions": ["secretariat", "secretariat"]},
+                        {"permissions": ["people", "people"]},
                         {"permissions": ["invented"]}, {"label": "x" * 81}):
             with self.subTest(changes=changes), self.assertRaises(ValidationError):
                 SchoolUpdate(features={"custom_roles": [definition(**changes)]})
@@ -52,15 +52,18 @@ class CustomRoleTests(unittest.TestCase):
         self.assertEqual(resolve_roles(["custom_reception", "teacher", "secretary"], features),
                          ["custom_reception", "teacher", "secretary"])
         self.assertEqual(resolve_permissions(["custom_reception"], features),
-                         {"secretariat", "staff_services"})
+                         {"people", "messages"})
         self.assertEqual(client_navigation_roles(["custom_reception"], features),
-                         ["secretary"])
+                         ["custom_reception"])
 
     def test_legacy_definition_is_read_as_an_explicit_permission(self):
         features = {"custom_roles": [{"key": "custom_old", "label": "Antiga",
                     "base_role": "teacher", "enabled": True}]}
         self.assertEqual(resolve_roles(["custom_old"], features), ["custom_old"])
-        self.assertEqual(resolve_permissions(["custom_old"], features), {"teaching"})
+        permissions = resolve_permissions(["custom_old"], features)
+        self.assertIn("checkin", permissions)
+        self.assertIn("grades", permissions)
+        self.assertNotIn("teaching", permissions)
 
     def test_disabled_deleted_and_cross_school_roles_grant_no_access(self):
         for features in ({}, {"custom_roles": [definition(enabled=False)]}):
