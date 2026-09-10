@@ -93,6 +93,50 @@ class BillingItemPrice(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
 
+class InternalPaymentControl(Base):
+    """Non-fiscal payment tracking used only when Finreg is inactive."""
+    __tablename__ = "internal_payment_controls"
+    __table_args__ = (
+        Index("ix_internal_payments_school_status", "school_id", "status"),
+        UniqueConstraint("enrollment_id", name="uq_internal_payment_enrollment"),
+        CheckConstraint("amount > 0", name="ck_internal_payment_amount_positive"),
+        CheckConstraint(
+            "status IN ('pending', 'proof_submitted', 'paid', 'rejected')",
+            name="ck_internal_payment_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
+    )
+    enrollment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enrollments.id", ondelete="CASCADE"), nullable=True
+    )
+    child_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("children.id", ondelete="SET NULL"), nullable=True
+    )
+    billing_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("billing_items.id", ondelete="SET NULL"), nullable=True
+    )
+    category: Mapped[str] = mapped_column(String(40), nullable=False, default="other")
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    proof_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 # ─── Contracts ───────────────────────────────────────────────────────────────
 
 class Contract(Base):

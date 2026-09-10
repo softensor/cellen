@@ -12,6 +12,7 @@ import '../../../core/models/role_definitions.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../employees/employees_list_screen.dart';
 import '../guardians/guardians_list_screen.dart';
+import 'internal_payments_screen.dart';
 
 Future<FinregCapabilities> _loadFinregCapabilities(ApiClient api) async {
   final value =
@@ -77,19 +78,18 @@ class FinregSalesHostScreen extends ConsumerStatefulWidget {
 
 class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   late Future<dynamic> _connection;
-  late Future<FinregCapabilities> _capabilities;
+  Future<FinregCapabilities>? _capabilities;
 
   @override
   void initState() {
     super.initState();
     _connection = ref.read(apiClientProvider).get('/finreg/connection');
-    _capabilities = _loadFinregCapabilities(ref.read(apiClientProvider));
   }
 
   void _refresh() {
     setState(() {
       _connection = ref.read(apiClientProvider).get('/finreg/connection');
-      _capabilities = _loadFinregCapabilities(ref.read(apiClientProvider));
+      _capabilities = null;
     });
   }
 
@@ -163,19 +163,11 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
         }
         final value = Map<String, dynamic>.from(snapshot.data as Map);
         if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'A faturação Finreg ainda não está configurada para esta escola. '
-                'Contacte o administrador da plataforma.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
+          return const InternalPaymentsScreen();
         }
+        _capabilities ??= _loadFinregCapabilities(ref.read(apiClientProvider));
         return FutureBuilder<FinregCapabilities>(
-          future: _capabilities,
+          future: _capabilities!,
           builder: (context, capabilitySnapshot) {
             if (capabilitySnapshot.hasError) {
               return Center(
