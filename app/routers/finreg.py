@@ -234,7 +234,11 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
 async def connection(school_id=Depends(get_school_id), db: AsyncSession = Depends(get_db), _=Depends(require_finance_access)):
     value = (await db.execute(select(FinregSchoolConnection).where(FinregSchoolConnection.school_id == school_id))).scalar_one_or_none()
     if not value: return {"mode": "disabled", "configured": False, "kill_switch": False}
-    effective_mode = value.mode if settings.FINREG_INTEGRATION_ENABLED else "disabled"
+    effective_mode = (
+        value.mode
+        if settings.FINREG_INTEGRATION_ENABLED and not value.kill_switch
+        else "disabled"
+    )
     return {"mode": effective_mode, "configured": True, "kill_switch": value.kill_switch,
             "configured_mode": value.mode, "globally_enabled": settings.FINREG_INTEGRATION_ENABLED,
             "finreg_company_id": str(value.finreg_company_id), "last_sync_at": value.last_sync_at,

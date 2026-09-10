@@ -44,6 +44,7 @@ import '../../features/teacher/attendance/attendance_screen.dart';
 import '../../features/parent/dashboard/parent_dashboard_screen.dart';
 import '../../features/parent/caderneta/child_caderneta_screen.dart';
 import '../../features/parent/finance/parent_invoices_screen.dart';
+import '../../features/parent/finance/parent_internal_payments_screen.dart';
 import '../../features/parent/menu/food_menu_screen.dart';
 import '../../features/messages/messages_screen.dart';
 import '../../features/messages/thread_screen.dart';
@@ -1303,7 +1304,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const ChildCadernetaScreen()),
           GoRoute(
               path: '/parent/invoices',
-              builder: (_, __) => const ParentInvoicesScreen()),
+              builder: (_, __) => const ParentFinanceHostScreen()),
           GoRoute(
               path: '/parent/food',
               builder: (_, __) => const ParentFoodHubScreen()),

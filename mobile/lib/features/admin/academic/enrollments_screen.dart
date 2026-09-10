@@ -20,6 +20,9 @@ class Enrollment {
   final String status;
   final double? enrollmentFee;
   final String? feeInvoiceId;
+  final String paymentControlMode;
+  final String? internalPaymentId;
+  final String? internalPaymentStatus;
 
   const Enrollment({
     required this.id,
@@ -31,6 +34,9 @@ class Enrollment {
     required this.status,
     this.enrollmentFee,
     this.feeInvoiceId,
+    this.paymentControlMode = 'internal',
+    this.internalPaymentId,
+    this.internalPaymentStatus,
   });
 
   bool get hasFee => enrollmentFee != null && enrollmentFee! > 0;
@@ -63,6 +69,9 @@ class Enrollment {
           ? double.tryParse(json['enrollment_fee'].toString())
           : null,
       feeInvoiceId: json['fee_invoice_id']?.toString(),
+      paymentControlMode: json['payment_control_mode']?.toString() ?? 'internal',
+      internalPaymentId: json['internal_payment_id']?.toString(),
+      internalPaymentStatus: json['internal_payment_status']?.toString(),
     );
   }
 }
@@ -77,6 +86,11 @@ final enrollmentsProvider =
   return data
       .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
       .toList();
+});
+
+final paymentControlModeProvider = FutureProvider.autoDispose<String>((ref) async {
+  final data = await ref.read(apiClientProvider).get('/academic/payment-control-mode');
+  return (data as Map)['mode']?.toString() ?? 'internal';
 });
 
 // ---------------------------------------------------------------------------
@@ -211,6 +225,7 @@ class _EnrollmentsScreenState
                         DataColumn(label: Text('Turma')),
                         DataColumn(label: Text('Ano Lectivo')),
                         DataColumn(label: Text('Taxa Matrícula')),
+                        DataColumn(label: Text('Pagamento')),
                         DataColumn(label: Text('Estado')),
                       ],
                       rows: filtered.map((e) {
@@ -224,6 +239,7 @@ class _EnrollmentsScreenState
                                   hasInvoice: e.feeInvoiceId != null,
                                 )
                               : const Text('—', style: TextStyle(color: Colors.grey))),
+                          DataCell(_PaymentStatusCell(enrollment: e)),
                           DataCell(_StatusChip(
                               status: e.status,
                               label: e.statusLabel)),
@@ -439,6 +455,7 @@ class _CreateEnrollmentSheetState
 
       final feeText = _feeCtrl.text.trim();
       final fee = feeText.isNotEmpty ? double.tryParse(feeText.replaceAll(',', '.')) : null;
+      final paymentMode = await ref.read(paymentControlModeProvider.future);
 
       await api.post('/academic/enrollments', data: {
         'child_id': _selectedChildId,
@@ -447,7 +464,7 @@ class _CreateEnrollmentSheetState
         'enrollment_date': dateStr,
         'status': fee != null && fee > 0 ? 'pending' : _status,
         if (fee != null && fee > 0) 'enrollment_fee': fee,
-        'generate_invoice': true,
+        'generate_invoice': paymentMode == 'finreg',
       });
 
       widget.onCreated();
@@ -465,6 +482,7 @@ class _CreateEnrollmentSheetState
         _loadingChildren || _loadingSchedules || _loadingYears;
     final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
     final displayFmt = DateFormat('dd/MM/yyyy');
+    final paymentMode = ref.watch(paymentControlModeProvider).valueOrNull ?? 'internal';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -664,7 +682,9 @@ class _CreateEnrollmentSheetState
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                'Factura gerada automaticamente. Estado ficará Pendente até pagamento.',
+                                paymentMode == 'finreg'
+                                    ? 'A cobrança será tratada pelo Finreg. A matrícula ficará pendente até ao pagamento.'
+                                    : 'Será criado um controlo interno sem factura nem recibo fiscal. A matrícula será activada após confirmação do comprovativo.',
                                 style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
                               ),
                             ),
@@ -739,6 +759,42 @@ class _FeeCell extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PaymentStatusCell extends StatelessWidget {
+  const _PaymentStatusCell({required this.enrollment});
+  final Enrollment enrollment;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enrollment.hasFee) return const Text('Não aplicável');
+    if (enrollment.paymentControlMode == 'finreg') {
+      return const Chip(label: Text('Finreg'), visualDensity: VisualDensity.compact);
+    }
+    final status = enrollment.internalPaymentStatus ?? 'pending';
+    final label = switch (status) {
+      'paid' => 'Pago',
+      'proof_submitted' => 'Em análise',
+      'rejected' => 'Rejeitado',
+      _ => 'Pendente',
+    };
+    final color = switch (status) {
+      'paid' => Colors.green,
+      'proof_submitted' => Colors.blue,
+      'rejected' => Colors.red,
+      _ => Colors.orange,
+    };
+    return Tooltip(
+      message: 'Gerir em Financeiro > Controlo de pagamentos',
+      child: Chip(
+        label: Text(label),
+        visualDensity: VisualDensity.compact,
+        side: BorderSide.none,
+        backgroundColor: color.withOpacity(.12),
+        labelStyle: TextStyle(color: color),
+      ),
     );
   }
 }

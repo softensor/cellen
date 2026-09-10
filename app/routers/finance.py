@@ -16,7 +16,7 @@ Organized by domain:
 - Expenses
 """
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
 
@@ -28,6 +28,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,7 @@ from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     get_school_id,
+    require_finance_access as require_configured_finance_access,
     require_parent,
     require_school_admin,
 )
@@ -52,6 +54,7 @@ from app.models.finance import (
     FinanceAuditEntry,
     Invoice,
     InvoiceLine,
+    InternalPaymentControl,
     Payment,
     PaymentAllocation,
     PaymentPlan,
@@ -60,7 +63,8 @@ from app.models.finance import (
     Receipt,
     ReminderLog,
 )
-from app.models.person import Child, Guardian
+from app.models.academic import Enrollment
+from app.models.person import Child, ChildGuardian, Guardian
 from app.models.finreg_integration import FinregBillingInstruction, FinregSchoolConnection
 from app.schemas.finance import (
     AccountStatementResponse,
@@ -131,9 +135,36 @@ from app.services.finreg_dispatch import (
     integration_mode,
 )
 from app.services.storage import save_upload
+from app.services.payment_control import finreg_is_active
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
+
+
+class InternalPaymentCreate(BaseModel):
+    child_id: uuid.UUID | None = None
+    billing_item_id: uuid.UUID | None = None
+    description: str | None = Field(default=None, max_length=255)
+    amount: Decimal | None = Field(default=None, gt=0)
+    due_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class InternalPaymentSubmission(BaseModel):
+    proof_url: str = Field(min_length=1, max_length=500)
+    payment_method: str = Field(pattern="^(cash|transfer|card|check|mobile|multicaixa|other)$")
+    payment_date: date
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class InternalPaymentReview(BaseModel):
+    action: str = Field(pattern="^(confirm|reject)$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+def _merge_internal_payment_notes(existing: str | None, submitted: str | None) -> str | None:
+    values = [value.strip() for value in (existing, submitted) if value and value.strip()]
+    return "\n".join(values) or None
 
 
 # ─── Permission helpers ──────────────────────────────────────────────────────
@@ -2254,6 +2285,114 @@ async def parent_account_statement(
     return stmt
 
 
+@router.get("/parent/payment-mode")
+async def parent_payment_mode(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    school_id = getattr(current_user, "_school_id", None)
+    if not school_id:
+        raise HTTPException(status_code=403, detail="School context required")
+    active = await finreg_is_active(db, school_id)
+    return {"mode": "finreg" if active else "internal", "finreg_active": active}
+
+
+async def _parent_internal_payment(
+    db: AsyncSession,
+    current_user,
+    payment_id: uuid.UUID,
+):
+    guardian_id = getattr(current_user, "guardian_id", None)
+    school_id = getattr(current_user, "_school_id", None)
+    if not guardian_id or not school_id:
+        raise HTTPException(status_code=403, detail="Guardian and school context required")
+    await _require_internal_payment_mode(db, school_id)
+    payment = (await db.execute(
+        select(InternalPaymentControl)
+        .join(ChildGuardian, ChildGuardian.child_id == InternalPaymentControl.child_id)
+        .where(
+            InternalPaymentControl.id == payment_id,
+            InternalPaymentControl.school_id == school_id,
+            ChildGuardian.school_id == school_id,
+            ChildGuardian.guardian_id == guardian_id,
+        )
+    )).scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Cobrança interna não encontrada")
+    return payment
+
+
+@router.get("/parent/internal-payments")
+async def list_parent_internal_payments(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    guardian_id = getattr(current_user, "guardian_id", None)
+    school_id = getattr(current_user, "_school_id", None)
+    if not guardian_id or not school_id:
+        raise HTTPException(status_code=403, detail="Guardian and school context required")
+    await _require_internal_payment_mode(db, school_id)
+    rows = (await db.execute(
+        select(InternalPaymentControl, Child.first_name, Child.last_name)
+        .join(ChildGuardian, ChildGuardian.child_id == InternalPaymentControl.child_id)
+        .join(Child, Child.id == InternalPaymentControl.child_id)
+        .where(
+            InternalPaymentControl.school_id == school_id,
+            ChildGuardian.school_id == school_id,
+            ChildGuardian.guardian_id == guardian_id,
+        )
+        .order_by(InternalPaymentControl.created_at.desc())
+    )).all()
+    return [
+        _internal_payment_dict(payment, f"{first_name} {last_name}")
+        for payment, first_name, last_name in rows
+    ]
+
+
+@router.post("/parent/internal-payments/proof")
+async def upload_parent_internal_payment_proof(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    school_id = getattr(current_user, "_school_id", None)
+    if not school_id:
+        raise HTTPException(status_code=403, detail="School context required")
+    await _require_internal_payment_mode(db, school_id)
+    url = await save_upload(file, "internal-payment-proofs", school_id)
+    return {"url": url}
+
+
+@router.patch("/parent/internal-payments/{payment_id}/submit")
+async def parent_submit_internal_payment(
+    payment_id: uuid.UUID,
+    body: InternalPaymentSubmission,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    payment = await _parent_internal_payment(db, current_user, payment_id)
+    school_id = getattr(current_user, "_school_id")
+    if payment.status == "paid":
+        raise HTTPException(status_code=409, detail="O pagamento já foi confirmado")
+    proof_prefix = f"/media/internal-payment-proofs/{school_id}/"
+    if not body.proof_url.startswith(proof_prefix):
+        raise HTTPException(status_code=422, detail="Comprovativo inválido")
+    payment.proof_url = body.proof_url
+    payment.payment_method = body.payment_method
+    payment.payment_date = body.payment_date
+    payment.notes = _merge_internal_payment_notes(
+        payment.notes,
+        body.notes or "Submetido pelo encarregado",
+    )
+    payment.status = "proof_submitted"
+    payment.review_note = None
+    payment.reviewed_by = None
+    payment.reviewed_at = None
+    await db.commit()
+    await db.refresh(payment)
+    return _internal_payment_dict(payment)
+
+
 @router.get("/parent/credits")
 async def parent_credit_balance(
     db: AsyncSession = Depends(get_db),
@@ -2435,6 +2574,233 @@ async def upload_payment_proof(
 ):
     url = await save_upload(file, "payment-proofs", uuid.uuid4())
     return {"url": url}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NON-FISCAL INTERNAL PAYMENT CONTROL (only while Finreg is inactive)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _require_internal_payment_mode(db: AsyncSession, school_id: uuid.UUID) -> None:
+    if await finreg_is_active(db, school_id):
+        raise HTTPException(
+            status_code=409,
+            detail="O controlo interno não está disponível enquanto o Finreg estiver activo",
+        )
+
+
+def _internal_payment_dict(payment, child_name=None, item_name=None):
+    return {
+        "id": str(payment.id),
+        "enrollment_id": str(payment.enrollment_id) if payment.enrollment_id else None,
+        "child_id": str(payment.child_id) if payment.child_id else None,
+        "child_name": child_name,
+        "billing_item_id": str(payment.billing_item_id) if payment.billing_item_id else None,
+        "billing_item_name": item_name,
+        "category": payment.category,
+        "description": payment.description,
+        "amount": payment.amount,
+        "due_date": payment.due_date,
+        "status": payment.status,
+        "payment_method": payment.payment_method,
+        "payment_date": payment.payment_date,
+        "proof_url": payment.proof_url,
+        "notes": payment.notes,
+        "review_note": payment.review_note,
+        "reviewed_at": payment.reviewed_at,
+        "created_at": payment.created_at,
+        "is_fiscal_document": False,
+    }
+
+
+@router.get("/internal-payments/mode")
+async def internal_payment_mode(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    finreg_active = await finreg_is_active(db, school_id)
+    return {
+        "mode": "finreg" if finreg_active else "internal",
+        "finreg_active": finreg_active,
+    }
+
+
+@router.get("/internal-payments")
+async def list_internal_payments(
+    status_filter: str | None = None,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    await _require_internal_payment_mode(db, school_id)
+    query = select(InternalPaymentControl).where(
+        InternalPaymentControl.school_id == school_id
+    )
+    if status_filter:
+        query = query.where(InternalPaymentControl.status == status_filter)
+    payments = (await db.execute(
+        query.order_by(InternalPaymentControl.created_at.desc())
+    )).scalars().all()
+    child_ids = {p.child_id for p in payments if p.child_id}
+    item_ids = {p.billing_item_id for p in payments if p.billing_item_id}
+    child_map = {}
+    item_map = {}
+    if child_ids:
+        rows = (await db.execute(
+            select(Child.id, Child.first_name, Child.last_name).where(
+                Child.school_id == school_id, Child.id.in_(child_ids)
+            )
+        )).all()
+        child_map = {row[0]: f"{row[1]} {row[2]}" for row in rows}
+    if item_ids:
+        rows = (await db.execute(
+            select(BillingItem.id, BillingItem.name).where(
+                BillingItem.school_id == school_id, BillingItem.id.in_(item_ids)
+            )
+        )).all()
+        item_map = dict(rows)
+    return [
+        _internal_payment_dict(p, child_map.get(p.child_id), item_map.get(p.billing_item_id))
+        for p in payments
+    ]
+
+
+@router.post("/internal-payments", status_code=201)
+async def create_internal_payment(
+    body: InternalPaymentCreate,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    await _require_internal_payment_mode(db, school_id)
+    if body.child_id:
+        child = (await db.execute(select(Child).where(
+            Child.id == body.child_id, Child.school_id == school_id
+        ))).scalar_one_or_none()
+        if child is None:
+            raise HTTPException(status_code=404, detail="Aluno não encontrado")
+
+    item = None
+    if body.billing_item_id:
+        item = (await db.execute(select(BillingItem).where(
+            BillingItem.id == body.billing_item_id,
+            BillingItem.school_id == school_id,
+            BillingItem.is_active,
+        ))).scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Item de cobrança não encontrado")
+
+    description = (body.description or (item.name if item else "")).strip()
+    amount = body.amount if body.amount is not None else (item.unit_price if item else None)
+    if not description:
+        raise HTTPException(status_code=422, detail="A descrição é obrigatória")
+    if amount is None or amount <= 0:
+        raise HTTPException(status_code=422, detail="O valor deve ser superior a zero")
+
+    payment = InternalPaymentControl(
+        school_id=school_id,
+        child_id=body.child_id,
+        billing_item_id=body.billing_item_id,
+        category="billing_item" if item else "other",
+        description=description,
+        amount=amount,
+        due_date=body.due_date,
+        notes=body.notes,
+        status="pending",
+    )
+    db.add(payment)
+    await db.commit()
+    await db.refresh(payment)
+    return _internal_payment_dict(payment, item_name=item.name if item else None)
+
+
+@router.post("/internal-payments/proof")
+async def upload_internal_payment_proof(
+    file: UploadFile = File(...),
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    await _require_internal_payment_mode(db, school_id)
+    url = await save_upload(file, "internal-payment-proofs", school_id)
+    return {"url": url}
+
+
+@router.patch("/internal-payments/{payment_id}/submit")
+async def submit_internal_payment(
+    payment_id: uuid.UUID,
+    body: InternalPaymentSubmission,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    await _require_internal_payment_mode(db, school_id)
+    payment = (await db.execute(select(InternalPaymentControl).where(
+        InternalPaymentControl.id == payment_id,
+        InternalPaymentControl.school_id == school_id,
+    ))).scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Cobrança interna não encontrada")
+    if payment.status == "paid":
+        raise HTTPException(status_code=409, detail="O pagamento já foi confirmado")
+    proof_prefix = f"/media/internal-payment-proofs/{school_id}/"
+    if not body.proof_url.startswith(proof_prefix):
+        raise HTTPException(status_code=422, detail="Comprovativo inválido")
+    payment.proof_url = body.proof_url
+    payment.payment_method = body.payment_method
+    payment.payment_date = body.payment_date
+    payment.notes = _merge_internal_payment_notes(payment.notes, body.notes)
+    payment.status = "proof_submitted"
+    payment.review_note = None
+    payment.reviewed_by = None
+    payment.reviewed_at = None
+    await db.commit()
+    await db.refresh(payment)
+    return _internal_payment_dict(payment)
+
+
+@router.patch("/internal-payments/{payment_id}/review")
+async def review_internal_payment(
+    payment_id: uuid.UUID,
+    body: InternalPaymentReview,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_configured_finance_access),
+):
+    await _require_internal_payment_mode(db, school_id)
+    payment = (await db.execute(select(InternalPaymentControl).where(
+        InternalPaymentControl.id == payment_id,
+        InternalPaymentControl.school_id == school_id,
+    ))).scalar_one_or_none()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Cobrança interna não encontrada")
+    if payment.status != "proof_submitted":
+        raise HTTPException(status_code=409, detail="É necessário submeter um comprovativo antes da revisão")
+
+    if body.action == "confirm" and payment.enrollment_id:
+        enrollment = (await db.execute(select(Enrollment).where(
+            Enrollment.id == payment.enrollment_id,
+            Enrollment.school_id == school_id,
+        ))).scalar_one_or_none()
+        if enrollment and enrollment.status == "pending":
+            guardian_id = (await db.execute(select(ChildGuardian.guardian_id).where(
+                ChildGuardian.child_id == enrollment.child_id,
+                ChildGuardian.is_primary_contact,
+            ))).scalar_one_or_none()
+            if guardian_id is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A matrícula só pode ser activada com um encarregado principal",
+                )
+            enrollment.status = "active"
+
+    payment.status = "paid" if body.action == "confirm" else "rejected"
+    payment.review_note = body.note
+    payment.reviewed_by = user.id
+    payment.reviewed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(payment)
+    return _internal_payment_dict(payment)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

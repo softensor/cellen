@@ -176,3 +176,7 @@ class EnrollmentResponse(EnrollmentBase):
     school_year: Optional[str] = None
     enrollment_fee: Optional[Decimal] = None
     fee_invoice_id: Optional[uuid.UUID] = None
+    payment_control_mode: str = "internal"
+    internal_payment_id: Optional[uuid.UUID] = None
+    internal_payment_status: Optional[str] = None
+    internal_payment_proof_url: Optional[str] = None

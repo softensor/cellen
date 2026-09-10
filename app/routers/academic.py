@@ -10,7 +10,8 @@ from app.core.dependencies import get_current_user, get_school_id, require_schoo
 from app.models.academic import (
     Activity, Enrollment, Schedule, ScheduleSlot, ScheduleTeacher, SchoolYear, Turma
 )
-from app.models.finance import Invoice
+from app.models.finance import InternalPaymentControl, Invoice
+from app.services.payment_control import finreg_is_active
 from app.schemas.academic import (
     ActivityCreate, ActivityResponse, ActivityUpdate,
     EnrollmentCreate, EnrollmentResponse, EnrollmentUpdate,
@@ -520,6 +521,15 @@ async def unassign_teacher_from_schedule(
 
 # ─── Enrollments ──────────────────────────────────────────────────────────────
 
+@router.get("/payment-control-mode")
+async def payment_control_mode(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_teacher),
+):
+    active = await finreg_is_active(db, school_id)
+    return {"mode": "finreg" if active else "internal", "finreg_active": active}
+
 @router.get("/enrollments", response_model=list[EnrollmentResponse])
 async def list_enrollments(
     skip: int = 0,
@@ -575,6 +585,15 @@ async def list_enrollments(
     )
     year_map = {row[0]: row[1] for row in year_res.all()}
 
+    internal_rows = (await db.execute(
+        select(InternalPaymentControl).where(
+            InternalPaymentControl.school_id == school_id,
+            InternalPaymentControl.enrollment_id.in_([e.id for e in enrollments]),
+        )
+    )).scalars().all()
+    internal_map = {payment.enrollment_id: payment for payment in internal_rows}
+    finreg_active = await finreg_is_active(db, school_id)
+
     # Retroactively activate enrollments whose fee invoice is already paid
     pending_with_invoice = [e for e in enrollments if e.status == "pending" and e.fee_invoice_id]
     if pending_with_invoice:
@@ -599,6 +618,12 @@ async def list_enrollments(
         data.turma_name = turma_map.get(turma_id) if turma_id else None
         year_id = sched_year.get(e.schedule_id)
         data.school_year = year_map.get(year_id) if year_id else None
+        data.payment_control_mode = "finreg" if finreg_active else "internal"
+        internal_payment = internal_map.get(e.id)
+        if internal_payment:
+            data.internal_payment_id = internal_payment.id
+            data.internal_payment_status = internal_payment.status
+            data.internal_payment_proof_url = internal_payment.proof_url
         output.append(data)
     return output
 
@@ -628,7 +653,10 @@ async def create_enrollment(
             )
 
     enrollment_fee = body.enrollment_fee
-    generate_invoice = body.generate_invoice
+    finreg_active = await finreg_is_active(db, school_id)
+    # The server owns this choice. The legacy client flag cannot enable the
+    # internal controller for a Finreg school or fiscal emission for another.
+    generate_invoice = finreg_active
     enrollment_data = body.model_dump(exclude={'generate_invoice'})
     enrollment = Enrollment(school_id=school_id, **enrollment_data)
     db.add(enrollment)
@@ -638,7 +666,7 @@ async def create_enrollment(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Child already has an active enrollment for this school year")
 
-    # Auto-create enrollment fee invoice
+    # Fiscal emission and internal control are mutually exclusive.
     if enrollment_fee and enrollment_fee > 0 and generate_invoice:
         try:
             from decimal import Decimal
@@ -687,8 +715,23 @@ async def create_enrollment(
                 description="Taxa de Matrícula",
             )
             enrollment.fee_invoice_id = invoice.id
-        except Exception:
-            pass  # Invoice creation is best-effort; enrollment itself succeeds
+        except Exception as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=502,
+                detail="Não foi possível criar a cobrança fiscal da matrícula",
+            ) from exc
+    elif enrollment_fee and enrollment_fee > 0:
+        enrollment.status = "pending"
+        db.add(InternalPaymentControl(
+            school_id=school_id,
+            enrollment_id=enrollment.id,
+            child_id=body.child_id,
+            category="enrollment",
+            description="Taxa de Matrícula",
+            amount=enrollment_fee,
+            status="pending",
+        ))
 
     await db.commit()
     await db.refresh(enrollment)
