@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,44 @@ _TEACHER_ACCESS         = _SCHOOL_ADMIN | _COORDINATOR | _TEACHER | _PLATFORM_AD
 _STAFF_ACCESS           = _SCHOOL_ADMIN | _COORDINATOR | _TEACHER | _SECRETARY | _NURSE | _PLATFORM_ADMIN
 _HEALTH_ACCESS          = _SCHOOL_ADMIN | _COORDINATOR | _TEACHER | _NURSE | _PLATFORM_ADMIN
 _PARENT_OR_ADMIN        = _PARENT | _ADMIN_OR_PLATFORM
+
+_PATH_PERMISSIONS = (
+    ("/api/v1/academic/activities", "activities"),
+    ("/api/v1/reports/med", "med_report"),
+    ("/api/v1/lesson-attendance", "lesson_attendance"),
+    ("/api/v1/pickup-authorizations", "pickup_auth"),
+    ("/api/v1/trip-authorizations", "trip_auth"),
+    ("/api/v1/health-events", "health"),
+    ("/api/v1/immunizations", "immunizations"),
+    ("/api/v1/announcements", "announcements"),
+    ("/api/v1/appointments", "appointments"),
+    ("/api/v1/cadernetas", "caderneta"),
+    ("/api/v1/evaluations", "evaluations"),
+    ("/api/v1/attendance", "checkin"),
+    ("/api/v1/timetable", "timetable_k12"),
+    ("/api/v1/absences", "absences"),
+    ("/api/v1/incidents", "incidents"),
+    ("/api/v1/documents", "documents"),
+    ("/api/v1/academic", "academic"),
+    ("/api/v1/children", "people"),
+    ("/api/v1/guardians", "people"),
+    ("/api/v1/employees", "people"),
+    ("/api/v1/messages", "messages"),
+    ("/api/v1/photos", "photos"),
+    ("/api/v1/events", "events"),
+    ("/api/v1/food", "meal_orders"),
+    ("/api/v1/grades", "grades"),
+    ("/api/v1/reports", "reports"),
+    ("/api/v1/schools", "school_settings"),
+    ("/api/v1/finance", "finance"),
+    ("/api/v1/finreg", "finance"),
+)
+
+
+def _request_permission(request: Request | None) -> str | None:
+    path = request.url.path if request is not None else ""
+    return next((permission for prefix, permission in _PATH_PERMISSIONS
+                 if path.startswith(prefix)), None)
 
 
 async def get_current_user(
@@ -116,10 +154,15 @@ async def get_current_user(
         return user
 
 
-def _check_roles(user, allowed: set[str], detail: str, permission: str | None = None):
+def _check_roles(user, allowed: set[str], detail: str, request: Request | None = None):
     user_roles: set[str] = getattr(user, "_roles", set())
     custom_permissions: set[str] = getattr(user, "_custom_permissions", set())
-    if not user_roles.intersection(allowed) and permission not in custom_permissions:
+    permission = _request_permission(request)
+    school_features = getattr(user, "_school_features", {}) or {}
+    custom_allowed = (permission in custom_permissions
+                      and school_features.get(permission, True) is not False)
+    if (not user_roles.intersection(allowed)
+            and not custom_allowed):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
     return user
 
@@ -128,13 +171,13 @@ async def require_platform_admin(user=Depends(get_current_user)):
     return _check_roles(user, _PLATFORM_ADMIN, "Platform admin access required")
 
 
-async def require_school_admin(user=Depends(get_current_user)):
-    return _check_roles(user, _ADMIN_OR_PLATFORM, "School admin access required", "school_administration")
+async def require_school_admin(request: Request, user=Depends(get_current_user)):
+    return _check_roles(user, _ADMIN_OR_PLATFORM, "School admin access required", request)
 
 
-async def require_coordinator(user=Depends(get_current_user)):
+async def require_coordinator(request: Request, user=Depends(get_current_user)):
     """Coordinator or school_admin."""
-    return _check_roles(user, _ACADEMIC_STAFF, "Coordinator access required", "academic_coordination")
+    return _check_roles(user, _ACADEMIC_STAFF, "Coordinator access required", request)
 
 
 async def require_finance_access(user=Depends(get_current_user)):
@@ -159,29 +202,29 @@ async def require_finance_access(user=Depends(get_current_user)):
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
 
 
-async def require_secretary(user=Depends(get_current_user)):
+async def require_secretary(request: Request, user=Depends(get_current_user)):
     """secretary, coordinator, or school_admin."""
-    return _check_roles(user, _ACADEMIC_STAFF | _SECRETARY, "Secretary access required", "secretariat")
+    return _check_roles(user, _ACADEMIC_STAFF | _SECRETARY, "Secretary access required", request)
 
 
-async def require_teacher(user=Depends(get_current_user)):
+async def require_teacher(request: Request, user=Depends(get_current_user)):
     """teacher, coordinator, school_admin (classroom operations)."""
-    return _check_roles(user, _TEACHER_ACCESS, "Teacher access required", "teaching")
+    return _check_roles(user, _TEACHER_ACCESS, "Teacher access required", request)
 
 
-async def require_staff(user=Depends(get_current_user)):
+async def require_staff(request: Request, user=Depends(get_current_user)):
     """Any school staff member (all roles except parent/student)."""
-    return _check_roles(user, _STAFF_ACCESS, "Staff access required", "staff_services")
+    return _check_roles(user, _STAFF_ACCESS, "Staff access required", request)
 
 
-async def require_health_access(user=Depends(get_current_user)):
+async def require_health_access(request: Request, user=Depends(get_current_user)):
     """nurse, teacher, coordinator, school_admin."""
-    return _check_roles(user, _HEALTH_ACCESS, "Health access required", "health")
+    return _check_roles(user, _HEALTH_ACCESS, "Health access required", request)
 
 
-async def require_nurse(user=Depends(get_current_user)):
+async def require_nurse(request: Request, user=Depends(get_current_user)):
     """nurse or school_admin."""
-    return _check_roles(user, _NURSE | _ADMIN_OR_PLATFORM, "Nurse access required", "health")
+    return _check_roles(user, _NURSE | _ADMIN_OR_PLATFORM, "Nurse access required", request)
 
 
 async def require_parent(user=Depends(get_current_user)):

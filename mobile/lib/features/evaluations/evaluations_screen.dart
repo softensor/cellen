@@ -113,7 +113,9 @@ class _EvaluationsScreenState extends ConsumerState<EvaluationsScreen> {
     final evaluationsAsync = ref.watch(evaluationsProvider);
     final childrenAsync = ref.watch(childrenForEvaluationProvider);
     final auth = ref.watch(authProvider);
-    final canCreate = auth.isAdmin || auth.isTeacher;
+    final canCreate = auth.isAdmin ||
+        auth.isTeacher ||
+        auth.hasCustomPermission('evaluations');
     final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
 
     return Scaffold(

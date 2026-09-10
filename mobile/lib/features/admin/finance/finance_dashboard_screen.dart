@@ -1468,7 +1468,7 @@ class _InvoiceTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final inv = invoice;
     final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
-    final isAdmin = ref.watch(authProvider).isAdmin;
+    final isAdmin = ref.watch(authProvider).canManageFinance;
     final canPay = inv.status != 'paid' && inv.status != 'cancelled' && inv.status != 'void';
     final canVoid = isAdmin && inv.status != 'void' && inv.status != 'cancelled';
 
@@ -2371,7 +2371,7 @@ class _InvoiceDetailDialogState extends ConsumerState<_InvoiceDetailDialog> with
   @override
   Widget build(BuildContext context) {
     final inv = widget.invoice;
-    final isAdmin = ref.watch(authProvider).isAdmin;
+    final isAdmin = ref.watch(authProvider).canManageFinance;
     final currency = widget.currency;
     return Dialog(
       child: SizedBox(
@@ -2834,7 +2834,7 @@ class _CreateInvoiceSheetState extends ConsumerState<_CreateInvoiceSheet> {
             ),
             const SizedBox(height: 12),
             Builder(builder: (ctx) {
-              final isAdmin = ref.watch(authProvider).isAdmin;
+              final isAdmin = ref.watch(authProvider).canManageFinance;
               return SegmentedButton<String>(
                 segments: [
                   const ButtonSegment(value: 'FT', label: Text('FT')),

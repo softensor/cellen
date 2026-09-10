@@ -72,7 +72,9 @@ class _PhotosScreenState extends ConsumerState<PhotosScreen> {
   Widget build(BuildContext context) {
     final photosAsync = ref.watch(photosProvider);
     final auth = ref.read(authProvider);
-    final canUpload = auth.isAdmin || auth.isTeacherRole;
+    final canUpload = auth.isAdmin ||
+        auth.isTeacherRole ||
+        auth.hasCustomPermission('photos');
 
     return Scaffold(
       appBar: AppBar(

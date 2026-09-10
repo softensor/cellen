@@ -23,7 +23,7 @@ class CustomRoleAuthTests(unittest.IsolatedAsyncioTestCase):
         self.user = SimpleNamespace(id=self.user_id, school_id=self.school_id,
             is_active=True, roles=["custom_reception"], employee_id=None, guardian_id=None)
         self.features = {"custom_roles": [{"key": "custom_reception", "label": "Recepção",
-            "permissions": ["secretariat", "staff_services"], "enabled": True}]}
+            "permissions": ["people", "messages"], "enabled": True}]}
         self.school = SimpleNamespace(id=self.school_id, is_active=True, resolved_features=self.features)
         self.payload = {"type": "access", "sub": str(self.user_id),
                         "roles": ["teacher"], "school_id": str(self.school_id)}
@@ -36,7 +36,7 @@ class CustomRoleAuthTests(unittest.IsolatedAsyncioTestCase):
             actor = await get_current_user("old-token", self.db)
         self.assertEqual(actor._roles, {"custom_reception"})
         self.assertEqual(actor._role, "custom_reception")
-        self.assertEqual(actor._custom_permissions, {"secretariat", "staff_services"})
+        self.assertEqual(actor._custom_permissions, {"people", "messages"})
 
     async def test_disabling_role_revokes_existing_token_access(self):
         self.features["custom_roles"][0]["enabled"] = False
@@ -48,21 +48,26 @@ class CustomRoleAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_explicit_permissions_authorize_custom_role(self):
         with patch("app.core.dependencies.decode_token", return_value=self.payload):
             actor = await get_current_user("old-token", self.db)
-        self.assertIs(await require_secretary(actor), actor)
-        for guard in (require_teacher, require_finance_access):
-            with self.subTest(guard=guard.__name__), self.assertRaises(HTTPException) as error:
-                await guard(actor)
-            self.assertEqual(error.exception.status_code, 403)
+        messages = SimpleNamespace(url=SimpleNamespace(path="/api/v1/messages"))
+        attendance = SimpleNamespace(url=SimpleNamespace(path="/api/v1/attendance"))
+        self.assertIs(await require_secretary(messages, actor), actor)
+        with self.assertRaises(HTTPException) as error:
+            await require_teacher(attendance, actor)
+        self.assertEqual(error.exception.status_code, 403)
+        with self.assertRaises(HTTPException):
+            await require_finance_access(actor)
 
     async def test_permission_changes_apply_to_existing_token(self):
         with patch("app.core.dependencies.decode_token", return_value=self.payload):
             actor = await get_current_user("old-token", self.db)
-        self.features["custom_roles"][0]["permissions"] = ["teaching"]
+        self.features["custom_roles"][0]["permissions"] = ["checkin"]
         with patch("app.core.dependencies.decode_token", return_value=self.payload):
             actor = await get_current_user("old-token", self.db)
-        self.assertIs(await require_teacher(actor), actor)
+        attendance = SimpleNamespace(url=SimpleNamespace(path="/api/v1/attendance"))
+        messages = SimpleNamespace(url=SimpleNamespace(path="/api/v1/messages"))
+        self.assertIs(await require_teacher(attendance, actor), actor)
         with self.assertRaises(HTTPException):
-            await require_secretary(actor)
+            await require_secretary(messages, actor)
 
     async def test_finance_permission_obeys_school_feature_switch(self):
         self.features["custom_roles"][0]["permissions"] = ["finance"]
@@ -79,8 +84,9 @@ class CustomRoleAuthTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.routers.auth.decode_token", return_value=self.payload):
             response = await refresh_token(RefreshRequest(refresh_token="old-token"), self.db)
         claims = decode_token(response["access_token"])
-        self.assertEqual(claims["roles"], ["secretary"])
-        self.assertEqual(claims["permissions"], ["secretariat", "staff_services"])
+        self.assertEqual(claims["roles"], ["custom_reception"])
+        self.assertEqual(claims["assigned_roles"], ["custom_reception"])
+        self.assertEqual(claims["permissions"], ["messages", "people"])
 
     async def test_refresh_rejects_disabled_role(self):
         self.payload["type"] = "refresh"

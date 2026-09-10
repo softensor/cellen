@@ -53,6 +53,7 @@ class AuthService {
     final payload = _decodeJwtPayload(accessToken);
 
     final roles = _parseRoles(payload);
+    final customPermissions = _parsePermissions(payload);
     final userId =
         payload['user_id']?.toString() ?? payload['sub']?.toString() ?? '';
     final schoolId = payload['school_id']?.toString() ?? '';
@@ -90,6 +91,7 @@ class AuthService {
       accessToken: accessToken,
       refreshToken: refreshToken,
       roles: roles,
+      customPermissions: customPermissions,
       userId: userId,
       schoolId: schoolId.isNotEmpty ? schoolId : null,
       username: storedUsername,
@@ -135,14 +137,15 @@ class AuthService {
     }
 
     final refreshToken = await _storage.read(key: _refreshTokenKey);
-    final rolesJson = await _storage.read(key: _rolesKey);
     final userId = await _storage.read(key: _userIdKey);
     final schoolId = await _storage.read(key: _schoolIdKey);
     final username = await _storage.read(key: _usernameKey);
     final employeeId = await _storage.read(key: _employeeIdKey);
     final guardianId = await _storage.read(key: _guardianIdKey);
 
-    final roles = _rolesFromStorage(rolesJson);
+    final storedPayload = _decodeJwtPayload(accessToken);
+    final roles = _parseRoles(storedPayload);
+    final customPermissions = _parsePermissions(storedPayload);
 
     return AuthState(
       isAuthenticated: true,
@@ -150,6 +153,7 @@ class AuthService {
       accessToken: accessToken,
       refreshToken: refreshToken,
       roles: roles,
+      customPermissions: customPermissions,
       userId: userId,
       schoolId: schoolId?.isNotEmpty == true ? schoolId : null,
       username: username,
@@ -182,6 +186,7 @@ class AuthService {
 
       final payload = _decodeJwtPayload(newAccess);
       final roles = _parseRoles(payload);
+      final customPermissions = _parsePermissions(payload);
       final userId = payload['user_id']?.toString() ?? '';
       final schoolId = payload['school_id']?.toString() ?? '';
       final username = payload['username']?.toString() ?? '';
@@ -213,6 +218,7 @@ class AuthService {
         accessToken: newAccess,
         refreshToken: newRefresh,
         roles: roles,
+        customPermissions: customPermissions,
         userId: userId.isNotEmpty ? userId : null,
         schoolId: schoolId.isNotEmpty ? schoolId : null,
         username: username.isNotEmpty ? username : null,
@@ -230,7 +236,7 @@ class AuthService {
   /// Parse roles from JWT payload. Supports both new `roles: [...]` and old `role: str`.
   Set<UserRole> _parseRoles(Map<String, dynamic> payload) {
     final parsed = <UserRole>{};
-    final rolesRaw = payload['roles'];
+    final rolesRaw = payload['assigned_roles'] ?? payload['roles'];
     if (rolesRaw is List && rolesRaw.isNotEmpty) {
       parsed.addAll(rolesRaw
           .map((r) => AuthState.roleFromString(r as String?))
@@ -239,30 +245,13 @@ class AuthService {
       final single = AuthState.roleFromString(payload['role'] as String?);
       if (single != null) parsed.add(single);
     }
-    final permissions = payload['permissions'];
-    if (permissions is List) {
-      for (final permission in permissions.map((value) => value.toString())) {
-        final role = _customPermissionRole[permission];
-        if (role != null) parsed.add(role);
-      }
-    }
     return parsed;
   }
 
-  /// Parse roles from secure storage JSON string.
-  Set<UserRole> _rolesFromStorage(String? json) {
-    if (json == null || json.isEmpty) return const {};
-    try {
-      final list = jsonDecode(json) as List;
-      return list
-          .map((r) => AuthState.roleFromString(r as String?))
-          .whereType<UserRole>()
-          .toSet();
-    } catch (_) {
-      // Fallback: treat as single role string (old storage format)
-      final single = AuthState.roleFromString(json);
-      return {if (single != null) single};
-    }
+  Set<String> _parsePermissions(Map<String, dynamic> payload) {
+    final permissions = payload['permissions'];
+    if (permissions is! List) return const {};
+    return permissions.map((value) => value.toString()).toSet();
   }
 
   Future<void> _clearAll() async {
@@ -286,13 +275,3 @@ class AuthService {
     return jsonDecode(decoded) as Map<String, dynamic>;
   }
 }
-
-const _customPermissionRole = <String, UserRole>{
-  'school_administration': UserRole.schoolAdmin,
-  'academic_coordination': UserRole.coordinator,
-  'finance': UserRole.financeOfficer,
-  'secretariat': UserRole.secretary,
-  'teaching': UserRole.teacher,
-  'staff_services': UserRole.secretary,
-  'health': UserRole.nurse,
-};

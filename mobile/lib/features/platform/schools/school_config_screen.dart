@@ -1377,11 +1377,11 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
                 const SizedBox(height: 12),
                 const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Áreas de acesso',
+                    child: Text('Funcionalidades permitidas',
                         style: TextStyle(fontWeight: FontWeight.w700))),
                 const SizedBox(height: 4),
                 const Text(
-                    'Seleccione apenas as áreas necessárias. Esta função não herda permissões de nenhuma função predefinida.'),
+                    'Seleccione cada funcionalidade directamente. Esta função não herda permissões de nenhuma função predefinida.'),
                 const SizedBox(height: 8),
                 for (final permission in _customPermissionOptions)
                   CheckboxListTile(
@@ -1401,7 +1401,7 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
                 if (_permissions.isEmpty)
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Seleccione pelo menos uma área de acesso.',
+                    child: Text('Seleccione pelo menos uma funcionalidade.',
                         style: TextStyle(color: Colors.red, fontSize: 12)),
                   ),
               ]),
@@ -1432,44 +1432,33 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
       );
 }
 
-const _customPermissionOptions =
+final _customPermissionOptions =
     <({String key, String label, String description})>[
   (
-    key: 'school_administration',
-    label: 'Administração escolar',
-    description:
-        'Pessoas, matrículas, configurações e operações administrativas'
+    key: 'people',
+    label: 'Pessoas',
+    description: 'Alunos, encarregados, funcionários e contas de acesso'
   ),
   (
-    key: 'academic_coordination',
-    label: 'Coordenação académica',
-    description:
-        'Turmas, horários, disciplinas, avaliações e relatórios pedagógicos'
+    key: 'academic',
+    label: 'Turmas e matrículas',
+    description: 'Turmas, anos lectivos, matrículas e afectações'
+  ),
+  for (final feature in _allFeatures)
+    if (feature.cat != _Cat.roles)
+      (
+        key: feature.key,
+        label: feature.label,
+        description: feature.description,
+      ),
+  (
+    key: 'reports',
+    label: 'Relatórios',
+    description: 'Relatórios administrativos, pedagógicos e médicos'
   ),
   (
-    key: 'finance',
-    label: 'Gestão financeira',
-    description:
-        'Facturação, pagamentos, despesas, caixa e integração financeira'
-  ),
-  (
-    key: 'secretariat',
-    label: 'Secretaria',
-    description: 'Atendimento, comunicação e operações de secretaria'
-  ),
-  (
-    key: 'teaching',
-    label: 'Actividade docente',
-    description: 'Presenças, notas, caderneta e actividades lectivas'
-  ),
-  (
-    key: 'staff_services',
-    label: 'Serviços gerais',
-    description: 'Funcionalidades partilhadas destinadas ao pessoal da escola'
-  ),
-  (
-    key: 'health',
-    label: 'Saúde escolar',
-    description: 'Saúde, vacinação, ocorrências e registos médicos'
+    key: 'school_settings',
+    label: 'Configurações da escola',
+    description: 'Perfil, definições e parâmetros da escola'
   ),
 ];

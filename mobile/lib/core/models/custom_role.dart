@@ -6,24 +6,28 @@ class CustomRole {
   final String label;
   final List<String> permissions;
   final bool enabled;
-  const CustomRole(
-      {required this.key,
-      required this.label,
-      required this.permissions,
-      this.enabled = true});
 
-  factory CustomRole.fromJson(Map<String, dynamic> json) => CustomRole(
-        key: json['key'] as String,
-        label: json['label'] as String,
-        permissions: (json['permissions'] as List? ??
-                [
-                  if (_legacyPermission[json['base_role']] != null)
-                    _legacyPermission[json['base_role']]!,
-                ])
-            .map((value) => value.toString())
-            .toList(),
-        enabled: json['enabled'] as bool? ?? true,
-      );
+  const CustomRole({
+    required this.key,
+    required this.label,
+    required this.permissions,
+    this.enabled = true,
+  });
+
+  factory CustomRole.fromJson(Map<String, dynamic> json) {
+    final raw = json['permissions'] as List? ??
+        [
+          if (_legacyPermission[json['base_role']] != null)
+            _legacyPermission[json['base_role']]!,
+        ];
+    return CustomRole(
+      key: json['key'] as String,
+      label: json['label'] as String,
+      permissions: expandCustomPermissions(
+          raw.map((value) => value.toString()).toList()),
+      enabled: json['enabled'] as bool? ?? true,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -32,26 +36,31 @@ class CustomRole {
         'enabled': enabled,
       };
 
-  RoleDef get definition {
-    final features = <String>{};
-    for (final permission in permissions) {
-      features.addAll(customPermissionFeatures[permission] ?? const []);
-    }
-    return RoleDef(
-      key: key,
-      label: label,
-      description: permissions.isEmpty
-          ? 'Sem acessos atribuídos'
-          : '${permissions.length} área(s) de acesso atribuída(s)',
-      icon: Icons.badge_outlined,
-      color: Colors.deepPurple,
-      defaultFeatures: features.toList(),
-    );
-  }
+  RoleDef get definition => RoleDef(
+        key: key,
+        label: label,
+        description: permissions.isEmpty
+            ? 'Sem funcionalidades atribuídas'
+            : '${permissions.length} funcionalidade(s) atribuída(s)',
+        icon: Icons.badge_outlined,
+        color: Colors.deepPurple,
+        defaultFeatures: permissions,
+      );
 }
 
-const customPermissionFeatures = <String, List<String>>{
-  'school_administration': [
+List<String> expandCustomPermissions(List<String> values) {
+  final result = <String>{};
+  for (final value in values) {
+    result.addAll(_legacyAreaPermissions[value] ?? [value]);
+  }
+  final sorted = result.toList()..sort();
+  return sorted;
+}
+
+const _legacyAreaPermissions = <String, List<String>>{
+  'school_administration': customPermissionKeys,
+  'academic_coordination': [
+    'academic',
     'checkin',
     'caderneta',
     'evaluations',
@@ -63,34 +72,12 @@ const customPermissionFeatures = <String, List<String>>{
     'report_cards',
     'appointments',
     'absences',
-    'health',
-    'immunizations',
-    'med_report',
-    'incidents',
-    'meal_orders',
-    'trip_auth',
-    'pickup_auth',
-    'photos',
-    'events',
-    'documents',
-    'announcements',
-    'messages',
-    'finance',
-  ],
-  'academic_coordination': [
-    'checkin',
-    'lesson_attendance',
-    'caderneta',
-    'evaluations',
-    'timetable_k12',
-    'grades',
-    'subjects',
-    'report_cards',
-    'activities',
-    'absences',
+    'reports',
   ],
   'finance': ['finance'],
   'secretariat': [
+    'people',
+    'academic',
     'appointments',
     'absences',
     'events',
@@ -99,13 +86,15 @@ const customPermissionFeatures = <String, List<String>>{
     'messages',
   ],
   'teaching': [
+    'academic',
     'checkin',
-    'lesson_attendance',
     'caderneta',
-    'grades',
     'evaluations',
-    'timetable_k12',
     'activities',
+    'timetable_k12',
+    'lesson_attendance',
+    'grades',
+    'appointments',
   ],
   'staff_services': [
     'appointments',
@@ -116,7 +105,6 @@ const customPermissionFeatures = <String, List<String>>{
     'announcements',
     'messages',
   ],
-  'health': ['health', 'immunizations', 'med_report', 'incidents'],
 };
 
 const _legacyPermission = <dynamic, String>{
@@ -126,6 +114,37 @@ const _legacyPermission = <dynamic, String>{
   'teacher': 'teaching',
   'nurse': 'health',
 };
+
+const customPermissionKeys = <String>[
+  'people',
+  'academic',
+  'checkin',
+  'caderneta',
+  'evaluations',
+  'activities',
+  'timetable_k12',
+  'lesson_attendance',
+  'grades',
+  'subjects',
+  'report_cards',
+  'appointments',
+  'absences',
+  'health',
+  'immunizations',
+  'med_report',
+  'incidents',
+  'meal_orders',
+  'trip_auth',
+  'pickup_auth',
+  'photos',
+  'events',
+  'documents',
+  'announcements',
+  'messages',
+  'finance',
+  'reports',
+  'school_settings',
+];
 
 List<CustomRole> customRolesFromFeatures(Map<String, dynamic> features) =>
     (features['custom_roles'] as List? ?? const [])
