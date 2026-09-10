@@ -13,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.custom_roles import (
+    CUSTOM_PERMISSIONS,
+    custom_roles,
+    definition_permissions,
+    resolve_permissions,
+)
 from app.core.dependencies import (
     get_school_id,
     require_finance_access,
@@ -108,6 +114,23 @@ _LOCAL_ACCESS_ROLES = {
 }
 
 
+def _local_access_roles(school: School) -> set[str]:
+    return _LOCAL_ACCESS_ROLES | set(custom_roles(school.resolved_features))
+
+
+def _custom_role_payload(school: School) -> list[dict]:
+    features = school.resolved_features
+    return [
+        {
+            "key": role["key"],
+            "label": role["label"],
+            "permissions": sorted(definition_permissions(role)),
+            "enabled": role.get("enabled", True),
+        }
+        for role in custom_roles(features).values()
+    ]
+
+
 def _allowed_local_capabilities(school: School, user, available: set[str]) -> set[str]:
     roles = set(getattr(user, "_roles", set()))
     if roles & {"school_admin", "platform_admin"}:
@@ -116,7 +139,7 @@ def _allowed_local_capabilities(school: School, user, available: set[str]) -> se
     if not isinstance(configured, dict):
         return available if "finance_officer" in roles else set()
     allowed: set[str] = set()
-    for role in roles & _LOCAL_ACCESS_ROLES:
+    for role in roles & _local_access_roles(school):
         values = configured.get(role)
         if isinstance(values, list):
             allowed.update(str(value) for value in values)
@@ -490,18 +513,23 @@ async def local_access_policy(
     configured = (school.features or {}).get("finreg_role_capabilities")
     if not isinstance(configured, dict):
         configured = {"finance_officer": available}
+    local_roles = _local_access_roles(school)
+    custom_definitions = custom_roles(school.resolved_features)
     role_workspaces = {
         role: sorted(set(values) & set(available))
         for role, values in (manifest.get("role_workspaces") or {}).items()
         if role in _LOCAL_ACCESS_ROLES
     }
+    for role in custom_definitions:
+        role_workspaces[role] = (
+            available
+            if "finance" in resolve_permissions([role], school.resolved_features)
+            else []
+        )
     role_permissions = (school.features or {}).get("role_permissions")
     if not isinstance(role_permissions, dict):
         role_permissions = {}
-    feature_keys = sorted(
-        key for key, value in school.resolved_features.items()
-        if isinstance(value, bool) and not key.startswith("role_")
-    )
+    feature_keys = sorted(CUSTOM_PERMISSIONS)
     return {
         "available_capabilities": available,
         "workspaces": manifest.get("workspaces") or [],
@@ -510,7 +538,7 @@ async def local_access_policy(
                 set(configured.get(role) or [])
                 & set(role_workspaces.get(role) or [])
             )
-            for role in sorted(_LOCAL_ACCESS_ROLES)
+            for role in sorted(local_roles)
         },
         "role_workspaces": role_workspaces,
         "feature_keys": feature_keys,
@@ -519,17 +547,29 @@ async def local_access_policy(
             for key in feature_keys
         },
         "role_available": {
-            role: bool(school.resolved_features.get(f"role_{role}", True))
-            for role in sorted(_LOCAL_ACCESS_ROLES)
+            role: (
+                bool(custom_definitions[role].get("enabled", True))
+                if role in custom_definitions
+                else bool(school.resolved_features.get(f"role_{role}", True))
+            )
+            for role in sorted(local_roles)
         },
         "role_features": {
-            role: {
-                key: bool(value)
-                for key, value in (role_permissions.get(role) or {}).items()
-                if key in feature_keys and isinstance(value, bool)
-            }
-            for role in sorted(_LOCAL_ACCESS_ROLES)
+            role: (
+                {
+                    key: key in definition_permissions(custom_definitions[role])
+                    for key in feature_keys
+                }
+                if role in custom_definitions
+                else {
+                    key: bool(value)
+                    for key, value in (role_permissions.get(role) or {}).items()
+                    if key in feature_keys and isinstance(value, bool)
+                }
+            )
+            for role in sorted(local_roles)
         },
+        "custom_roles": _custom_role_payload(school),
         "authority": "local_access_only",
     }
 
@@ -541,13 +581,14 @@ async def update_local_access_policy(
     school_id=Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
 ):
+    school = await _school(db, school_id)
+    local_roles = _local_access_roles(school)
     unknown_roles = (
         set(body.role_capabilities)
         | set(body.role_features or {})
-    ) - _LOCAL_ACCESS_ROLES
+    ) - local_roles
     if unknown_roles:
         raise HTTPException(status_code=422, detail="Unsupported local role")
-    school = await _school(db, school_id)
     manifest = validate_school_capabilities(
         await HttpFinregAdapter().capabilities(str(user.id))
     )
@@ -560,6 +601,12 @@ async def update_local_access_policy(
         for role, values in (manifest.get("role_workspaces") or {}).items()
         if role in _LOCAL_ACCESS_ROLES
     }
+    for role in custom_roles(school.resolved_features):
+        role_workspaces[role] = (
+            available
+            if "finance" in resolve_permissions([role], school.resolved_features)
+            else set()
+        )
     requested = {
         role: sorted(set(values))
         for role, values in body.role_capabilities.items()
@@ -574,13 +621,10 @@ async def update_local_access_policy(
         )
     features = dict(school.features or {})
     features["finreg_role_capabilities"] = {
-        role: requested.get(role, []) for role in sorted(_LOCAL_ACCESS_ROLES)
+        role: requested.get(role, []) for role in sorted(local_roles)
     }
     if body.role_features is not None:
-        feature_keys = {
-            key for key, value in school.resolved_features.items()
-            if isinstance(value, bool) and not key.startswith("role_")
-        }
+        feature_keys = CUSTOM_PERMISSIONS
         if any(
             set(values) - feature_keys
             for values in body.role_features.values()
@@ -590,12 +634,25 @@ async def update_local_access_policy(
             role: dict(sorted(body.role_features.get(role, {}).items()))
             for role in sorted(_LOCAL_ACCESS_ROLES)
         }
+        definitions = custom_roles(school.resolved_features)
+        updated_custom_roles = []
+        for definition in definitions.values():
+            definition = dict(definition)
+            selected = body.role_features.get(definition["key"])
+            if selected is not None:
+                definition["permissions"] = sorted(
+                    key for key, enabled in selected.items() if enabled
+                )
+                definition.pop("base_role", None)
+            updated_custom_roles.append(definition)
+        features["custom_roles"] = updated_custom_roles
     school.features = features
     await db.commit()
     return {
         "available_capabilities": sorted(available),
         "role_capabilities": features["finreg_role_capabilities"],
         "role_features": features.get("role_permissions", {}),
+        "custom_roles": features.get("custom_roles", []),
         "authority": "local_access_only",
     }
 

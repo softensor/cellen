@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
+import '../../../core/models/custom_role.dart';
 import '../../../core/models/role_definitions.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../employees/employees_list_screen.dart';
@@ -509,6 +510,7 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
   final Map<String, Map<String, bool>> _roleFeatures = {};
   final Map<String, bool> _schoolFeatures = {};
   final Map<String, bool> _roleAvailable = {};
+  List<RoleDef> _roles = kConfigRoles;
   List<String> _available = const [];
   List<String> _featureKeys = const [];
   bool _saving = false;
@@ -516,6 +518,12 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
   Future<void> _loadPolicy() async {
     final payload = Map<String, dynamic>.from(
         await widget.api.get('/finreg/local-access-policy') as Map);
+    final customRoles = (payload['custom_roles'] as List? ?? const [])
+        .map((entry) =>
+            CustomRole.fromJson(Map<String, dynamic>.from(entry as Map)))
+        .map((role) => role.definition)
+        .toList();
+    _roles = [...kConfigRoles, ...customRoles];
     _available = List<String>.from(payload['available_capabilities'] as List);
     final roles =
         Map<String, dynamic>.from(payload['role_capabilities'] as Map);
@@ -584,7 +592,7 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
                     ? 'Estas permissões apenas restringem o acesso dentro da escola. Não podem ativar módulos ou alterar a composição definida pelo proprietário Finreg. Administradores da escola mantêm acesso completo.'
                     : 'These permissions only restrict access inside the school. They cannot activate modules or change the composition granted by the Finreg owner. School administrators retain full access.'),
                 const SizedBox(height: 16),
-                for (final definition in kConfigRoles)
+                for (final definition in _roles)
                   ExpansionTile(
                     enabled: _roleAvailable[definition.key] ?? true,
                     leading: Icon(definition.icon, color: definition.color),

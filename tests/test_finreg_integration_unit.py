@@ -56,11 +56,12 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
 
 def test_local_finreg_policy_can_only_narrow_authoritative_workspaces():
     available = {"billing", "accounting", "payroll"}
-    school = SimpleNamespace(features={
+    features = {
         "finreg_role_capabilities": {
             "finance_officer": ["billing", "outside-composition"],
         }
-    })
+    }
+    school = SimpleNamespace(features=features, resolved_features=features)
     school_admin = SimpleNamespace(_roles={"school_admin"})
     finance_officer = SimpleNamespace(_roles={"finance_officer"})
     coordinator = SimpleNamespace(_roles={"coordinator"})
@@ -68,6 +69,23 @@ def test_local_finreg_policy_can_only_narrow_authoritative_workspaces():
     assert _allowed_local_capabilities(school, school_admin, available) == available
     assert _allowed_local_capabilities(school, finance_officer, available) == {"billing"}
     assert _allowed_local_capabilities(school, coordinator, available) == set()
+
+
+def test_custom_roles_are_first_class_finreg_policy_options():
+    features = {
+        "custom_roles": [{
+            "key": "custom_bursar",
+            "label": "Tesouraria",
+            "permissions": ["finance"],
+            "enabled": True,
+        }],
+        "finreg_role_capabilities": {"custom_bursar": ["billing"]},
+    }
+    school = SimpleNamespace(features=features, resolved_features=features)
+    user = SimpleNamespace(_roles={"custom_bursar"})
+    assert _allowed_local_capabilities(
+        school, user, {"billing", "payroll"}
+    ) == {"billing"}
 
 
 def test_local_module_access_is_separate_from_finreg_control_plane():
@@ -88,7 +106,8 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     assert "authority\": \"local_access_only" in router
     assert "Acessos e funções" in host
     assert "Não podem ativar módulos" in host
-    assert "for (final definition in kConfigRoles)" in host
+    assert "for (final definition in _roles)" in host
+    assert "payload['custom_roles']" in host
     assert "role_workspaces" in router
     assert "role_features" in router
     assert "school_features" in router

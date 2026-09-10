@@ -99,6 +99,15 @@ def resolve_roles(roles: list[str], features: dict | None) -> list[str]:
     return resolved
 
 
+def definition_permissions(definition: dict) -> set[str]:
+    """Return a definition's permissions even when the role is disabled."""
+    explicit = definition.get("permissions")
+    if isinstance(explicit, list):
+        return set(_expand_permissions(explicit))
+    legacy = _LEGACY_PERMISSION.get(definition.get("base_role"))
+    return set(_AREA_PERMISSIONS.get(legacy, {legacy})) if legacy else set()
+
+
 def resolve_permissions(roles: list[str], features: dict | None) -> set[str]:
     """Return function permissions granted by active custom-role definitions."""
     definitions = custom_roles(features)
@@ -107,12 +116,7 @@ def resolve_permissions(roles: list[str], features: dict | None) -> set[str]:
         definition = definitions.get(role)
         if not definition or not definition.get("enabled", True):
             continue
-        explicit = definition.get("permissions")
-        if isinstance(explicit, list):
-            permissions.update(_expand_permissions(explicit))
-        elif definition.get("base_role") in _LEGACY_PERMISSION:
-            legacy = _LEGACY_PERMISSION[definition["base_role"]]
-            permissions.update(_AREA_PERMISSIONS.get(legacy, {legacy}))
+        permissions.update(definition_permissions(definition))
     return permissions
 
 

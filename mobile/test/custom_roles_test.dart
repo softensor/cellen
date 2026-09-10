@@ -57,6 +57,11 @@ void main() {
     expect(role.permissions, ['finance', 'health']);
     expect(role.toJson().containsKey('base_role'), isFalse);
     expect(role.definition.defaultFeatures, containsAll(['finance', 'health']));
+    expect(
+        configRolesForFeatures({
+          'custom_roles': [role.toJson()]
+        }).map((definition) => definition.key),
+        contains('custom_support'));
 
     final legacy = CustomRole.fromJson({
       'key': 'custom_old',
@@ -92,13 +97,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar função'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Guardar'));
-    await tester.pumpAndSettle();
-    final roles = api.features['custom_roles'] as List;
-    expect(roles.single['label'], 'Recepção');
-    expect(roles.single['permissions'], ['people']);
-    expect(api.features['external_setting'], {'enabled': true});
-    final key = roles.single['key'];
     await tester.ensureVisible(find.text('Recepção'));
     await tester.tap(find.text('Recepção'));
     await tester.pumpAndSettle();
@@ -111,11 +109,22 @@ void main() {
         matching: find.byType(ListTile));
     await tester.tap(find.descendant(of: tile, matching: find.byType(Switch)));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Permissões por Função'));
+    await tester.pumpAndSettle();
+    expect(find.text('Assistente de Secretaria'), findsOneWidget);
+    await tester.tap(find.text('Assistente de Secretaria'));
+    await tester.pumpAndSettle();
+    final messagesPermission = find.widgetWithText(FilterChip, 'Mensagens');
+    await tester.ensureVisible(messagesPermission);
+    await tester.pumpAndSettle();
+    await tester.tap(messagesPermission);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
     final updated = (api.features['custom_roles'] as List).single;
-    expect(updated['key'], key);
+    expect((updated['key'] as String).startsWith('custom_'), isTrue);
     expect(updated['label'], 'Assistente de Secretaria');
+    expect(updated['permissions'], ['messages', 'people']);
     expect(updated['enabled'], false);
     expect(api.features['external_setting'], {'enabled': true});
     expect(tester.takeException(), isNull);

@@ -170,6 +170,9 @@ the requested API area on every request.  They are never resolved to a
 predefined role.  Definitions created by the initial =base_role= or grouped
 permission releases are read compatibly and are rewritten to granular
 =permissions= the next time a platform administrator saves the configuration.
+Saved custom roles appear alongside predefined roles in employee assignment,
+the school permission matrix, and the local Finreg access policy.  School role
+options refresh whenever the authenticated session or school changes.
 
 * Common errors
 

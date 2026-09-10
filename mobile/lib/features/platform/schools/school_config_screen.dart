@@ -392,6 +392,8 @@ const _catIcons = {
 
 // Feature labels for the role permission matrix (shorter, for chips/cells)
 const _featLabel = <String, String>{
+  'people': 'Pessoas',
+  'academic': 'Turmas e Matrículas',
   'checkin': 'Entradas/Saídas',
   'caderneta': 'Caderneta',
   'evaluations': 'Avaliações Dev.',
@@ -416,6 +418,8 @@ const _featLabel = <String, String>{
   'finance': 'Financeiro',
   'lesson_attendance': 'Livro de Ponto',
   'absences': 'Faltas Funcionários',
+  'reports': 'Relatórios',
+  'school_settings': 'Configuração da Escola',
 };
 
 const _segments = [
@@ -544,6 +548,11 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
     return (_segmentDefaults[_segment] ?? {})[key] ?? true;
   }
 
+  List<RoleDef> get _configRoles => [
+        ...kConfigRoles,
+        for (final role in _customRoles) role.definition,
+      ];
+
   bool _isOverridden(String key) {
     if (!_featureOverrides.containsKey(key)) return false;
     final def = (_segmentDefaults[_segment] ?? {})[key] ?? true;
@@ -573,18 +582,39 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
 
   // Role permissions — default access derived from role's defaultFeatures list
   bool _roleDefault(String roleKey, String featureKey) {
-    final role = kConfigRoles.where((r) => r.key == roleKey).firstOrNull;
+    final role = _configRoles.where((r) => r.key == roleKey).firstOrNull;
     return role?.defaultFeatures.contains(featureKey) ?? true;
   }
 
-  bool _roleCanAccess(String roleKey, String featureKey) =>
-      _rolePerms[roleKey]?[featureKey] ?? _roleDefault(roleKey, featureKey);
+  bool _roleCanAccess(String roleKey, String featureKey) {
+    final custom = _customRoles.where((role) => role.key == roleKey).firstOrNull;
+    if (custom != null) return custom.permissions.contains(featureKey);
+    return _rolePerms[roleKey]?[featureKey] ??
+        _roleDefault(roleKey, featureKey);
+  }
 
-  bool _isRolePermOverridden(String roleKey, String featureKey) =>
-      _rolePerms[roleKey]?.containsKey(featureKey) ?? false;
+  bool _isRolePermOverridden(String roleKey, String featureKey) {
+    if (_customRoles.any((role) => role.key == roleKey)) return false;
+    return _rolePerms[roleKey]?.containsKey(featureKey) ?? false;
+  }
 
   void _toggleRolePerm(String roleKey, String featureKey, bool value) {
     setState(() {
+      final customIndex =
+          _customRoles.indexWhere((role) => role.key == roleKey);
+      if (customIndex >= 0) {
+        final role = _customRoles[customIndex];
+        final permissions = role.permissions.toSet();
+        value ? permissions.add(featureKey) : permissions.remove(featureKey);
+        _customRoles[customIndex] = CustomRole(
+          key: role.key,
+          label: role.label,
+          permissions: permissions.toList()..sort(),
+          enabled: role.enabled,
+        );
+        _rolePerms.remove(roleKey);
+        return;
+      }
       final def = _roleDefault(roleKey, featureKey);
       if (value == def) {
         // Matches default — remove explicit override (clean slate)
@@ -730,6 +760,7 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
                 }),
               ),
               _RolePermsTab(
+                roles: _configRoles,
                 enabledFeatures: {
                   for (final f in _allFeatures)
                     if (f.cat != _Cat.roles && _effectiveFeat(f.key)) f.key,
@@ -930,12 +961,14 @@ class _FeaturesTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _RolePermsTab extends StatelessWidget {
+  final List<RoleDef> roles;
   final Set<String> enabledFeatures;
   final bool Function(String role, String feat) roleCanAccess;
   final bool Function(String role, String feat) isRolePermOverridden;
   final void Function(String role, String feat, bool val) toggleRolePerm;
 
   const _RolePermsTab({
+    required this.roles,
     required this.enabledFeatures,
     required this.roleCanAccess,
     required this.isRolePermOverridden,
@@ -966,7 +999,7 @@ class _RolePermsTab extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 16),
-        for (final role in kConfigRoles) ...[
+        for (final role in roles) ...[
           const SizedBox(height: 8),
           _RolePermCard(
             role: role,
@@ -1005,7 +1038,10 @@ class _RolePermCardState extends State<_RolePermCard> {
 
   @override
   Widget build(BuildContext context) {
-    final allFeats = widget.enabledFeatures.toList()
+    final allFeats = (widget.role.key.startsWith('custom_')
+            ? customPermissionKeys
+            : widget.enabledFeatures)
+        .toList()
       ..sort((a, b) {
         // Default-ON features first, then extras
         final aDefault = widget.role.defaultFeatures.contains(a);

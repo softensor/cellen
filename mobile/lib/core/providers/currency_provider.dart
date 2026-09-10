@@ -2,11 +2,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../api/api_client.dart';
+import '../auth/auth_provider.dart';
 import '../models/school.dart';
 
 /// Fetches basic school info (including currency) for any authenticated user.
 /// Not autoDispose — cached app-wide so the sidebar always has school branding.
 final schoolInfoProvider = FutureProvider<School>((ref) async {
+  // Re-fetch school-scoped configuration whenever the authenticated session
+  // changes. This prevents role options from a previous login being reused.
+  ref.watch(authProvider.select(
+      (auth) => (auth.isAuthenticated, auth.schoolId, auth.accessToken)));
   final api = ref.read(apiClientProvider);
   final data = await api.get('/schools/info');
   return School.fromJson(data as Map<String, dynamic>);
