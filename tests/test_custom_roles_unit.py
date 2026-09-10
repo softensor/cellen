@@ -3,13 +3,19 @@ import unittest
 
 from pydantic import ValidationError
 
-from app.core.custom_roles import resolve_roles, validate_assignments
+from app.core.custom_roles import (
+    client_navigation_roles,
+    resolve_permissions,
+    resolve_roles,
+    validate_assignments,
+)
 from app.schemas.school import SchoolUpdate
 from app.schemas.employee import EmployeeUpdate
 
 
 def definition(**overrides):
-    return {"key": "custom_reception", "label": "Recepção", "base_role": "secretary",
+    return {"key": "custom_reception", "label": "Recepção",
+            "permissions": ["secretariat", "staff_services"],
             "enabled": True, **overrides}
 
 
@@ -24,8 +30,9 @@ class CustomRoleTests(unittest.TestCase):
 
     def test_invalid_definitions_are_rejected(self):
         for changes in ({"key": "school_admin"}, {"label": "  "},
-                        {"base_role": "platform_admin"}, {"base_role": "school_admin"},
-                        {"base_role": "custom_other"}, {"label": "x" * 81}):
+                        {"permissions": ["platform_admin"]},
+                        {"permissions": ["secretariat", "secretariat"]},
+                        {"permissions": ["invented"]}, {"label": "x" * 81}):
             with self.subTest(changes=changes), self.assertRaises(ValidationError):
                 SchoolUpdate(features={"custom_roles": [definition(**changes)]})
 
@@ -40,14 +47,23 @@ class CustomRoleTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 SchoolUpdate(features={"custom_roles": value})
 
-    def test_custom_roles_resolve_to_existing_profiles(self):
+    def test_custom_roles_keep_their_identity_and_explicit_permissions(self):
         features = {"custom_roles": [definition()]}
         self.assertEqual(resolve_roles(["custom_reception", "teacher", "secretary"], features),
-                         ["secretary", "teacher"])
+                         ["custom_reception", "teacher", "secretary"])
+        self.assertEqual(resolve_permissions(["custom_reception"], features),
+                         {"secretariat", "staff_services"})
+        self.assertEqual(client_navigation_roles(["custom_reception"], features),
+                         ["secretary"])
+
+    def test_legacy_definition_is_read_as_an_explicit_permission(self):
+        features = {"custom_roles": [{"key": "custom_old", "label": "Antiga",
+                    "base_role": "teacher", "enabled": True}]}
+        self.assertEqual(resolve_roles(["custom_old"], features), ["custom_old"])
+        self.assertEqual(resolve_permissions(["custom_old"], features), {"teaching"})
 
     def test_disabled_deleted_and_cross_school_roles_grant_no_access(self):
-        for features in ({}, {"custom_roles": [definition(enabled=False)]},
-                         {"custom_roles": [definition()], "role_secretary": False}):
+        for features in ({}, {"custom_roles": [definition(enabled=False)]}):
             with self.subTest(features=features):
                 self.assertEqual(resolve_roles(["custom_reception"], features), [])
                 with self.assertRaises(ValueError):

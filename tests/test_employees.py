@@ -104,7 +104,7 @@ async def test_custom_role_assignment_and_live_revocation(
     role = {
         "key": "custom_reception",
         "label": "Recepção",
-        "base_role": "secretary",
+        "permissions": ["secretariat"],
         "enabled": True,
     }
     configured = await client.patch(
