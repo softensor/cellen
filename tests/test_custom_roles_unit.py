@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.core.custom_roles import (
     client_navigation_roles,
+    definition_permissions,
     resolve_permissions,
     resolve_roles,
     validate_assignments,
@@ -71,6 +72,12 @@ class CustomRoleTests(unittest.TestCase):
                 self.assertEqual(resolve_roles(["custom_reception"], features), [])
                 with self.assertRaises(ValueError):
                     validate_assignments(["custom_reception"], features)
+
+    def test_disabled_definition_keeps_its_configured_permissions(self):
+        self.assertEqual(
+            definition_permissions(definition(enabled=False)),
+            {"people", "messages"},
+        )
 
     def test_other_assignments_survive_disabled_custom_role(self):
         self.assertEqual(resolve_roles(["custom_reception", "teacher"], {}), ["teacher"])

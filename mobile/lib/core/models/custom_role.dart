@@ -156,3 +156,8 @@ List<RoleDef> staffRolesForFeatures(Map<String, dynamic> features) => [
       ...kStaffRoles,
       for (final role in customRolesFromFeatures(features)) role.definition,
     ];
+
+List<RoleDef> configRolesForFeatures(Map<String, dynamic> features) => [
+      ...kConfigRoles,
+      for (final role in customRolesFromFeatures(features)) role.definition,
+    ];

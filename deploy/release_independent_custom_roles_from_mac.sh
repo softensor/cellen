@@ -3,8 +3,8 @@
 # Run this once from the Cellen checkout on the Mac.
 set -Eeuo pipefail
 
-BRANCH=${CELLEN_RELEASE_BRANCH:-fix/granular-custom-role-permissions}
-PR_TITLE=${CELLEN_RELEASE_TITLE:-"fix: enforce granular custom role permissions"}
+BRANCH=${CELLEN_RELEASE_BRANCH:-fix/custom-roles-everywhere}
+PR_TITLE=${CELLEN_RELEASE_TITLE:-"fix: expose custom roles across role selectors"}
 VPS_HOST=${CELLEN_VPS_HOST:-jorgehel@167.235.158.77}
 VPS_DIR=${CELLEN_VPS_DIR:-/var/www/cellen}
 PUBLIC_HEALTH_URL=${CELLEN_PUBLIC_HEALTH_URL:-https://167.235.158.77.nip.io/health}
