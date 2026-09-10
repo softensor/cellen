@@ -141,7 +141,10 @@ router = APIRouter(prefix="/finance", tags=["Finance"])
 async def require_finance_access(user=Depends(get_current_user)):
     """finance_officer or school_admin can access finance."""
     role = getattr(user, "_role", None)
-    if role not in ("school_admin", "finance_officer", "platform_admin"):
+    permissions = getattr(user, "_custom_permissions", set())
+    features = getattr(user, "_school_features", {}) or {}
+    custom_finance = "finance" in permissions and features.get("finance", True)
+    if role not in ("school_admin", "finance_officer", "platform_admin") and not custom_finance:
         raise HTTPException(status_code=403, detail="Finance access required")
     return user
 

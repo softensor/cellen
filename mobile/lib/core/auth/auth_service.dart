@@ -10,14 +10,14 @@ class AuthService {
   final ApiClient _api;
   final FlutterSecureStorage _storage;
 
-  static const String _accessTokenKey  = kAccessTokenKey;
+  static const String _accessTokenKey = kAccessTokenKey;
   static const String _refreshTokenKey = kRefreshTokenKey;
-  static const String _rolesKey        = 'user_roles';   // JSON array of strings
-  static const String _userIdKey       = 'user_id';
-  static const String _schoolIdKey     = 'school_id';
-  static const String _usernameKey     = 'username';
-  static const String _employeeIdKey   = 'employee_id';
-  static const String _guardianIdKey   = 'guardian_id';
+  static const String _rolesKey = 'user_roles'; // JSON array of strings
+  static const String _userIdKey = 'user_id';
+  static const String _schoolIdKey = 'school_id';
+  static const String _usernameKey = 'username';
+  static const String _employeeIdKey = 'employee_id';
+  static const String _guardianIdKey = 'guardian_id';
 
   AuthService(this._api, this._storage);
 
@@ -42,7 +42,7 @@ class AuthService {
       throw const ApiException(message: 'Resposta inválida do servidor');
     }
 
-    final accessToken  = data['access_token']  as String?;
+    final accessToken = data['access_token'] as String?;
     final refreshToken = data['refresh_token'] as String?;
 
     if (accessToken == null || accessToken.isEmpty) {
@@ -53,11 +53,12 @@ class AuthService {
     final payload = _decodeJwtPayload(accessToken);
 
     final roles = _parseRoles(payload);
-    final userId        = payload['user_id']?.toString() ?? payload['sub']?.toString() ?? '';
-    final schoolId      = payload['school_id']?.toString() ?? '';
+    final userId =
+        payload['user_id']?.toString() ?? payload['sub']?.toString() ?? '';
+    final schoolId = payload['school_id']?.toString() ?? '';
     final storedUsername = payload['username']?.toString() ?? username;
-    final employeeId    = payload['employee_id'] as String?;
-    final guardianId    = payload['guardian_id'] as String?;
+    final employeeId = payload['employee_id'] as String?;
+    final guardianId = payload['guardian_id'] as String?;
 
     // Persist
     await _storage.write(key: _accessTokenKey, value: accessToken);
@@ -66,9 +67,10 @@ class AuthService {
     }
     await _storage.write(
       key: _rolesKey,
-      value: jsonEncode(roles.map(AuthState.roleToString).whereType<String>().toList()),
+      value: jsonEncode(
+          roles.map(AuthState.roleToString).whereType<String>().toList()),
     );
-    await _storage.write(key: _userIdKey,  value: userId);
+    await _storage.write(key: _userIdKey, value: userId);
     await _storage.write(key: _schoolIdKey, value: schoolId);
     await _storage.write(key: _usernameKey, value: storedUsername);
     if (employeeId != null && employeeId.isNotEmpty) {
@@ -132,13 +134,13 @@ class AuthService {
       return const AuthState.initial();
     }
 
-    final refreshToken  = await _storage.read(key: _refreshTokenKey);
-    final rolesJson     = await _storage.read(key: _rolesKey);
-    final userId        = await _storage.read(key: _userIdKey);
-    final schoolId      = await _storage.read(key: _schoolIdKey);
-    final username      = await _storage.read(key: _usernameKey);
-    final employeeId    = await _storage.read(key: _employeeIdKey);
-    final guardianId    = await _storage.read(key: _guardianIdKey);
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    final rolesJson = await _storage.read(key: _rolesKey);
+    final userId = await _storage.read(key: _userIdKey);
+    final schoolId = await _storage.read(key: _schoolIdKey);
+    final username = await _storage.read(key: _usernameKey);
+    final employeeId = await _storage.read(key: _employeeIdKey);
+    final guardianId = await _storage.read(key: _guardianIdKey);
 
     final roles = _rolesFromStorage(rolesJson);
 
@@ -166,30 +168,32 @@ class AuthService {
     }
 
     try {
-      final data = await _api.post('/auth/refresh', data: {'refresh_token': refreshToken});
-      final newAccess   = data['access_token'] as String?;
+      final data = await _api
+          .post('/auth/refresh', data: {'refresh_token': refreshToken});
+      final newAccess = data['access_token'] as String?;
       if (newAccess == null || newAccess.isEmpty) {
         await _clearAll();
         return const AuthState.initial();
       }
 
-      final newRefresh   = data['refresh_token'] as String? ?? refreshToken;
-      await _storage.write(key: _accessTokenKey,  value: newAccess);
+      final newRefresh = data['refresh_token'] as String? ?? refreshToken;
+      await _storage.write(key: _accessTokenKey, value: newAccess);
       await _storage.write(key: _refreshTokenKey, value: newRefresh);
 
-      final payload    = _decodeJwtPayload(newAccess);
-      final roles      = _parseRoles(payload);
-      final userId     = payload['user_id']?.toString() ?? '';
-      final schoolId   = payload['school_id']?.toString() ?? '';
-      final username   = payload['username']?.toString() ?? '';
+      final payload = _decodeJwtPayload(newAccess);
+      final roles = _parseRoles(payload);
+      final userId = payload['user_id']?.toString() ?? '';
+      final schoolId = payload['school_id']?.toString() ?? '';
+      final username = payload['username']?.toString() ?? '';
       final employeeId = payload['employee_id'] as String?;
       final guardianId = payload['guardian_id'] as String?;
 
       await _storage.write(
         key: _rolesKey,
-        value: jsonEncode(roles.map(AuthState.roleToString).whereType<String>().toList()),
+        value: jsonEncode(
+            roles.map(AuthState.roleToString).whereType<String>().toList()),
       );
-      await _storage.write(key: _userIdKey,   value: userId);
+      await _storage.write(key: _userIdKey, value: userId);
       await _storage.write(key: _schoolIdKey, value: schoolId);
       await _storage.write(key: _usernameKey, value: username);
       if (employeeId != null && employeeId.isNotEmpty) {
@@ -225,16 +229,24 @@ class AuthService {
 
   /// Parse roles from JWT payload. Supports both new `roles: [...]` and old `role: str`.
   Set<UserRole> _parseRoles(Map<String, dynamic> payload) {
+    final parsed = <UserRole>{};
     final rolesRaw = payload['roles'];
     if (rolesRaw is List && rolesRaw.isNotEmpty) {
-      return rolesRaw
+      parsed.addAll(rolesRaw
           .map((r) => AuthState.roleFromString(r as String?))
-          .whereType<UserRole>()
-          .toSet();
+          .whereType<UserRole>());
+    } else {
+      final single = AuthState.roleFromString(payload['role'] as String?);
+      if (single != null) parsed.add(single);
     }
-    // Fallback: old single-role token
-    final single = AuthState.roleFromString(payload['role'] as String?);
-    return {if (single != null) single};
+    final permissions = payload['permissions'];
+    if (permissions is List) {
+      for (final permission in permissions.map((value) => value.toString())) {
+        final role = _customPermissionRole[permission];
+        if (role != null) parsed.add(role);
+      }
+    }
+    return parsed;
   }
 
   /// Parse roles from secure storage JSON string.
@@ -257,7 +269,7 @@ class AuthService {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _rolesKey);
-    await _storage.delete(key: 'user_role');   // cleanup old key if present
+    await _storage.delete(key: 'user_role'); // cleanup old key if present
     await _storage.delete(key: _userIdKey);
     await _storage.delete(key: _schoolIdKey);
     await _storage.delete(key: _usernameKey);
@@ -274,3 +286,13 @@ class AuthService {
     return jsonDecode(decoded) as Map<String, dynamic>;
   }
 }
+
+const _customPermissionRole = <String, UserRole>{
+  'school_administration': UserRole.schoolAdmin,
+  'academic_coordination': UserRole.coordinator,
+  'finance': UserRole.financeOfficer,
+  'secretariat': UserRole.secretary,
+  'teaching': UserRole.teacher,
+  'staff_services': UserRole.secretary,
+  'health': UserRole.nurse,
+};

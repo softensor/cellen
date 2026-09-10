@@ -165,6 +165,12 @@ Python dependencies, restarts =cellen-api=, and checks its supported local and
 public health endpoints.  Use =release_cellen_finreg_from_vps.sh= when Finreg itself or
 the pinned Finreg Web artifact changes.
 
+Custom school roles store explicit permission areas and are authorised from
+those permissions on every request.  Definitions created by the initial
+=base_role= release are read compatibly and are rewritten to the explicit
+=permissions= format the next time a platform administrator saves the school
+configuration.
+
 * Common errors
 
 | Message | Meaning | Resolution |

@@ -725,7 +725,7 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
                   _customRoles[index] = CustomRole(
                       key: role.key,
                       label: role.label,
-                      baseRole: role.baseRole,
+                      permissions: role.permissions,
                       enabled: enabled);
                 }),
               ),
@@ -888,8 +888,7 @@ class _FeaturesTab extends StatelessWidget {
             icon: Icons.person_add_alt_1,
             label: 'Funções personalizadas',
             subtitle:
-                'Crie funções com nome próprio e escolha o perfil de acesso. '
-                'As permissões são as do perfil escolhido, configuradas no separador Permissões.'),
+                'Crie funções independentes e escolha directamente as áreas a que cada uma pode aceder.'),
         const SizedBox(height: 8),
         for (final role in customRoles)
           Card(
@@ -1236,7 +1235,8 @@ class _SectionHeader extends StatelessWidget {
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           if (subtitle != null)
             Text(subtitle!,
                 style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
@@ -1327,12 +1327,12 @@ class _CustomRoleDialog extends StatefulWidget {
 class _CustomRoleDialogState extends State<_CustomRoleDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
-  late String _baseRole;
+  late final Set<String> _permissions;
   @override
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.existing?.label ?? '');
-    _baseRole = widget.existing?.baseRole ?? 'secretary';
+    _permissions = {...?widget.existing?.permissions};
   }
 
   @override
@@ -1374,24 +1374,36 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
                       return null;
                     }),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _baseRole,
-                  decoration:
-                      const InputDecoration(labelText: 'Perfil de acesso'),
-                  isExpanded: true,
-                  items: kStaffRoles
-                      .where((role) => role.key != 'school_admin')
-                      .map((role) => DropdownMenuItem(
-                          value: role.key, child: Text(role.label)))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) setState(() => _baseRole = value);
-                  },
-                ),
                 const SizedBox(height: 12),
+                const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Áreas de acesso',
+                        style: TextStyle(fontWeight: FontWeight.w700))),
+                const SizedBox(height: 4),
                 const Text(
-                    'Esta função terá os mesmos acessos do perfil escolhido. '
-                    'Alterar o perfil afecta os funcionários com esta função.'),
+                    'Seleccione apenas as áreas necessárias. Esta função não herda permissões de nenhuma função predefinida.'),
+                const SizedBox(height: 8),
+                for (final permission in _customPermissionOptions)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(permission.label),
+                    subtitle: Text(permission.description),
+                    value: _permissions.contains(permission.key),
+                    onChanged: (selected) => setState(() {
+                      if (selected ?? false) {
+                        _permissions.add(permission.key);
+                      } else {
+                        _permissions.remove(permission.key);
+                      }
+                    }),
+                  ),
+                if (_permissions.isEmpty)
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Seleccione pelo menos uma área de acesso.',
+                        style: TextStyle(color: Colors.red, fontSize: 12)),
+                  ),
               ]),
             ))),
         actions: [
@@ -1400,14 +1412,18 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
               child: const Text('Cancelar')),
           FilledButton(
               onPressed: () {
-                if (!_formKey.currentState!.validate()) return;
+                if (!_formKey.currentState!.validate() ||
+                    _permissions.isEmpty) {
+                  setState(() {});
+                  return;
+                }
                 Navigator.pop(
                     context,
                     CustomRole(
                       key: widget.existing?.key ??
                           'custom_${DateTime.now().microsecondsSinceEpoch}',
                       label: _name.text.trim(),
-                      baseRole: _baseRole,
+                      permissions: _permissions.toList()..sort(),
                       enabled: widget.existing?.enabled ?? true,
                     ));
               },
@@ -1415,3 +1431,45 @@ class _CustomRoleDialogState extends State<_CustomRoleDialog> {
         ],
       );
 }
+
+const _customPermissionOptions =
+    <({String key, String label, String description})>[
+  (
+    key: 'school_administration',
+    label: 'Administração escolar',
+    description:
+        'Pessoas, matrículas, configurações e operações administrativas'
+  ),
+  (
+    key: 'academic_coordination',
+    label: 'Coordenação académica',
+    description:
+        'Turmas, horários, disciplinas, avaliações e relatórios pedagógicos'
+  ),
+  (
+    key: 'finance',
+    label: 'Gestão financeira',
+    description:
+        'Facturação, pagamentos, despesas, caixa e integração financeira'
+  ),
+  (
+    key: 'secretariat',
+    label: 'Secretaria',
+    description: 'Atendimento, comunicação e operações de secretaria'
+  ),
+  (
+    key: 'teaching',
+    label: 'Actividade docente',
+    description: 'Presenças, notas, caderneta e actividades lectivas'
+  ),
+  (
+    key: 'staff_services',
+    label: 'Serviços gerais',
+    description: 'Funcionalidades partilhadas destinadas ao pessoal da escola'
+  ),
+  (
+    key: 'health',
+    label: 'Saúde escolar',
+    description: 'Saúde, vacinação, ocorrências e registos médicos'
+  ),
+];

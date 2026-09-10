@@ -153,9 +153,14 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     final selected = _selectedRoles.first;
     final custom = customRolesFromFeatures(
         ref.read(schoolInfoProvider).valueOrNull?.resolvedFeatures ?? {});
-    final primaryRole =
-        custom.where((role) => role.key == selected).firstOrNull?.baseRole ??
-            selected;
+    final customRole = custom.where((role) => role.key == selected).firstOrNull;
+    final primaryRole = customRole == null
+        ? selected
+        : (customRole.permissions.contains('school_administration')
+            ? 'school_admin'
+            : (customRole.permissions.contains('teaching')
+                ? 'teacher'
+                : 'staff'));
     final derivedType = primaryRole == 'school_admin'
         ? 'admin'
         : (primaryRole == 'teacher' ? 'teacher' : 'staff');

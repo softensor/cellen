@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.custom_roles import resolve_roles
+from app.core.custom_roles import resolve_permissions, resolve_roles
 from app.core.security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -110,12 +110,16 @@ async def get_current_user(
         user._roles = set(effective_roles)
         user._roles_list = effective_roles
         user._role = effective_roles[0]
+        user._custom_permissions = resolve_permissions(
+            list(user.roles), user._school_features
+        )
         return user
 
 
-def _check_roles(user, allowed: set[str], detail: str):
+def _check_roles(user, allowed: set[str], detail: str, permission: str | None = None):
     user_roles: set[str] = getattr(user, "_roles", set())
-    if not user_roles.intersection(allowed):
+    custom_permissions: set[str] = getattr(user, "_custom_permissions", set())
+    if not user_roles.intersection(allowed) and permission not in custom_permissions:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
     return user
 
@@ -125,12 +129,12 @@ async def require_platform_admin(user=Depends(get_current_user)):
 
 
 async def require_school_admin(user=Depends(get_current_user)):
-    return _check_roles(user, _ADMIN_OR_PLATFORM, "School admin access required")
+    return _check_roles(user, _ADMIN_OR_PLATFORM, "School admin access required", "school_administration")
 
 
 async def require_coordinator(user=Depends(get_current_user)):
     """Coordinator or school_admin."""
-    return _check_roles(user, _ACADEMIC_STAFF, "Coordinator access required")
+    return _check_roles(user, _ACADEMIC_STAFF, "Coordinator access required", "academic_coordination")
 
 
 async def require_finance_access(user=Depends(get_current_user)):
@@ -138,11 +142,13 @@ async def require_finance_access(user=Depends(get_current_user)):
     roles = set(getattr(user, "_roles", set()))
     if roles & _ADMIN_OR_PLATFORM:
         return user
-    eligible = roles & _CONFIGURABLE_FINANCE
-    if not eligible:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
     features = getattr(user, "_school_features", {}) or {}
     if not features.get("finance", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
+    if "finance" in getattr(user, "_custom_permissions", set()):
+        return user
+    eligible = roles & _CONFIGURABLE_FINANCE
+    if not eligible:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Finance access required")
     permissions = features.get("role_permissions") or {}
     for role in eligible:
@@ -155,27 +161,27 @@ async def require_finance_access(user=Depends(get_current_user)):
 
 async def require_secretary(user=Depends(get_current_user)):
     """secretary, coordinator, or school_admin."""
-    return _check_roles(user, _ACADEMIC_STAFF | _SECRETARY, "Secretary access required")
+    return _check_roles(user, _ACADEMIC_STAFF | _SECRETARY, "Secretary access required", "secretariat")
 
 
 async def require_teacher(user=Depends(get_current_user)):
     """teacher, coordinator, school_admin (classroom operations)."""
-    return _check_roles(user, _TEACHER_ACCESS, "Teacher access required")
+    return _check_roles(user, _TEACHER_ACCESS, "Teacher access required", "teaching")
 
 
 async def require_staff(user=Depends(get_current_user)):
     """Any school staff member (all roles except parent/student)."""
-    return _check_roles(user, _STAFF_ACCESS, "Staff access required")
+    return _check_roles(user, _STAFF_ACCESS, "Staff access required", "staff_services")
 
 
 async def require_health_access(user=Depends(get_current_user)):
     """nurse, teacher, coordinator, school_admin."""
-    return _check_roles(user, _HEALTH_ACCESS, "Health access required")
+    return _check_roles(user, _HEALTH_ACCESS, "Health access required", "health")
 
 
 async def require_nurse(user=Depends(get_current_user)):
     """nurse or school_admin."""
-    return _check_roles(user, _NURSE | _ADMIN_OR_PLATFORM, "Nurse access required")
+    return _check_roles(user, _NURSE | _ADMIN_OR_PLATFORM, "Nurse access required", "health")
 
 
 async def require_parent(user=Depends(get_current_user)):
