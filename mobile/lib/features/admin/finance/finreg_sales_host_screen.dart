@@ -77,18 +77,20 @@ class FinregSalesHostScreen extends ConsumerStatefulWidget {
 }
 
 class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
-  late Future<dynamic> _connection;
+  late Future<dynamic> _paymentMode;
   Future<FinregCapabilities>? _capabilities;
 
   @override
   void initState() {
     super.initState();
-    _connection = ref.read(apiClientProvider).get('/finreg/connection');
+    _paymentMode =
+        ref.read(apiClientProvider).get('/finance/internal-payments/mode');
   }
 
   void _refresh() {
     setState(() {
-      _connection = ref.read(apiClientProvider).get('/finreg/connection');
+      _paymentMode =
+          ref.read(apiClientProvider).get('/finance/internal-payments/mode');
       _capabilities = null;
     });
   }
@@ -136,7 +138,7 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   Widget build(BuildContext context) {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
     return FutureBuilder<dynamic>(
-      future: _connection,
+      future: _paymentMode,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -145,8 +147,8 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(
                     portuguese
-                        ? 'Não foi possível abrir o Finreg.'
-                        : 'Finreg could not be opened.',
+                        ? 'Não foi possível abrir a gestão de pagamentos.'
+                        : 'Payment management could not be opened.',
                     textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 FilledButton.icon(
@@ -162,7 +164,7 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         final value = Map<String, dynamic>.from(snapshot.data as Map);
-        if (!{'fake', 'shadow', 'pilot', 'live'}.contains(value['mode'])) {
+        if (value['mode'] != 'finreg') {
           return const InternalPaymentsScreen();
         }
         _capabilities ??= _loadFinregCapabilities(ref.read(apiClientProvider));

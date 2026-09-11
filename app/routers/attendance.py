@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +77,10 @@ class AttendanceRecord(BaseModel):
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class AttendanceHistoryRecord(AttendanceRecord):
+    child_name: str
 
 
 class AttendanceLogEntry(BaseModel):
@@ -364,6 +368,7 @@ async def bulk_attendance(
         )
         existing = result.scalar_one_or_none()
         if existing:
+            previous_status = existing.status
             existing.status = rec.status
             existing.recorded_by = employee_id
             existing.recorded_by_user_id = current_user.id
@@ -374,6 +379,17 @@ async def bulk_attendance(
                 existing.check_out_time = None
             if rec.notes is not None:
                 existing.notes = rec.notes
+            if previous_status != rec.status:
+                db.add(AttendanceLog(
+                    school_id=school_id,
+                    child_id=rec.child_id,
+                    recorded_by=employee_id,
+                    recorded_by_user_id=current_user.id,
+                    attendance_date=body.date,
+                    event_type="status_change",
+                    event_time=datetime.now().time(),
+                    notes=f"{previous_status} -> {rec.status}",
+                ))
         else:
             att = Attendance(
                 school_id=school_id,
@@ -389,6 +405,79 @@ async def bulk_attendance(
 
     await db.commit()
     return {"upserted": upserted, "date": body.date}
+
+
+@router.get("/history", response_model=List[AttendanceHistoryRecord])
+async def attendance_history(
+    request: Request,
+    child_id: Optional[uuid.UUID] = Query(default=None),
+    start_date: Optional[date] = Query(default=None),
+    end_date: Optional[date] = Query(default=None),
+    skip: int = 0,
+    limit: int = Query(default=500, ge=1, le=1000),
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return dated attendance records for staff or the current parent."""
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
+
+    roles = set(getattr(current_user, "_roles", set()))
+    allowed_child_ids: Optional[set[uuid.UUID]] = None
+    if "parent" in roles:
+        guardian_id = getattr(current_user, "guardian_id", None)
+        if guardian_id is None:
+            raise HTTPException(status_code=403, detail="No guardian record linked")
+        allowed_child_ids = set((await db.execute(
+            select(ChildGuardian.child_id).where(
+                ChildGuardian.school_id == school_id,
+                ChildGuardian.guardian_id == guardian_id,
+            )
+        )).scalars().all())
+        if child_id is not None and child_id not in allowed_child_ids:
+            raise HTTPException(status_code=403, detail="Not your child")
+    else:
+        await require_teacher(request, current_user)
+
+    query = (
+        select(Attendance, Child)
+        .join(Child, Child.id == Attendance.child_id)
+        .where(
+            Attendance.school_id == school_id,
+            Child.school_id == school_id,
+        )
+    )
+    if child_id is not None:
+        query = query.where(Attendance.child_id == child_id)
+    elif allowed_child_ids is not None:
+        if not allowed_child_ids:
+            return []
+        query = query.where(Attendance.child_id.in_(allowed_child_ids))
+    if start_date is not None:
+        query = query.where(Attendance.attendance_date >= start_date)
+    if end_date is not None:
+        query = query.where(Attendance.attendance_date <= end_date)
+
+    rows = (await db.execute(
+        query.order_by(Attendance.attendance_date.desc(), Child.first_name, Child.last_name)
+        .offset(skip)
+        .limit(limit)
+    )).all()
+    return [
+        AttendanceHistoryRecord(
+            id=attendance.id,
+            child_id=attendance.child_id,
+            child_name=f"{child.first_name} {child.last_name}".strip(),
+            attendance_date=attendance.attendance_date,
+            check_in_time=attendance.check_in_time,
+            check_out_time=attendance.check_out_time,
+            status=attendance.status,
+            notes=attendance.notes,
+            created_at=attendance.created_at,
+        )
+        for attendance, child in rows
+    ]
 
 
 @router.get("/child/{child_id}/log", response_model=List[AttendanceLogEntry])

@@ -65,6 +65,9 @@ def test_ui_switches_exclusively_between_finreg_and_internal_control():
     internal = (root / "mobile/lib/features/admin/finance/internal_payments_screen.dart").read_text()
     academic = (root / "app/routers/academic.py").read_text()
     assert "return const InternalPaymentsScreen();" in host
+    assert "get('/finance/internal-payments/mode')" in host
+    assert "get('/finreg/connection')" not in host
+    assert "if (value['mode'] != 'finreg')" in host
     assert "Registo interno sem valor fiscal" in internal
     assert "InternalPaymentControl(" in academic
     assert "generate_invoice = finreg_active" in academic

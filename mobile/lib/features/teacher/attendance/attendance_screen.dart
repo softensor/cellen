@@ -63,6 +63,7 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   String _searchQuery = '';
   bool _isBulkLoading = false;
+  final Set<String> _updatingChildren = {};
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +85,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     color: Theme.of(context)
                         .colorScheme
                         .onSurface
-                        .withOpacity(0.6),
+                        .withValues(alpha: 0.6),
                   ),
             ),
           ],
@@ -211,6 +212,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                             record: filtered[i],
                             onCheckIn: () => _checkIn(filtered[i].childId),
                             onCheckOut: () => _checkOut(filtered[i].childId),
+                            isUpdating:
+                                _updatingChildren.contains(filtered[i].childId),
+                            onChangeStatus: (status) =>
+                                _changeStatus(filtered[i], status),
                             onTap: auth.isAdmin
                                 ? () => context.push(
                                     '/admin/children/${filtered[i].childId}')
@@ -253,6 +258,34 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
           SnackBar(content: Text('Erro ao registar saída: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _changeStatus(AttendanceRecord record, String newStatus) async {
+    if (_updatingChildren.contains(record.childId)) return;
+    setState(() => _updatingChildren.add(record.childId));
+    try {
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      await ref.read(apiClientProvider).post('/attendance/bulk', data: {
+        'date': today,
+        'records': [
+          {'child_id': record.childId, 'status': newStatus}
+        ],
+      });
+      ref.invalidate(attendanceTodayProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Presença de ${record.childName} corrigida.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao corrigir presença: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingChildren.remove(record.childId));
     }
   }
 
@@ -325,9 +358,9 @@ class _StatChip extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.4)),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
           ),
           child: Text(
             value,
@@ -352,12 +385,16 @@ class _AttendanceCard extends StatelessWidget {
   final AttendanceRecord record;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
+  final ValueChanged<String> onChangeStatus;
+  final bool isUpdating;
   final VoidCallback? onTap;
 
   const _AttendanceCard({
     required this.record,
     required this.onCheckIn,
     required this.onCheckOut,
+    required this.onChangeStatus,
+    required this.isUpdating,
     this.onTap,
   });
 
@@ -421,6 +458,29 @@ class _AttendanceCard extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (isUpdating)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    PopupMenuButton<String>(
+                      tooltip: 'Corrigir presença',
+                      icon: const Icon(Icons.edit_calendar_outlined),
+                      onSelected: onChangeStatus,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'present', child: Text('Presente')),
+                        PopupMenuItem(value: 'absent', child: Text('Ausente')),
+                        PopupMenuItem(value: 'late', child: Text('Atraso')),
+                        PopupMenuItem(
+                            value: 'excused', child: Text('Justificado')),
+                      ],
+                    ),
                   if ((record.status != 'present' && record.status != 'late') ||
                       (record.checkOutTime != null &&
                           record.checkOutTime!.isNotEmpty))
@@ -481,9 +541,9 @@ class _AttendanceCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
         label,
