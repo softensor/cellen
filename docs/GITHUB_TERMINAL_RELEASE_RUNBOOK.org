@@ -183,3 +183,10 @@ options refresh whenever the authenticated session or school changes.
 | =Warning: N uncommitted changes= | Tracked or untracked local files exist | Inspect =git status --short=; preserve unrelated files |
 | branch protection rejected deployment | A PR tried to deploy GitHub Pages | Build in PR; deploy only after an allowed branch merge |
 | private repository checkout failed | Workflow lacks Finreg access | Use the configured =FINREG_READ_TOKEN= secret |
+* Payment mode and attendance repair
+
+From the Cellen checkout on the Mac, run the repository-owned release script:
+
+#+begin_src sh
+bash deploy/release_payment_mode_attendance_from_mac.sh
+#+end_src

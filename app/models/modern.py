@@ -29,8 +29,11 @@ class Attendance(Base):
     child_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("children.id", ondelete="RESTRICT"), nullable=False
     )
-    recorded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    recorded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    recorded_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     attendance_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
     check_in_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
@@ -55,8 +58,11 @@ class AttendanceLog(Base):
     child_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("children.id", ondelete="RESTRICT"), nullable=False
     )
-    recorded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    recorded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    recorded_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     attendance_date: Mapped[date] = mapped_column(Date, nullable=False)
     event_type: Mapped[str] = mapped_column(String(20), nullable=False)  # check_in | check_out
@@ -89,8 +95,11 @@ class AttendanceDayStatus(Base):
     status_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # present | absent | excused | late
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    recorded_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False
+    recorded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="RESTRICT"), nullable=True
+    )
+    recorded_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Optional[datetime]] = mapped_column(

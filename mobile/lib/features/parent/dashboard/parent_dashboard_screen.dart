@@ -20,9 +20,7 @@ final parentChildrenProvider =
     FutureProvider.autoDispose<List<Child>>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/children/my') as List;
-  return data
-      .map((e) => Child.fromJson(e as Map<String, dynamic>))
-      .toList();
+  return data.map((e) => Child.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final parentRecentCadernetsProvider =
@@ -36,14 +34,60 @@ final parentRecentCadernetsProvider =
 });
 
 final parentOutstandingInvoicesProvider =
-    FutureProvider.autoDispose<List<Invoice>>((ref) async {
+    FutureProvider.autoDispose<_ParentPaymentOverview>((ref) async {
   final api = ref.read(apiClientProvider);
+  final mode = await api.get('/finance/parent/payment-mode') as Map;
+  if (mode['mode'] == 'internal') {
+    final data = await api.get('/finance/parent/internal-payments') as List;
+    return _ParentPaymentOverview(
+      isFinreg: false,
+      items: data
+          .map((raw) {
+            final row = raw as Map;
+            return _ParentPaymentItem(
+              description: row['description']?.toString() ?? 'Cobrança',
+              amount: double.tryParse(row['amount'].toString()) ?? 0,
+              status: row['status']?.toString() ?? 'pending',
+            );
+          })
+          .where((item) => item.status != 'paid')
+          .toList(),
+    );
+  }
   final data = await api.get('/finance/parent/invoices') as List;
-  return data
-      .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
-      .where((i) => i.status != 'paid' && i.status != 'cancelled')
-      .toList();
+  return _ParentPaymentOverview(
+    isFinreg: true,
+    items: data
+        .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
+        .where((invoice) =>
+            invoice.status != 'paid' && invoice.status != 'cancelled')
+        .map((invoice) => _ParentPaymentItem(
+              description: invoice.description ?? invoice.childName ?? 'Fatura',
+              amount: invoice.totalAmount,
+              status: invoice.status,
+            ))
+        .toList(),
+  );
 });
+
+class _ParentPaymentOverview {
+  const _ParentPaymentOverview({required this.isFinreg, required this.items});
+
+  final bool isFinreg;
+  final List<_ParentPaymentItem> items;
+}
+
+class _ParentPaymentItem {
+  const _ParentPaymentItem({
+    required this.description,
+    required this.amount,
+    required this.status,
+  });
+
+  final String description;
+  final double amount;
+  final String status;
+}
 
 final parentUnreadMessagesProvider =
     FutureProvider.autoDispose<int>((ref) async {
@@ -67,8 +111,7 @@ class ParentDashboardScreen extends ConsumerStatefulWidget {
       _ParentDashboardScreenState();
 }
 
-class _ParentDashboardScreenState
-    extends ConsumerState<ParentDashboardScreen> {
+class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   bool _dismissedInvoiceBanner = false;
 
   @override
@@ -106,7 +149,8 @@ class _ParentDashboardScreenState
       onRefresh: () async => refresh(),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(isWide ? 32 : 16, 24, isWide ? 32 : 16, 32),
+        padding:
+            EdgeInsets.fromLTRB(isWide ? 32 : 16, 24, isWide ? 32 : 16, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -139,7 +183,8 @@ class _ParentDashboardScreenState
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh, color: AppTheme.textSecondary),
+                  icon:
+                      const Icon(Icons.refresh, color: AppTheme.textSecondary),
                   onPressed: refresh,
                   tooltip: 'Actualizar',
                 ),
@@ -152,10 +197,10 @@ class _ParentDashboardScreenState
               invoicesAsync.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
-                data: (invoices) {
-                  if (invoices.isEmpty) return const SizedBox.shrink();
-                  final total = invoices.fold<double>(
-                      0.0, (sum, i) => sum + i.totalAmount);
+                data: (overview) {
+                  if (overview.items.isEmpty) return const SizedBox.shrink();
+                  final total = overview.items
+                      .fold<double>(0.0, (sum, item) => sum + item.amount);
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.symmetric(
@@ -163,8 +208,8 @@ class _ParentDashboardScreenState
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: AppTheme.warning.withOpacity(0.4)),
+                      border:
+                          Border.all(color: AppTheme.warning.withOpacity(0.4)),
                     ),
                     child: Row(
                       children: [
@@ -184,7 +229,9 @@ class _ParentDashboardScreenState
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${invoices.length} fatura(s) por pagar',
+                                overview.isFinreg
+                                    ? '${overview.items.length} fatura(s) por pagar'
+                                    : '${overview.items.length} pagamento(s) pendente(s)',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700,
                                     color: AppTheme.warning,
@@ -245,8 +292,10 @@ class _ParentDashboardScreenState
                       border: Border.all(color: AppTheme.border),
                     ),
                     child: Center(
-                      child: Text('Nenhum ${terms.student.toLowerCase()} associado',
-                          style: const TextStyle(color: AppTheme.textSecondary)),
+                      child: Text(
+                          'Nenhum ${terms.student.toLowerCase()} associado',
+                          style:
+                              const TextStyle(color: AppTheme.textSecondary)),
                     ),
                   );
                 }
@@ -295,14 +344,15 @@ class _ParentDashboardScreenState
                   ),
                   const SizedBox(width: 10),
                 ],
-                if (hasCaderneta) Expanded(
-                  child: _QuickLinkButton(
-                    icon: Icons.menu_book_outlined,
-                    label: 'Caderneta',
-                    color: const Color(0xFF7C3AED),
-                    onTap: () => context.go('/parent/caderneta'),
+                if (hasCaderneta)
+                  Expanded(
+                    child: _QuickLinkButton(
+                      icon: Icons.menu_book_outlined,
+                      label: 'Caderneta',
+                      color: const Color(0xFF7C3AED),
+                      onTap: () => context.go('/parent/caderneta'),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 28),
@@ -335,214 +385,221 @@ class _ParentDashboardScreenState
               ),
               const SizedBox(height: 8),
               cadernetasAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Text('Erro: $e'),
-              data: (cadernetas) {
-                if (cadernetas.isEmpty) {
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('Erro: $e'),
+                data: (cadernetas) {
+                  if (cadernetas.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: const Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.menu_book_outlined,
+                                size: 48, color: AppTheme.border),
+                            SizedBox(height: 8),
+                            Text('Nenhum relatório disponível ainda',
+                                style:
+                                    TextStyle(color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
                   return Container(
-                    padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.border),
                     ),
-                    child: const Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.menu_book_outlined,
-                              size: 48, color: AppTheme.border),
-                          SizedBox(height: 8),
-                          Text('Nenhum relatório disponível ainda',
-                              style: TextStyle(
-                                  color: AppTheme.textSecondary)),
-                        ],
-                      ),
+                    child: Column(
+                      children: cadernetas.asMap().entries.map((entry) {
+                        final isLast = entry.key == cadernetas.length - 1;
+                        final c = entry.value;
+                        return Column(
+                          children: [
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 4),
+                              leading: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color:
+                                      const Color(0xFF7C3AED).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.menu_book_outlined,
+                                    color: Color(0xFF7C3AED), size: 20),
+                              ),
+                              title: Text(
+                                DateFormat('dd/MM/yyyy').format(c.reportDate),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: AppTheme.textPrimary),
+                              ),
+                              subtitle: _buildRatingSummary(c),
+                              trailing: const Icon(Icons.chevron_right,
+                                  size: 18, color: AppTheme.textSecondary),
+                              onTap: () => context.go('/parent/caderneta'),
+                            ),
+                            if (!isLast)
+                              const Divider(height: 1, color: AppTheme.border),
+                          ],
+                        );
+                      }).toList(),
                     ),
                   );
-                }
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Column(
-                    children: cadernetas
-                        .asMap()
-                        .entries
-                        .map((entry) {
-                      final isLast = entry.key == cadernetas.length - 1;
-                      final c = entry.value;
-                      return Column(
-                        children: [
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 4),
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF7C3AED).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.menu_book_outlined,
-                                  color: Color(0xFF7C3AED), size: 20),
-                            ),
-                            title: Text(
-                              DateFormat('dd/MM/yyyy').format(c.reportDate),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: AppTheme.textPrimary),
-                            ),
-                            subtitle: _buildRatingSummary(c),
-                            trailing: const Icon(Icons.chevron_right,
-                                size: 18, color: AppTheme.textSecondary),
-                            onTap: () => context.go('/parent/caderneta'),
-                          ),
-                          if (!isLast)
-                            const Divider(height: 1, color: AppTheme.border),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
-            ),
+                },
+              ),
             ], // end hasCaderneta
 
             const SizedBox(height: 28),
 
             // ── Invoices ──
             if (hasFinance) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Faturas',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    invoicesAsync.valueOrNull?.isFinreg == false
+                        ? 'Pagamentos'
+                        : 'Faturas',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => context.go('/parent/invoices'),
-                  child: const Text('Ver todas',
-                      style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            invoicesAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (invoices) {
-                if (invoices.isEmpty) {
+                  TextButton(
+                    onPressed: () => context.go('/parent/invoices'),
+                    child: const Text('Ver todas',
+                        style: TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              invoicesAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (overview) {
+                  final payments = overview.items;
+                  if (payments.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppTheme.success.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.check_circle,
+                                color: AppTheme.success, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            overview.isFinreg
+                                ? 'Sem faturas pendentes'
+                                : 'Sem pagamentos pendentes',
+                            style:
+                                const TextStyle(color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
                   return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.border),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppTheme.success.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.check_circle,
-                              color: AppTheme.success, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Sem faturas pendentes',
-                          style: TextStyle(color: AppTheme.textSecondary),
-                        ),
-                      ],
+                    child: Column(
+                      children: payments
+                          .take(3)
+                          .toList()
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                        final isLast = entry.key ==
+                            (payments.length < 3 ? payments.length - 1 : 2);
+                        final payment = entry.value;
+                        final isOverdue = payment.status == 'overdue';
+                        return Column(
+                          children: [
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 4),
+                              leading: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.warning.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.receipt_long,
+                                    color: AppTheme.warning, size: 20),
+                              ),
+                              onTap: () => context.go('/parent/invoices'),
+                              title: Text(
+                                payment.description,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: AppTheme.textPrimary),
+                              ),
+                              subtitle: Text(
+                                currency.format(payment.amount),
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary),
+                              ),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isOverdue
+                                      ? AppTheme.statusBg('overdue')
+                                      : AppTheme.statusBg('pending'),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  isOverdue ? 'Em Atraso' : 'Pendente',
+                                  style: TextStyle(
+                                      color: isOverdue
+                                          ? AppTheme.statusText('overdue')
+                                          : AppTheme.statusText('pending'),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                            if (!isLast)
+                              const Divider(height: 1, color: AppTheme.border),
+                          ],
+                        );
+                      }).toList(),
                     ),
                   );
-                }
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Column(
-                    children: invoices
-                        .take(3)
-                        .toList()
-                        .asMap()
-                        .entries
-                        .map((entry) {
-                      final isLast = entry.key ==
-                          (invoices.length < 3 ? invoices.length - 1 : 2);
-                      final inv = entry.value;
-                      final isOverdue = inv.status == 'overdue';
-                      return Column(
-                        children: [
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 4),
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppTheme.warning.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.receipt_long,
-                                  color: AppTheme.warning, size: 20),
-                            ),
-                            onTap: () => context.go('/parent/invoices'),
-                            title: Text(
-                              inv.description ?? inv.childName ?? 'Fatura',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: AppTheme.textPrimary),
-                            ),
-                            subtitle: Text(
-                              currency.format(inv.totalAmount),
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSecondary),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isOverdue
-                                    ? AppTheme.statusBg('overdue')
-                                    : AppTheme.statusBg('pending'),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                isOverdue ? 'Em Atraso' : 'Pendente',
-                                style: TextStyle(
-                                    color: isOverdue
-                                        ? AppTheme.statusText('overdue')
-                                        : AppTheme.statusText('pending'),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ),
-                          if (!isLast)
-                            const Divider(height: 1, color: AppTheme.border),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
-            ),
+                },
+              ),
             ], // end hasFinance
           ],
         ),
@@ -569,7 +626,8 @@ class _ChildCard extends ConsumerWidget {
 
   const _ChildCard({required this.child});
 
-  void _showChildActions(BuildContext context, SchoolTerms terms) {
+  void _showChildActions(
+      BuildContext context, SchoolTerms terms, bool finregEnabled) {
     final teacherLabel = terms.isK12 ? 'professor' : 'educador';
     showModalBottomSheet(
       context: context,
@@ -606,28 +664,42 @@ class _ChildCard extends ConsumerWidget {
               color: const Color(0xFF7C3AED),
               label: 'Caderneta',
               subtitle: 'Relatórios diários do $teacherLabel',
-              onTap: () { Navigator.pop(context); context.go('/parent/caderneta'); },
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/parent/caderneta');
+              },
             ),
             _ActionTile(
               icon: Icons.health_and_safety_outlined,
               color: AppTheme.success,
               label: 'Saúde',
               subtitle: 'Eventos de saúde e vacinas',
-              onTap: () { Navigator.pop(context); context.go('/health'); },
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/health');
+              },
             ),
             _ActionTile(
               icon: Icons.receipt_long_outlined,
               color: AppTheme.warning,
               label: 'Finanças',
-              subtitle: 'Faturas e referências Multicaixa',
-              onTap: () { Navigator.pop(context); context.go('/parent/invoices'); },
+              subtitle: finregEnabled
+                  ? 'Faturas e referências Multicaixa'
+                  : 'Cobranças e comprovativos de pagamento',
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/parent/invoices');
+              },
             ),
             _ActionTile(
               icon: Icons.assignment_outlined,
               color: AppTheme.primary,
               label: 'Autorizações',
               subtitle: 'Aprovações de passeios e levantamentos',
-              onTap: () { Navigator.pop(context); context.go('/trip-authorizations'); },
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/trip-authorizations');
+              },
             ),
             const SizedBox(height: 8),
           ],
@@ -638,7 +710,8 @@ class _ChildCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
+    final school = ref.watch(schoolInfoProvider).valueOrNull;
+    final terms = SchoolTerms.of(school);
     String? ageStr;
     if (child.birthDate != null) {
       final now = DateTime.now();
@@ -656,68 +729,72 @@ class _ChildCard extends ConsumerWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () => _showChildActions(context, terms),
+        onTap: () => _showChildActions(
+          context,
+          terms,
+          school?.hasFeature('finreg') ?? true,
+        ),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Row(
-        children: [
-          // Left accent border
-          Container(
-            width: 4,
-            height: 76,
-            decoration: const BoxDecoration(
-              color: AppTheme.primary,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-              ),
-            ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
           ),
-          const SizedBox(width: 16),
-          _ChildAvatar(name: child.fullName, photoUrl: child.photoUrl),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    child.fullName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                      color: AppTheme.textPrimary,
-                    ),
+          child: Row(
+            children: [
+              // Left accent border
+              Container(
+                width: 4,
+                height: 76,
+                decoration: const BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
                   ),
-                  const SizedBox(height: 2),
-                  if (child.turmaName != null)
-                    Text(
-                      child.turmaName!,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12),
-                    ),
-                  if (ageStr != null)
-                    Text(
-                      ageStr,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 11),
-                    ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 16),
+              _ChildAvatar(name: child.fullName, photoUrl: child.photoUrl),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        child.fullName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      if (child.turmaName != null)
+                        Text(
+                          child.turmaName!,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                      if (ageStr != null)
+                        Text(
+                          ageStr,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 11),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: Icon(Icons.chevron_right,
+                    color: AppTheme.textSecondary, size: 20),
+              ),
+            ],
           ),
-          const Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.chevron_right,
-                color: AppTheme.textSecondary, size: 20),
-          ),
-        ],
-      ),
         ),
       ),
     );

@@ -52,6 +52,7 @@ const _segmentDefaults = <String, Map<String, bool>>{
     'announcements': true,
     'messages': true,
     'finance': true,
+    'finreg': true,
     'absences': true,
     'role_teacher': true,
     'role_coordinator': true,
@@ -84,6 +85,7 @@ const _segmentDefaults = <String, Map<String, bool>>{
     'announcements': true,
     'messages': true,
     'finance': true,
+    'finreg': true,
     'absences': true,
     'role_teacher': true,
     'role_coordinator': true,
@@ -116,6 +118,7 @@ const _segmentDefaults = <String, Map<String, bool>>{
     'announcements': true,
     'messages': true,
     'finance': true,
+    'finreg': true,
     'absences': true,
     'role_teacher': true,
     'role_coordinator': true,
@@ -148,6 +151,7 @@ const _segmentDefaults = <String, Map<String, bool>>{
     'announcements': true,
     'messages': true,
     'finance': true,
+    'finreg': true,
     'absences': true,
     'role_teacher': true,
     'role_coordinator': true,
@@ -180,6 +184,7 @@ const _segmentDefaults = <String, Map<String, bool>>{
     'announcements': true,
     'messages': true,
     'finance': true,
+    'finreg': true,
     'absences': true,
     'role_teacher': true,
     'role_coordinator': true,
@@ -327,8 +332,14 @@ const _allFeatures = <_Feat>[
   // Financeiro
   _Feat(
       'finance',
-      'Módulo Financeiro',
-      'Facturas, contratos, despesas, caixa e exportação SAF-T',
+      'Controlo de pagamentos',
+      'Acesso ao controlo financeiro usado nas permissões das funções',
+      _Cat.finance,
+      Icons.payments_outlined),
+  _Feat(
+      'finreg',
+      'Finreg',
+      'Activar facturação fiscal Finreg. Desactivado: usar controlo interno de pagamentos sem facturas nem recibos fiscais.',
       _Cat.finance,
       Icons.account_balance_wallet_outlined),
   // Funções disponíveis
@@ -587,7 +598,8 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
   }
 
   bool _roleCanAccess(String roleKey, String featureKey) {
-    final custom = _customRoles.where((role) => role.key == roleKey).firstOrNull;
+    final custom =
+        _customRoles.where((role) => role.key == roleKey).firstOrNull;
     if (custom != null) return custom.permissions.contains(featureKey);
     return _rolePerms[roleKey]?[featureKey] ??
         _roleDefault(roleKey, featureKey);
@@ -763,7 +775,10 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
                 roles: _configRoles,
                 enabledFeatures: {
                   for (final f in _allFeatures)
-                    if (f.cat != _Cat.roles && _effectiveFeat(f.key)) f.key,
+                    if (f.cat != _Cat.roles &&
+                        f.key != 'finreg' &&
+                        _effectiveFeat(f.key))
+                      f.key,
                 },
                 roleCanAccess: _roleCanAccess,
                 isRolePermOverridden: _isRolePermOverridden,
@@ -876,7 +891,9 @@ class _FeaturesTab extends StatelessWidget {
               side: BorderSide(color: Colors.grey.shade200),
             ),
             child: Column(
-              children: _allFeatures.where((f) => f.cat == cat).map((f) {
+              children: _allFeatures
+                  .where((f) => f.cat == cat && f.key != 'finance')
+                  .map((f) {
                 final val = effectiveFeat(f.key);
                 final overridden = isOverridden(f.key);
                 final def = (_segmentDefaults[segment] ?? {})[f.key] ?? true;
@@ -1481,7 +1498,7 @@ final _customPermissionOptions =
     description: 'Turmas, anos lectivos, matrículas e afectações'
   ),
   for (final feature in _allFeatures)
-    if (feature.cat != _Cat.roles)
+    if (feature.cat != _Cat.roles && feature.key != 'finreg')
       (
         key: feature.key,
         label: feature.label,

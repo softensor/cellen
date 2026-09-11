@@ -98,6 +98,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "messages": True,
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
+        "finreg": True,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -139,6 +140,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "messages": True,
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
+        "finreg": True,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -178,6 +180,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "messages": True,
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
+        "finreg": True,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -217,6 +220,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "messages": True,
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
+        "finreg": True,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -256,6 +260,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         "messages": True,
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
+        "finreg": True,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
