@@ -162,6 +162,101 @@ async def test_teacher_can_use_bulk_attendance_and_invalid_status_is_rejected(
     assert invalid.status_code == 422
 
 
+async def test_teacher_can_correct_present_to_absent_and_history_reflects_it(
+    client: AsyncClient, make_school,
+):
+    ctx = await _setup_school_with_teacher(client, make_school)
+    headers = auth(ctx["teacher_token"])
+    child_id = ctx["child_id"]
+    today = date.today().isoformat()
+
+    checked_in = await client.post(
+        "/attendance/checkin", json={"child_id": child_id}, headers=headers,
+    )
+    assert checked_in.status_code == 200, checked_in.text
+
+    corrected = await client.post(
+        "/attendance/bulk",
+        json={"date": today, "records": [{"child_id": child_id, "status": "absent"}]},
+        headers=headers,
+    )
+    assert corrected.status_code == 200, corrected.text
+
+    current = await client.get("/attendance/today", headers=headers)
+    assert current.status_code == 200, current.text
+    assert current.json()["summary"] == {
+        "total_enrolled": 1,
+        "checked_in": 0,
+        "checked_out": 0,
+        "absent": 1,
+        "unrecorded": 0,
+    }
+    record = current.json()["records"][0]
+    assert record["status"] == "absent"
+    assert record["check_in_time"] is None
+    assert record["check_out_time"] is None
+
+    history = await client.get(
+        f"/attendance/history?child_id={child_id}&start_date={today}&end_date={today}",
+        headers=headers,
+    )
+    assert history.status_code == 200, history.text
+    assert history.json()[0]["status"] == "absent"
+    assert history.json()[0]["child_name"] == "Child Att"
+
+    audit = await client.get(
+        f"/attendance/child/{child_id}/log?date={today}", headers=headers,
+    )
+    assert audit.status_code == 200, audit.text
+    assert [entry["event_type"] for entry in audit.json()] == [
+        "check_in", "status_change",
+    ]
+
+
+async def test_parent_history_is_limited_to_linked_children(client: AsyncClient, make_school):
+    ctx = await _setup_school_with_teacher(client, make_school)
+    today = date.today().isoformat()
+    await client.post(
+        "/attendance/bulk",
+        json={
+            "date": today,
+            "records": [{"child_id": ctx["child_id"], "status": "present"}],
+        },
+        headers=auth(ctx["teacher_token"]),
+    )
+
+    parent_username = f"attendance-parent-{uid()}"
+    guardian = await client.post(
+        "/guardians",
+        json={
+            "first_name": "Maria",
+            "last_name": "Att",
+            "username": parent_username,
+            "password": "Parent1!",
+        },
+        headers=auth(ctx["admin_token"]),
+    )
+    assert guardian.status_code == 201, guardian.text
+    linked = await client.post(
+        f"/guardians/{guardian.json()['id']}/children",
+        json={
+            "child_id": ctx["child_id"],
+            "relationship_type": "mother",
+            "is_primary_contact": True,
+        },
+        headers=auth(ctx["admin_token"]),
+    )
+    assert linked.status_code == 201, linked.text
+    parent_token = await login(client, parent_username, "Parent1!", ctx["slug"])
+
+    history = await client.get(
+        f"/attendance/history?start_date={today}&end_date={today}",
+        headers=auth(parent_token),
+    )
+    assert history.status_code == 200, history.text
+    assert [row["child_id"] for row in history.json()] == [ctx["child_id"]]
+
+
 # ---------------------------------------------------------------------------
 # 2. POST /attendance/checkin
 # ---------------------------------------------------------------------------

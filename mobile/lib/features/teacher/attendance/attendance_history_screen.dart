@@ -7,7 +7,6 @@ import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
 import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
-import '../../../core/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -25,9 +24,7 @@ final _attendanceHistoryProvider = FutureProvider.autoDispose
     params['end_date'] = DateFormat('yyyy-MM-dd').format(query.to!);
   }
   final qs = params.entries.map((e) => '${e.key}=${e.value}').join('&');
-  final path = query.childId != null
-      ? '/attendance/child/${query.childId}${qs.isNotEmpty ? '?$qs' : ''}'
-      : '/attendance/summary${qs.isNotEmpty ? '?$qs' : ''}';
+  final path = '/attendance/history${qs.isNotEmpty ? '?$qs' : ''}';
 
   final data = await api.get(path);
   if (data is List) {
@@ -46,7 +43,8 @@ final _attendanceHistoryProvider = FutureProvider.autoDispose
 final _childrenPickerProvider = FutureProvider.autoDispose((ref) async {
   final api = ref.read(apiClientProvider);
   final auth = ref.read(authProvider);
-  final path = auth.role == UserRole.parent ? '/parent/children' : '/children?limit=200';
+  final path =
+      auth.role == UserRole.parent ? '/parent/children' : '/children?limit=200';
   final data = await api.get(path) as List;
   return data.map((e) {
     final m = e as Map<String, dynamic>;
@@ -119,8 +117,8 @@ class _HistoryRecord {
           json['log_date']?.toString() ??
           '',
       status: json['status']?.toString() ?? 'absent',
-      checkInTime: json['check_in_time']?.toString() ??
-          json['checkin_time']?.toString(),
+      checkInTime:
+          json['check_in_time']?.toString() ?? json['checkin_time']?.toString(),
       checkOutTime: json['check_out_time']?.toString() ??
           json['checkout_time']?.toString(),
       notes: json['notes']?.toString(),
@@ -179,8 +177,7 @@ class _AttendanceHistoryScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () =>
-                ref.invalidate(_attendanceHistoryProvider(_query)),
+            onPressed: () => ref.invalidate(_attendanceHistoryProvider(_query)),
           ),
         ],
       ),
@@ -197,26 +194,26 @@ class _AttendanceHistoryScreenState
                   error: (_, __) => const SizedBox.shrink(),
                   data: (children) {
                     return DropdownButtonFormField<String?>(
-                      value: _selectedChildId,
+                      initialValue: _selectedChildId,
                       decoration: InputDecoration(
                         labelText: terms.student,
                         border: const OutlineInputBorder(),
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                       ),
                       items: [
                         if (!isParent)
                           DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Todos os ${terms.students.toLowerCase()}'),
+                            child: Text(
+                                'Todos os ${terms.students.toLowerCase()}'),
                           ),
                         ...children.map((c) => DropdownMenuItem<String?>(
                               value: c.id,
                               child: Text(c.name),
                             )),
                       ],
-                      onChanged: (v) =>
-                          setState(() => _selectedChildId = v),
+                      onChanged: (v) => setState(() => _selectedChildId = v),
                     );
                   },
                 ),
@@ -289,8 +286,7 @@ class _AttendanceHistoryScreenState
             data: (records) {
               final present =
                   records.where((r) => r.status == 'present').length;
-              final absent =
-                  records.where((r) => r.status == 'absent').length;
+              final absent = records.where((r) => r.status == 'absent').length;
               final late = records.where((r) => r.status == 'late').length;
               final excused =
                   records.where((r) => r.status == 'excused').length;
@@ -344,8 +340,7 @@ class _AttendanceHistoryScreenState
           // Records list
           Expanded(
             child: historyAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -355,8 +350,8 @@ class _AttendanceHistoryScreenState
                     const SizedBox(height: 12),
                     Text('Erro ao carregar: $e'),
                     TextButton(
-                      onPressed: () => ref
-                          .invalidate(_attendanceHistoryProvider(_query)),
+                      onPressed: () =>
+                          ref.invalidate(_attendanceHistoryProvider(_query)),
                       child: const Text('Tentar novamente'),
                     ),
                   ],
@@ -371,8 +366,7 @@ class _AttendanceHistoryScreenState
                         Icon(Icons.event_busy, size: 64, color: Colors.grey),
                         SizedBox(height: 16),
                         Text('Nenhum registo encontrado',
-                            style:
-                                TextStyle(color: Colors.grey, fontSize: 16)),
+                            style: TextStyle(color: Colors.grey, fontSize: 16)),
                       ],
                     ),
                   );
@@ -480,7 +474,7 @@ class _AttendanceHistoryScreenState
       width: 28,
       height: 28,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
