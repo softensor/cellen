@@ -119,10 +119,11 @@ class _PaymentCard extends ConsumerWidget {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(payment['description']?.toString() ?? '',
+                  Text(payment['guardian_name']?.toString() ?? 'Cobrança geral',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(payment['description']?.toString() ?? ''),
                   if ((payment['child_name']?.toString() ?? '').isNotEmpty)
-                    Text(payment['child_name'].toString()),
+                    Text('Aluno: ${payment['child_name']}'),
                 ])),
             Text(amount, style: const TextStyle(fontWeight: FontWeight.w700)),
           ]),
@@ -193,7 +194,7 @@ class _PaymentCard extends ConsumerWidget {
     final note = TextEditingController();
     final accepted = await showDialog<bool>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogContext) => AlertDialog(
               title: Text(action == 'confirm'
                   ? 'Confirmar pagamento?'
                   : 'Rejeitar comprovativo?'),
@@ -204,10 +205,10 @@ class _PaymentCard extends ConsumerWidget {
                       labelText: 'Observação (opcional)')),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(dialogContext, false),
                     child: const Text('Cancelar')),
                 FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
+                    onPressed: () => Navigator.pop(dialogContext, true),
                     child:
                         Text(action == 'confirm' ? 'Confirmar' : 'Rejeitar')),
               ],
@@ -222,17 +223,19 @@ class _PaymentCard extends ConsumerWidget {
         },
       );
       onChanged();
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(action == 'confirm'
               ? 'Pagamento confirmado.'
               : 'Comprovativo rejeitado.'),
         ));
+      }
     } catch (error) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error.toString())),
         );
+      }
     } finally {
       note.dispose();
     }
@@ -265,8 +268,9 @@ class _SubmitProofDialogState extends ConsumerState<_SubmitProofDialog> {
         type: FileType.custom,
         allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
         withData: true);
-    if (result != null && result.files.isNotEmpty)
+    if (result != null && result.files.isNotEmpty) {
       setState(() => _file = result.files.first);
+    }
   }
 
   Future<void> _submit() async {
@@ -291,11 +295,12 @@ class _SubmitProofDialogState extends ConsumerState<_SubmitProofDialog> {
           });
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _error = error.toString();
         });
+      }
     }
   }
 
@@ -306,7 +311,7 @@ class _SubmitProofDialogState extends ConsumerState<_SubmitProofDialog> {
             width: 420,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<String>(
-                  value: _method,
+                  initialValue: _method,
                   decoration: const InputDecoration(labelText: 'Método'),
                   items: const {
                     'cash': 'Numerário',
@@ -375,19 +380,21 @@ class _CreateInternalPaymentDialogState
   final _description = TextEditingController();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
+  String? _guardianId;
   String? _childId;
   String? _itemId;
   DateTime? _dueDate;
   bool _busy = false;
   String? _error;
-  late final Future<List<dynamic>> _options;
+  late final Future<Map<String, dynamic>> _options;
 
   @override
   void initState() {
     super.initState();
-    final api = ref.read(apiClientProvider);
-    _options =
-        Future.wait([api.get('/children'), api.get('/finance/billing-items')]);
+    _options = ref
+        .read(apiClientProvider)
+        .get('/finance/internal-payments/options')
+        .then((value) => Map<String, dynamic>.from(value as Map));
   }
 
   @override
@@ -416,6 +423,7 @@ class _CreateInternalPaymentDialogState
       await ref
           .read(apiClientProvider)
           .post('/finance/internal-payments', data: {
+        if (_guardianId != null) 'billing_guardian_id': _guardianId,
         if (_childId != null) 'child_id': _childId,
         if (_itemId != null) 'billing_item_id': _itemId,
         if (_description.text.trim().isNotEmpty)
@@ -427,11 +435,12 @@ class _CreateInternalPaymentDialogState
       });
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _error = error.toString();
         });
+      }
     }
   }
 
@@ -440,49 +449,100 @@ class _CreateInternalPaymentDialogState
         title: const Text('Nova cobrança interna'),
         content: SizedBox(
             width: 460,
-            child: FutureBuilder<List<dynamic>>(
+            child: FutureBuilder<Map<String, dynamic>>(
               future: _options,
               builder: (_, snapshot) {
-                if (!snapshot.hasData)
+                if (snapshot.hasError) {
+                  return SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Text('Erro ao carregar opções: ${snapshot.error}'),
+                    ),
+                  );
+                }
+                if (!snapshot.hasData) {
                   return const SizedBox(
                       height: 120,
                       child: Center(child: CircularProgressIndicator()));
-                final children = (snapshot.data![0] as List)
+                }
+                final guardians = (snapshot.data!['guardians'] as List)
                     .map((e) => Map<String, dynamic>.from(e as Map))
                     .toList();
-                final items = (snapshot.data![1] as List)
+                final children = (snapshot.data!['children'] as List)
                     .map((e) => Map<String, dynamic>.from(e as Map))
                     .toList();
+                final items = (snapshot.data!['billing_items'] as List)
+                    .map((e) => Map<String, dynamic>.from(e as Map))
+                    .toList();
+                final payerChildren = _guardianId == null
+                    ? children
+                    : children.where((child) {
+                        final ids = (child['guardian_ids'] as List? ?? const [])
+                            .map((id) => id.toString());
+                        return ids.contains(_guardianId);
+                      }).toList();
                 return SingleChildScrollView(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                   DropdownButtonFormField<String>(
-                      value: _childId,
-                      decoration:
-                          const InputDecoration(labelText: 'Aluno (opcional)'),
-                      items: children
-                          .map((c) => DropdownMenuItem(
-                              value: c['id'].toString(),
-                              child: Text(
-                                  '${c['first_name'] ?? ''} ${c['last_name'] ?? ''}'
-                                      .trim())))
-                          .toList(),
-                      onChanged: (value) => setState(() => _childId = value)),
+                      initialValue: _guardianId,
+                      decoration: const InputDecoration(
+                          labelText: 'Encarregado pagador (opcional)'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                            value: '', child: Text('Cobrança geral')),
+                        ...guardians.map((guardian) => DropdownMenuItem(
+                            value: guardian['id'].toString(),
+                            child: Text(guardian['name'].toString())))
+                      ],
+                      onChanged: (value) => setState(() {
+                            _guardianId =
+                                value == null || value.isEmpty ? null : value;
+                            final childStillLinked = children.any((child) {
+                              final ids =
+                                  (child['guardian_ids'] as List? ?? const [])
+                                      .map((id) => id.toString());
+                              return child['id'].toString() == _childId &&
+                                  (_guardianId == null ||
+                                      ids.contains(_guardianId));
+                            });
+                            if (!childStillLinked) {
+                              _childId = null;
+                            }
+                          })),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                      value: _itemId,
+                      key: ValueKey('$_guardianId:$_childId'),
+                      initialValue: _childId,
+                      decoration: const InputDecoration(
+                          labelText: 'Aluno relacionado (opcional)'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                            value: '', child: Text('Sem aluno associado')),
+                        ...payerChildren.map((c) => DropdownMenuItem(
+                            value: c['id'].toString(),
+                            child: Text(c['name'].toString())))
+                      ],
+                      onChanged: (value) => setState(() => _childId =
+                          value == null || value.isEmpty ? null : value)),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                      initialValue: _itemId,
                       decoration: const InputDecoration(
                           labelText: 'Item de cobrança (opcional)'),
-                      items: items
-                          .map((item) => DropdownMenuItem(
-                              value: item['id'].toString(),
-                              child: Text(item['name'].toString())))
-                          .toList(),
+                      items: [
+                        const DropdownMenuItem<String>(
+                            value: '', child: Text('Sem item predefinido')),
+                        ...items.map((item) => DropdownMenuItem(
+                            value: item['id'].toString(),
+                            child: Text(item['name'].toString())))
+                      ],
                       onChanged: (value) {
                         setState(() {
-                          _itemId = value;
-                          if (value != null) {
+                          _itemId =
+                              value == null || value.isEmpty ? null : value;
+                          if (_itemId != null) {
                             final item = items.firstWhere(
-                                (entry) => entry['id'].toString() == value);
+                                (entry) => entry['id'].toString() == _itemId);
                             _description.text = item['name']?.toString() ?? '';
                             _amount.text = item['unit_price']?.toString() ?? '';
                           }
@@ -566,7 +626,7 @@ class _StatusChip extends StatelessWidget {
     return Chip(
         label: Text(values.$1),
         side: BorderSide.none,
-        backgroundColor: values.$2.withOpacity(.12),
+        backgroundColor: values.$2.withValues(alpha: .12),
         labelStyle: TextStyle(color: values.$2, fontWeight: FontWeight.w600));
   }
 }

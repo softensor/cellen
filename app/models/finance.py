@@ -98,6 +98,7 @@ class InternalPaymentControl(Base):
     __tablename__ = "internal_payment_controls"
     __table_args__ = (
         Index("ix_internal_payments_school_status", "school_id", "status"),
+        Index("ix_internal_payments_school_guardian", "school_id", "billing_guardian_id"),
         UniqueConstraint("enrollment_id", name="uq_internal_payment_enrollment"),
         CheckConstraint("amount > 0", name="ck_internal_payment_amount_positive"),
         CheckConstraint(
@@ -115,6 +116,9 @@ class InternalPaymentControl(Base):
     )
     child_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("children.id", ondelete="SET NULL"), nullable=True
+    )
+    billing_guardian_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="RESTRICT"), nullable=True
     )
     billing_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("billing_items.id", ondelete="SET NULL"), nullable=True
