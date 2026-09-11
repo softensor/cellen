@@ -142,6 +142,7 @@ router = APIRouter(prefix="/finance", tags=["Finance"])
 
 
 class InternalPaymentCreate(BaseModel):
+    billing_guardian_id: uuid.UUID | None = None
     child_id: uuid.UUID | None = None
     billing_item_id: uuid.UUID | None = None
     description: str | None = Field(default=None, max_length=255)
@@ -2307,16 +2308,11 @@ async def _parent_internal_payment(
     if not guardian_id or not school_id:
         raise HTTPException(status_code=403, detail="Guardian and school context required")
     await _require_internal_payment_mode(db, school_id)
-    payment = (await db.execute(
-        select(InternalPaymentControl)
-        .join(ChildGuardian, ChildGuardian.child_id == InternalPaymentControl.child_id)
-        .where(
-            InternalPaymentControl.id == payment_id,
-            InternalPaymentControl.school_id == school_id,
-            ChildGuardian.school_id == school_id,
-            ChildGuardian.guardian_id == guardian_id,
-        )
-    )).scalar_one_or_none()
+    payment = (await db.execute(select(InternalPaymentControl).where(
+        InternalPaymentControl.id == payment_id,
+        InternalPaymentControl.school_id == school_id,
+        InternalPaymentControl.billing_guardian_id == guardian_id,
+    ))).scalar_one_or_none()
     if payment is None:
         raise HTTPException(status_code=404, detail="Cobrança interna não encontrada")
     return payment
@@ -2333,19 +2329,28 @@ async def list_parent_internal_payments(
         raise HTTPException(status_code=403, detail="Guardian and school context required")
     await _require_internal_payment_mode(db, school_id)
     rows = (await db.execute(
-        select(InternalPaymentControl, Child.first_name, Child.last_name)
-        .join(ChildGuardian, ChildGuardian.child_id == InternalPaymentControl.child_id)
-        .join(Child, Child.id == InternalPaymentControl.child_id)
+        select(
+            InternalPaymentControl,
+            Guardian.first_name,
+            Guardian.last_name,
+            Child.first_name,
+            Child.last_name,
+        )
+        .join(Guardian, Guardian.id == InternalPaymentControl.billing_guardian_id)
+        .outerjoin(Child, Child.id == InternalPaymentControl.child_id)
         .where(
             InternalPaymentControl.school_id == school_id,
-            ChildGuardian.school_id == school_id,
-            ChildGuardian.guardian_id == guardian_id,
+            InternalPaymentControl.billing_guardian_id == guardian_id,
         )
         .order_by(InternalPaymentControl.created_at.desc())
     )).all()
     return [
-        _internal_payment_dict(payment, f"{first_name} {last_name}")
-        for payment, first_name, last_name in rows
+        _internal_payment_dict(
+            payment,
+            guardian_name=f"{guardian_first} {guardian_last}".strip(),
+            child_name=(f"{child_first} {child_last}".strip() if child_first else None),
+        )
+        for payment, guardian_first, guardian_last, child_first, child_last in rows
     ]
 
 
@@ -2588,12 +2593,16 @@ async def _require_internal_payment_mode(db: AsyncSession, school_id: uuid.UUID)
         )
 
 
-def _internal_payment_dict(payment, child_name=None, item_name=None):
+def _internal_payment_dict(payment, guardian_name=None, child_name=None, item_name=None):
     return {
         "id": str(payment.id),
         "enrollment_id": str(payment.enrollment_id) if payment.enrollment_id else None,
         "child_id": str(payment.child_id) if payment.child_id else None,
         "child_name": child_name,
+        "billing_guardian_id": (
+            str(payment.billing_guardian_id) if payment.billing_guardian_id else None
+        ),
+        "guardian_name": guardian_name,
         "billing_item_id": str(payment.billing_item_id) if payment.billing_item_id else None,
         "billing_item_name": item_name,
         "category": payment.category,
@@ -2642,8 +2651,10 @@ async def list_internal_payments(
         query.order_by(InternalPaymentControl.created_at.desc())
     )).scalars().all()
     child_ids = {p.child_id for p in payments if p.child_id}
+    guardian_ids = {p.billing_guardian_id for p in payments if p.billing_guardian_id}
     item_ids = {p.billing_item_id for p in payments if p.billing_item_id}
     child_map = {}
+    guardian_map = {}
     item_map = {}
     if child_ids:
         rows = (await db.execute(
@@ -2652,6 +2663,13 @@ async def list_internal_payments(
             )
         )).all()
         child_map = {row[0]: f"{row[1]} {row[2]}" for row in rows}
+    if guardian_ids:
+        rows = (await db.execute(
+            select(Guardian.id, Guardian.first_name, Guardian.last_name).where(
+                Guardian.school_id == school_id, Guardian.id.in_(guardian_ids)
+            )
+        )).all()
+        guardian_map = {row[0]: f"{row[1]} {row[2]}" for row in rows}
     if item_ids:
         rows = (await db.execute(
             select(BillingItem.id, BillingItem.name).where(
@@ -2660,9 +2678,63 @@ async def list_internal_payments(
         )).all()
         item_map = dict(rows)
     return [
-        _internal_payment_dict(p, child_map.get(p.child_id), item_map.get(p.billing_item_id))
+        _internal_payment_dict(
+            p,
+            guardian_name=guardian_map.get(p.billing_guardian_id),
+            child_name=child_map.get(p.child_id),
+            item_name=item_map.get(p.billing_item_id),
+        )
         for p in payments
     ]
+
+
+@router.get("/internal-payments/options")
+async def internal_payment_options(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_configured_finance_access),
+):
+    """Return payer-first options for creating a non-fiscal charge."""
+    await _require_internal_payment_mode(db, school_id)
+    guardians = (await db.execute(
+        select(Guardian)
+        .where(Guardian.school_id == school_id)
+        .order_by(Guardian.first_name, Guardian.last_name)
+    )).scalars().all()
+    children = (await db.execute(
+        select(Child)
+        .where(Child.school_id == school_id, Child.is_active)
+        .order_by(Child.first_name, Child.last_name)
+    )).scalars().all()
+    links = (await db.execute(select(ChildGuardian).where(
+        ChildGuardian.school_id == school_id,
+    ))).scalars().all()
+    guardian_ids_by_child: dict[uuid.UUID, list[str]] = {}
+    for link in links:
+        guardian_ids_by_child.setdefault(link.child_id, []).append(str(link.guardian_id))
+    items = (await db.execute(
+        select(BillingItem)
+        .where(BillingItem.school_id == school_id, BillingItem.is_active)
+        .order_by(BillingItem.name)
+    )).scalars().all()
+    return {
+        "guardians": [
+            {"id": str(guardian.id), "name": f"{guardian.first_name} {guardian.last_name}".strip()}
+            for guardian in guardians
+        ],
+        "children": [
+            {
+                "id": str(child.id),
+                "name": f"{child.first_name} {child.last_name}".strip(),
+                "guardian_ids": guardian_ids_by_child.get(child.id, []),
+            }
+            for child in children
+        ],
+        "billing_items": [
+            {"id": str(item.id), "name": item.name, "unit_price": item.unit_price}
+            for item in items
+        ],
+    }
 
 
 @router.post("/internal-payments", status_code=201)
@@ -2673,12 +2745,38 @@ async def create_internal_payment(
     _=Depends(require_configured_finance_access),
 ):
     await _require_internal_payment_mode(db, school_id)
+    guardian_id = body.billing_guardian_id
+    if guardian_id is None and body.child_id is not None:
+        guardian_id = (await db.execute(
+            select(ChildGuardian.guardian_id).where(
+                ChildGuardian.school_id == school_id,
+                ChildGuardian.child_id == body.child_id,
+            ).order_by(ChildGuardian.is_primary_contact.desc(), ChildGuardian.id)
+        )).scalars().first()
+    guardian = None
+    if guardian_id is not None:
+        guardian = (await db.execute(select(Guardian).where(
+            Guardian.id == guardian_id, Guardian.school_id == school_id
+        ))).scalar_one_or_none()
+        if guardian is None:
+            raise HTTPException(status_code=404, detail="Encarregado não encontrado")
     if body.child_id:
         child = (await db.execute(select(Child).where(
             Child.id == body.child_id, Child.school_id == school_id
         ))).scalar_one_or_none()
         if child is None:
             raise HTTPException(status_code=404, detail="Aluno não encontrado")
+        if guardian_id is not None:
+            linked = (await db.execute(select(ChildGuardian.id).where(
+                ChildGuardian.school_id == school_id,
+                ChildGuardian.child_id == body.child_id,
+                ChildGuardian.guardian_id == guardian_id,
+            ))).scalar_one_or_none()
+            if linked is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="O aluno seleccionado não está associado ao encarregado pagador",
+                )
 
     item = None
     if body.billing_item_id:
@@ -2699,6 +2797,7 @@ async def create_internal_payment(
 
     payment = InternalPaymentControl(
         school_id=school_id,
+        billing_guardian_id=guardian_id,
         child_id=body.child_id,
         billing_item_id=body.billing_item_id,
         category="billing_item" if item else "other",
@@ -2711,7 +2810,13 @@ async def create_internal_payment(
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
-    return _internal_payment_dict(payment, item_name=item.name if item else None)
+    return _internal_payment_dict(
+        payment,
+        guardian_name=(
+            f"{guardian.first_name} {guardian.last_name}".strip() if guardian else None
+        ),
+        item_name=item.name if item else None,
+    )
 
 
 @router.post("/internal-payments/proof")

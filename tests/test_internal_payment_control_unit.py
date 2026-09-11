@@ -40,7 +40,10 @@ class _Session:
 
 def test_internal_payment_model_has_no_fiscal_document_fields():
     columns = set(InternalPaymentControl.__table__.columns.keys())
-    assert {"amount", "status", "proof_url", "payment_method", "reviewed_at"} <= columns
+    assert {
+        "amount", "status", "proof_url", "payment_method", "reviewed_at",
+        "billing_guardian_id",
+    } <= columns
     assert not ({"series_number", "full_document_number", "hash_code", "transmission_status"} & columns)
 
 
@@ -69,6 +72,8 @@ def test_ui_switches_exclusively_between_finreg_and_internal_control():
     assert "get('/finreg/connection')" not in host
     assert "if (value['mode'] != 'finreg')" in host
     assert "Registo interno sem valor fiscal" in internal
+    assert "Encarregado pagador (opcional)" in internal
+    assert "Navigator.pop(dialogContext, true)" in internal
     assert "InternalPaymentControl(" in academic
     assert "generate_invoice = finreg_active" in academic
     config = (root / "mobile/lib/features/platform/schools/school_config_screen.dart").read_text()
@@ -80,6 +85,11 @@ def test_migration_recovers_pending_non_invoiced_enrollments():
     migration = Path("alembic/versions/0030_internal_payment_controls.py").read_text()
     assert "enrollment_fee > 0 AND fee_invoice_id IS NULL" in migration
     assert "ON CONFLICT (enrollment_id) DO NOTHING" in migration
+    payer_migration = Path(
+        "alembic/versions/0032_internal_payments_by_guardian.py"
+    ).read_text()
+    assert "billing_guardian_id" in payer_migration
+    assert "ORDER BY link.is_primary_contact DESC" in payer_migration
 
 
 @pytest.mark.asyncio
@@ -89,15 +99,41 @@ async def test_manual_internal_payment_proof_and_review(
     monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", False)
     _school, token, _slug, _username = await make_school("internal-pay")
     headers = auth(token)
+    guardian = await client.post(
+        "/guardians",
+        json={
+            "first_name": "Pagador",
+            "last_name": "Manual",
+            "username": f"manual-payer-{uid()}",
+            "password": "Parent123!",
+        },
+        headers=headers,
+    )
+    assert guardian.status_code == 201, guardian.text
 
     created = await client.post(
         "/finance/internal-payments",
-        json={"description": "Passeio escolar", "amount": "12500.00"},
+        json={
+            "billing_guardian_id": guardian.json()["id"],
+            "description": "Passeio escolar",
+            "amount": "12500.00",
+        },
         headers=headers,
     )
     assert created.status_code == 201, created.text
     payment_id = created.json()["id"]
     assert created.json()["is_fiscal_document"] is False
+    assert created.json()["billing_guardian_id"] == guardian.json()["id"]
+    assert created.json()["guardian_name"] == "Pagador Manual"
+
+    generic = await client.post(
+        "/finance/internal-payments",
+        json={"description": "Recebimento diverso", "amount": "500.00"},
+        headers=headers,
+    )
+    assert generic.status_code == 201, generic.text
+    assert generic.json()["billing_guardian_id"] is None
+    assert generic.json()["billing_item_id"] is None
 
     uploaded = await client.post(
         "/finance/internal-payments/proof",
@@ -275,15 +311,23 @@ async def test_parent_receives_charge_and_school_confirms_parent_proof(
     )
     assert charge.status_code == 201, charge.text
     charge_id = charge.json()["id"]
-    other_child = (await client.post(
-        "/children",
-        json={"cedula": f"OTHER{uid()}", "first_name": "Outro", "last_name": "Aluno"},
+    assert charge.json()["billing_guardian_id"] == guardian["id"]
+    assert charge.json()["guardian_name"] == "Encarregado Teste"
+
+    other_guardian = (await client.post(
+        "/guardians",
+        json={
+            "first_name": "Outro",
+            "last_name": "Pagador",
+            "username": f"other-payer-{uid()}",
+            "password": "Parent123!",
+        },
         headers=headers,
     )).json()
     other_charge = await client.post(
         "/finance/internal-payments",
         json={
-            "child_id": other_child["id"],
+            "billing_guardian_id": other_guardian["id"],
             "description": "Cobrança privada",
             "amount": "9000.00",
         },
@@ -296,6 +340,7 @@ async def test_parent_receives_charge_and_school_confirms_parent_proof(
     )
     assert parent_rows.status_code == 200, parent_rows.text
     assert [row["id"] for row in parent_rows.json()] == [charge_id]
+    assert parent_rows.json()[0]["billing_guardian_id"] == guardian["id"]
 
     uploaded = await client.post(
         "/finance/parent/internal-payments/proof",

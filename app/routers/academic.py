@@ -654,6 +654,18 @@ async def create_enrollment(
 
     enrollment_fee = body.enrollment_fee
     finreg_active = await finreg_is_active(db, school_id)
+    primary_guardian_id = (await db.execute(
+        select(ChildGuardian.guardian_id).where(
+            ChildGuardian.school_id == school_id,
+            ChildGuardian.child_id == body.child_id,
+            ChildGuardian.is_primary_contact,
+        )
+    )).scalar_one_or_none()
+    if enrollment_fee and enrollment_fee > 0 and not finreg_active and primary_guardian_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="A cobrança da matrícula requer um encarregado principal responsável pelo pagamento",
+        )
     # The server owns this choice. The legacy client flag cannot enable the
     # internal controller for a Finreg school or fiscal emission for another.
     generate_invoice = finreg_active
@@ -727,6 +739,7 @@ async def create_enrollment(
             school_id=school_id,
             enrollment_id=enrollment.id,
             child_id=body.child_id,
+            billing_guardian_id=primary_guardian_id,
             category="enrollment",
             description="Taxa de Matrícula",
             amount=enrollment_fee,
