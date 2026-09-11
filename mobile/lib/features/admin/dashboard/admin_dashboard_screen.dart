@@ -14,8 +14,7 @@ import '../../../core/widgets/app_stat_card.dart';
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
-final adminChildrenCountProvider =
-    FutureProvider.autoDispose<int>((ref) async {
+final adminChildrenCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/children');
   if (data is List) return data.length;
@@ -36,8 +35,9 @@ final adminAttendanceTodayProvider =
     final records = data
         .map((e) => AttendanceRecord.fromJson(e as Map<String, dynamic>))
         .toList();
-    final checkedIn =
-        records.where((r) => r.status == 'present' || r.status == 'late').length;
+    final checkedIn = records
+        .where((r) => r.status == 'present' || r.status == 'late')
+        .length;
     final absent = records.where((r) => r.status == 'absent').length;
     return AttendanceSummary(
       totalEnrolled: records.length,
@@ -51,8 +51,7 @@ final adminAttendanceTodayProvider =
       totalEnrolled: 0, checkedIn: 0, checkedOut: 0, absent: 0, records: []);
 });
 
-final adminUnreadNotifProvider =
-    FutureProvider.autoDispose<int>((ref) async {
+final adminUnreadNotifProvider = FutureProvider.autoDispose<int>((ref) async {
   final api = ref.read(apiClientProvider);
   final data = await api.get('/notifications/unread-count');
   if (data is Map) {
@@ -66,8 +65,21 @@ final adminFinanceProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final api = ref.read(apiClientProvider);
   try {
+    final mode = Map<String, dynamic>.from(
+      await api.get('/finance/internal-payments/mode') as Map,
+    );
+    if (mode['mode'] == 'internal') {
+      final rows = await api.get('/finance/internal-payments') as List;
+      return {
+        'mode': 'internal',
+        'pending_payments': rows.where((row) {
+          final status = (row as Map)['status']?.toString();
+          return status != 'paid';
+        }).length,
+      };
+    }
     final data = await api.get('/finance/summary');
-    if (data is Map<String, dynamic>) return data;
+    if (data is Map<String, dynamic>) return {'mode': 'finreg', ...data};
   } catch (_) {}
   return {};
 });
@@ -103,8 +115,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
         : hour < 18
             ? 'Boa tarde'
             : 'Boa noite';
-    final dateStr =
-        DateFormat('EEEE, d \'de\' MMMM yyyy', 'pt_PT').format(now);
+    final dateStr = DateFormat('EEEE, d \'de\' MMMM yyyy', 'pt_PT').format(now);
 
     // Segment-aware labels
     final studentsLabel =
@@ -122,7 +133,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       onRefresh: () async => refresh(),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(isWide ? 32 : 16, 24, isWide ? 32 : 16, 32),
+        padding:
+            EdgeInsets.fromLTRB(isWide ? 32 : 16, 24, isWide ? 32 : 16, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -155,7 +167,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh, color: AppTheme.textSecondary),
+                  icon:
+                      const Icon(Icons.refresh, color: AppTheme.textSecondary),
                   onPressed: refresh,
                   tooltip: 'Actualizar',
                 ),
@@ -226,29 +239,32 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 ),
                 financeAsync.when(
                   loading: () => AppStatCard(
-                    label: 'Faturas Pendentes',
+                    label: 'Pagamentos Pendentes',
                     value: '...',
                     icon: Icons.receipt_long,
                     color: AppTheme.warning,
                   ),
                   error: (_, __) => AppStatCard(
-                    label: 'Faturas Pendentes',
+                    label: 'Pagamentos Pendentes',
                     value: '-',
                     icon: Icons.receipt_long,
                     color: AppTheme.warning,
                   ),
                   data: (finance) {
-                    final pending =
+                    final internal = finance['mode'] == 'internal';
+                    final pending = finance['pending_payments'] as int? ??
                         finance['outstanding_invoices'] as int? ??
-                            finance['pending_invoices'] as int? ??
-                            finance['pending_invoices_count'] as int? ??
-                            0;
+                        finance['pending_invoices'] as int? ??
+                        finance['pending_invoices_count'] as int? ??
+                        0;
                     return AppStatCard(
-                      label: 'Faturas Pendentes',
+                      label: internal
+                          ? 'Pagamentos Pendentes'
+                          : 'Faturas Pendentes',
                       value: '$pending',
                       icon: Icons.receipt_long,
                       color: AppTheme.warning,
-                      onTap: () => context.go('/admin/finance/invoices'),
+                      onTap: () => context.go('/admin/finance'),
                     );
                   },
                 ),
@@ -301,8 +317,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 if (school?.hasFeature('finance') ?? true)
                   _QuickAction(
                     icon: Icons.receipt_long,
-                    label: 'Nova Fatura',
-                    onTap: () => context.go('/admin/finance/invoices'),
+                    label: financeAsync.valueOrNull?['mode'] == 'internal'
+                        ? 'Nova Cobrança'
+                        : 'Nova Fatura',
+                    onTap: () => context.go('/admin/finance'),
                   ),
                 if (school?.hasFeature('incidents') ?? true)
                   _QuickAction(
@@ -321,7 +339,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   label: terms.students,
                   onTap: () => context.go('/admin/children'),
                 ),
-                if (terms.isK12 && (school?.hasFeature('timetable_k12') ?? true))
+                if (terms.isK12 &&
+                    (school?.hasFeature('timetable_k12') ?? true))
                   _QuickAction(
                     icon: Icons.table_chart_outlined,
                     label: 'Horário',
@@ -367,9 +386,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             attendanceAsync.when(
               loading: () => const Center(
                   child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: CircularProgressIndicator(),
-                  )),
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              )),
               error: (e, _) => Text(
                 'Erro ao carregar actividade: $e',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -411,10 +430,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Column(
-                    children: recent
-                        .asMap()
-                        .entries
-                        .map((entry) {
+                    children: recent.asMap().entries.map((entry) {
                       final isLast = entry.key == recent.length - 1;
                       return Column(
                         children: [
@@ -524,9 +540,7 @@ class _AttendanceActivityTile extends StatelessWidget {
             child: Text(
               statusLabel,
               style: TextStyle(
-                  color: textColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600),
+                  color: textColor, fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
         ],

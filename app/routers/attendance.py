@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime, time
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -11,7 +11,6 @@ from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     get_school_id,
-    require_school_admin,
     require_teacher,
 )
 from app.models.modern import Attendance, AttendanceDayStatus, AttendanceLog
@@ -33,7 +32,7 @@ class CheckOutBody(BaseModel):
 
 class BulkAttendanceRecord(BaseModel):
     child_id: uuid.UUID
-    status: str  # present / absent / late / excused
+    status: Literal["present", "absent", "late", "excused"]
     notes: Optional[str] = None
 
 
@@ -59,6 +58,7 @@ class AttendanceSummary(BaseModel):
     checked_in: int
     checked_out: int
     absent: int
+    unrecorded: int
 
 
 class TodayAttendanceResponse(BaseModel):
@@ -109,7 +109,7 @@ class ChildMonthlySummary(BaseModel):
 class DayStatusBody(BaseModel):
     child_id: uuid.UUID
     status_date: date
-    status: str  # present | absent | excused | late
+    status: Literal["present", "absent", "excused", "late"]
     notes: Optional[str] = None
 
 
@@ -120,7 +120,8 @@ class DayStatusOut(BaseModel):
     status_date: date
     status: str
     notes: Optional[str] = None
-    recorded_by: uuid.UUID
+    recorded_by: Optional[uuid.UUID] = None
+    recorded_by_user_id: Optional[uuid.UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -145,7 +146,8 @@ async def _get_or_create_attendance(
     school_id: uuid.UUID,
     child_id: uuid.UUID,
     att_date: date,
-    recorded_by: uuid.UUID,
+    recorded_by: Optional[uuid.UUID],
+    recorded_by_user_id: uuid.UUID,
 ) -> Attendance:
     result = await db.execute(
         select(Attendance).where(
@@ -160,6 +162,7 @@ async def _get_or_create_attendance(
             school_id=school_id,
             child_id=child_id,
             recorded_by=recorded_by,
+            recorded_by_user_id=recorded_by_user_id,
             attendance_date=att_date,
             status="present",
         )
@@ -199,24 +202,30 @@ async def get_today_attendance(
     checked_in = 0
     checked_out = 0
     absent = 0
+    unrecorded = 0
 
     for child in children:
         att = att_map.get(child.id)
         if att:
             check_in = att.check_in_time
             check_out = att.check_out_time
-            s = att.status
+            if check_out is not None:
+                s = "checked_out"
+            else:
+                s = att.status
         else:
             check_in = None
             check_out = None
-            s = "absent"
+            s = "unrecorded"
 
-        if check_in is not None:
+        if s in {"present", "late"} and check_out is None:
             checked_in += 1
         if check_out is not None:
             checked_out += 1
         if s == "absent":
             absent += 1
+        if s == "unrecorded":
+            unrecorded += 1
 
         records.append(AttendanceChildInfo(
             child_id=child.id,
@@ -233,6 +242,7 @@ async def get_today_attendance(
         checked_in=checked_in,
         checked_out=checked_out,
         absent=absent,
+        unrecorded=unrecorded,
     )
     return TodayAttendanceResponse(records=records, summary=summary)
 
@@ -252,22 +262,25 @@ async def checkin(
         raise HTTPException(status_code=404, detail="Child not found")
 
     employee_id = getattr(current_user, "employee_id", None)
-    if employee_id is None:
-        raise HTTPException(status_code=400, detail="Current user has no associated employee record")
 
     now = datetime.now()
     today = date.today()
-    record = await _get_or_create_attendance(db, school_id, body.child_id, today, employee_id)
+    record = await _get_or_create_attendance(
+        db, school_id, body.child_id, today, employee_id, current_user.id
+    )
     record.check_in_time = now.time()
+    record.check_out_time = None
     record.status = "present"
     if body.notes:
         record.notes = body.notes
     record.recorded_by = employee_id
+    record.recorded_by_user_id = current_user.id
 
     log_entry = AttendanceLog(
         school_id=school_id,
         child_id=body.child_id,
         recorded_by=employee_id,
+        recorded_by_user_id=current_user.id,
         attendance_date=today,
         event_type="check_in",
         event_time=now.time(),
@@ -294,19 +307,21 @@ async def checkout(
         raise HTTPException(status_code=404, detail="Child not found")
 
     employee_id = getattr(current_user, "employee_id", None)
-    if employee_id is None:
-        raise HTTPException(status_code=400, detail="Current user has no associated employee record")
 
     now = datetime.now()
     today = date.today()
-    record = await _get_or_create_attendance(db, school_id, body.child_id, today, employee_id)
+    record = await _get_or_create_attendance(
+        db, school_id, body.child_id, today, employee_id, current_user.id
+    )
     record.check_out_time = now.time()
     record.recorded_by = employee_id
+    record.recorded_by_user_id = current_user.id
 
     log_entry = AttendanceLog(
         school_id=school_id,
         child_id=body.child_id,
         recorded_by=employee_id,
+        recorded_by_user_id=current_user.id,
         attendance_date=today,
         event_type="check_out",
         event_time=now.time(),
@@ -323,11 +338,20 @@ async def bulk_attendance(
     body: BulkAttendanceBody,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_school_admin),
+    current_user=Depends(require_teacher),
 ):
     employee_id = getattr(current_user, "employee_id", None)
-    if employee_id is None:
-        raise HTTPException(status_code=400, detail="Current user has no associated employee record")
+
+    child_ids = {rec.child_id for rec in body.records}
+    if child_ids:
+        valid_child_ids = set((await db.execute(
+            select(Child.id).where(
+                Child.school_id == school_id,
+                Child.id.in_(child_ids),
+            )
+        )).scalars().all())
+        if valid_child_ids != child_ids:
+            raise HTTPException(status_code=404, detail="One or more children were not found")
 
     upserted = 0
     for rec in body.records:
@@ -342,6 +366,12 @@ async def bulk_attendance(
         if existing:
             existing.status = rec.status
             existing.recorded_by = employee_id
+            existing.recorded_by_user_id = current_user.id
+            if rec.status in {"absent", "excused"}:
+                existing.check_in_time = None
+                existing.check_out_time = None
+            elif rec.status in {"present", "late"}:
+                existing.check_out_time = None
             if rec.notes is not None:
                 existing.notes = rec.notes
         else:
@@ -349,6 +379,7 @@ async def bulk_attendance(
                 school_id=school_id,
                 child_id=rec.child_id,
                 recorded_by=employee_id,
+                recorded_by_user_id=current_user.id,
                 attendance_date=body.date,
                 status=rec.status,
                 notes=rec.notes,
@@ -522,12 +553,6 @@ async def set_day_status(
     current_user=Depends(require_teacher),
 ):
     """Set or update the daily attendance status for a child (upsert)."""
-    if body.status not in VALID_DAY_STATUSES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"status must be one of: {', '.join(sorted(VALID_DAY_STATUSES))}",
-        )
-
     # Verify child belongs to school
     child_result = await db.execute(
         select(Child).where(Child.id == body.child_id, Child.school_id == school_id)
@@ -536,9 +561,6 @@ async def set_day_status(
         raise HTTPException(status_code=404, detail="Child not found")
 
     employee_id = getattr(current_user, "employee_id", None)
-    if employee_id is None:
-        raise HTTPException(status_code=400, detail="Current user has no associated employee record")
-
     # Upsert: find existing record for this child+date or create new
     result = await db.execute(
         select(AttendanceDayStatus).where(
@@ -553,6 +575,7 @@ async def set_day_status(
         record.status = body.status
         record.notes = body.notes
         record.recorded_by = employee_id
+        record.recorded_by_user_id = current_user.id
     else:
         record = AttendanceDayStatus(
             school_id=school_id,
@@ -561,6 +584,7 @@ async def set_day_status(
             status=body.status,
             notes=body.notes,
             recorded_by=employee_id,
+            recorded_by_user_id=current_user.id,
         )
         db.add(record)
 

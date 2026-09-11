@@ -24,16 +24,19 @@ final attendanceTodayProvider =
     final records = data
         .map((e) => AttendanceRecord.fromJson(e as Map<String, dynamic>))
         .toList();
-    final checkedIn =
-        records.where((r) => r.status == 'present' || r.status == 'late').length;
-    final checkedOut =
-        records.where((r) => r.checkOutTime != null && r.checkOutTime!.isNotEmpty).length;
+    final checkedIn = records
+        .where((r) => r.status == 'present' || r.status == 'late')
+        .length;
+    final checkedOut = records
+        .where((r) => r.checkOutTime != null && r.checkOutTime!.isNotEmpty)
+        .length;
     final absent = records.where((r) => r.status == 'absent').length;
     return AttendanceSummary(
       totalEnrolled: records.length,
       checkedIn: checkedIn,
       checkedOut: checkedOut,
       absent: absent,
+      unrecorded: records.where((r) => r.status == 'unrecorded').length,
       records: records,
     );
   }
@@ -42,6 +45,7 @@ final attendanceTodayProvider =
     checkedIn: 0,
     checkedOut: 0,
     absent: 0,
+    unrecorded: 0,
     records: [],
   );
 });
@@ -64,7 +68,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   Widget build(BuildContext context) {
     final attendanceAsync = ref.watch(attendanceTodayProvider);
     final auth = ref.watch(authProvider);
-    final today = DateFormat('d \'de\' MMMM yyyy', 'pt_PT').format(DateTime.now());
+    final today =
+        DateFormat('d \'de\' MMMM yyyy', 'pt_PT').format(DateTime.now());
     final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
 
     return Scaffold(
@@ -138,8 +143,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   ),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceAround,
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
                     _StatChip(
                       label: 'Total',
@@ -147,7 +154,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     _StatChip(
-                      label: 'Presentes',
+                      label: 'No recinto',
                       value: '${summary.checkedIn}',
                       color: Colors.green,
                     ),
@@ -160,6 +167,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       label: 'Ausentes',
                       value: '${summary.absent}',
                       color: Colors.red,
+                    ),
+                    _StatChip(
+                      label: 'Por registar',
+                      value: '${summary.unrecorded}',
+                      color: Colors.orange,
                     ),
                   ],
                 ),
@@ -188,7 +200,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               Expanded(
                 child: filtered.isEmpty
                     ? Center(
-                        child: Text('Nenhum ${terms.student.toLowerCase()} encontrado'),
+                        child: Text(
+                            'Nenhum ${terms.student.toLowerCase()} encontrado'),
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
@@ -196,12 +209,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                         itemBuilder: (context, i) {
                           return _AttendanceCard(
                             record: filtered[i],
-                            onCheckIn: () =>
-                                _checkIn(filtered[i].childId),
-                            onCheckOut: () =>
-                                _checkOut(filtered[i].childId),
+                            onCheckIn: () => _checkIn(filtered[i].childId),
+                            onCheckOut: () => _checkOut(filtered[i].childId),
                             onTap: auth.isAdmin
-                                ? () => context.push('/admin/children/${filtered[i].childId}')
+                                ? () => context.push(
+                                    '/admin/children/${filtered[i].childId}')
                                 : null,
                           );
                         },
@@ -259,20 +271,22 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       if (records.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Todos os ${terms.students.toLowerCase()} já marcados')),
+            SnackBar(
+                content: Text(
+                    'Todos os ${terms.students.toLowerCase()} já marcados')),
           );
         }
         setState(() => _isBulkLoading = false);
         return;
       }
-      await ref
-          .read(apiClientProvider)
-          .post('/attendance/bulk', data: {'date': dateStr, 'records': records});
+      await ref.read(apiClientProvider).post('/attendance/bulk',
+          data: {'date': dateStr, 'records': records});
       ref.invalidate(attendanceTodayProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Todos os ${terms.students.toLowerCase()} marcados como presentes'),
+            content: Text(
+                'Todos os ${terms.students.toLowerCase()} marcados como presentes'),
             backgroundColor: Colors.green,
           ),
         );
@@ -359,75 +373,75 @@ class _AttendanceCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // Avatar
-            CircleAvatar(
-              radius: 22,
-              backgroundColor:
-                  Theme.of(context).colorScheme.primaryContainer,
-              child: Text(
-                initials.toUpperCase(),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                child: Text(
+                  initials.toUpperCase(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            // Name + status
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    record.childName,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      _statusChip(context, record.status),
-                      if (record.checkInTime != null &&
-                          record.checkInTime!.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          'Entrada: ${record.checkInTime}',
-                          style:
-                              Theme.of(context).textTheme.labelSmall,
-                        ),
+              // Name + status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.childName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _statusChip(context, record.status),
+                        if (record.checkInTime != null &&
+                            record.checkInTime!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            'Entrada: ${record.checkInTime}',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Actions
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if ((record.status != 'present' && record.status != 'late') ||
+                      (record.checkOutTime != null &&
+                          record.checkOutTime!.isNotEmpty))
+                    IconButton(
+                      icon: const Icon(Icons.login, color: Colors.green),
+                      tooltip: 'Check-in',
+                      onPressed: onCheckIn,
+                    ),
+                  if ((record.status == 'present' || record.status == 'late') &&
+                      (record.checkOutTime == null ||
+                          record.checkOutTime!.isEmpty))
+                    IconButton(
+                      icon: const Icon(Icons.logout, color: Colors.blue),
+                      tooltip: 'Check-out',
+                      onPressed: onCheckOut,
+                    ),
                 ],
               ),
-            ),
-
-            // Actions
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (record.status != 'present' && record.status != 'late')
-                  IconButton(
-                    icon: const Icon(Icons.login, color: Colors.green),
-                    tooltip: 'Check-in',
-                    onPressed: onCheckIn,
-                  ),
-                if ((record.status == 'present' || record.status == 'late') &&
-                    (record.checkOutTime == null ||
-                        record.checkOutTime!.isEmpty))
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.blue),
-                    tooltip: 'Check-out',
-                    onPressed: onCheckOut,
-                  ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -452,6 +466,14 @@ class _AttendanceCard extends StatelessWidget {
         color = Colors.purple;
         label = 'Justificado';
         break;
+      case 'checked_out':
+        color = Colors.blue;
+        label = 'Saiu';
+        break;
+      case 'unrecorded':
+        color = Colors.orange;
+        label = 'Por registar';
+        break;
       default:
         color = Colors.grey;
         label = '—';
@@ -465,8 +487,8 @@ class _AttendanceCard extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }

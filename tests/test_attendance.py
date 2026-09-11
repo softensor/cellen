@@ -11,7 +11,6 @@ requires school_admin and uses the admin token.
 """
 from datetime import date
 
-import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth, login, uid
@@ -19,7 +18,7 @@ from tests.conftest import auth, login, uid
 
 async def _setup_school_with_teacher(client: AsyncClient, make_school):
     """Create a school, a teacher employee, an admin employee, and a child."""
-    school, admin_token, slug, _ = await make_school("att")
+    _school, admin_token, slug, _ = await make_school("att")
 
     teacher_username = f"teacher-{uid()}"
     emp_r = await client.post(
@@ -82,6 +81,85 @@ async def test_today_attendance(client: AsyncClient, make_school):
     assert "records" in data
     # The endpoint returns a TodayAttendanceResponse with records + summary
     assert isinstance(data["records"], list)
+    assert data["summary"] == {
+        "total_enrolled": 1,
+        "checked_in": 0,
+        "checked_out": 0,
+        "absent": 0,
+        "unrecorded": 1,
+    }
+
+
+async def test_school_admin_without_employee_can_register_and_counts_are_current(
+    client: AsyncClient, make_school,
+):
+    ctx = await _setup_school_with_teacher(client, make_school)
+    headers = auth(ctx["admin_token"])
+
+    checked_in = await client.post(
+        "/attendance/checkin",
+        json={"child_id": ctx["child_id"]},
+        headers=headers,
+    )
+    assert checked_in.status_code == 200, checked_in.text
+    today = await client.get("/attendance/today", headers=headers)
+    assert today.status_code == 200, today.text
+    assert today.json()["summary"] == {
+        "total_enrolled": 1,
+        "checked_in": 1,
+        "checked_out": 0,
+        "absent": 0,
+        "unrecorded": 0,
+    }
+
+    checked_out = await client.post(
+        "/attendance/checkout",
+        json={"child_id": ctx["child_id"]},
+        headers=headers,
+    )
+    assert checked_out.status_code == 200, checked_out.text
+    departed = await client.get("/attendance/today", headers=headers)
+    assert departed.json()["summary"]["checked_in"] == 0
+    assert departed.json()["summary"]["checked_out"] == 1
+    assert departed.json()["records"][0]["status"] == "checked_out"
+
+    returned = await client.post(
+        "/attendance/checkin",
+        json={"child_id": ctx["child_id"]},
+        headers=headers,
+    )
+    assert returned.status_code == 200, returned.text
+    current = await client.get("/attendance/today", headers=headers)
+    assert current.json()["summary"]["checked_in"] == 1
+    assert current.json()["summary"]["checked_out"] == 0
+
+
+async def test_teacher_can_use_bulk_attendance_and_invalid_status_is_rejected(
+    client: AsyncClient, make_school,
+):
+    ctx = await _setup_school_with_teacher(client, make_school)
+    headers = auth(ctx["teacher_token"])
+    response = await client.post(
+        "/attendance/bulk",
+        json={
+            "date": date.today().isoformat(),
+            "records": [{"child_id": ctx["child_id"], "status": "present"}],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    today = await client.get("/attendance/today", headers=headers)
+    assert today.json()["summary"]["checked_in"] == 1
+
+    invalid = await client.post(
+        "/attendance/bulk",
+        json={
+            "date": date.today().isoformat(),
+            "records": [{"child_id": ctx["child_id"], "status": "unknown"}],
+        },
+        headers=headers,
+    )
+    assert invalid.status_code == 422
 
 
 # ---------------------------------------------------------------------------

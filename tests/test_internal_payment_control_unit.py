@@ -25,8 +25,14 @@ class _Result:
 
 
 class _Session:
-    def __init__(self, value):
+    def __init__(self, value, *, finreg_enabled=True):
         self.value = value
+        self.school = SimpleNamespace(
+            resolved_features={"finance": True, "finreg": finreg_enabled}
+        )
+
+    async def get(self, _model, _identifier):
+        return self.school
 
     async def execute(self, _statement):
         return _Result(self.value)
@@ -46,6 +52,9 @@ def test_finreg_mode_requires_global_and_school_activation():
         assert asyncio.run(finreg_is_active(_Session(active), school_id)) is True
         assert asyncio.run(finreg_is_active(_Session(killed), school_id)) is False
         assert asyncio.run(finreg_is_active(_Session(None), school_id)) is False
+        assert asyncio.run(
+            finreg_is_active(_Session(active, finreg_enabled=False), school_id)
+        ) is False
     with patch("app.services.payment_control.settings.FINREG_INTEGRATION_ENABLED", False):
         assert asyncio.run(finreg_is_active(_Session(active), school_id)) is False
 
@@ -59,6 +68,9 @@ def test_ui_switches_exclusively_between_finreg_and_internal_control():
     assert "Registo interno sem valor fiscal" in internal
     assert "InternalPaymentControl(" in academic
     assert "generate_invoice = finreg_active" in academic
+    config = (root / "mobile/lib/features/platform/schools/school_config_screen.dart").read_text()
+    assert "'finreg'" in config
+    assert "Desactivado: usar controlo interno de pagamentos" in config
 
 
 def test_migration_recovers_pending_non_invoiced_enrollments():
@@ -113,10 +125,10 @@ async def test_manual_internal_payment_proof_and_review(
 
 @pytest.mark.asyncio
 async def test_internal_control_is_blocked_when_finreg_is_active(
-    client: AsyncClient, make_school, monkeypatch,
+    client: AsyncClient, make_school, padmin_token, monkeypatch,
 ):
     monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
-    _school, token, _slug, _username = await make_school("finreg-exclusive")
+    school, token, _slug, _username = await make_school("finreg-exclusive")
     headers = auth(token)
     configured = await client.put(
         "/finreg/connection",
@@ -132,6 +144,17 @@ async def test_internal_control_is_blocked_when_finreg_is_active(
         headers=headers,
     )
     assert blocked.status_code == 409
+
+    disabled = await client.patch(
+        f"/platform/schools/{school['id']}",
+        json={"features": {"finance": True, "finreg": False}},
+        headers=auth(padmin_token),
+    )
+    assert disabled.status_code == 200, disabled.text
+    internal_mode = await client.get("/finance/internal-payments/mode", headers=headers)
+    assert internal_mode.json() == {"mode": "internal", "finreg_active": False}
+    available = await client.get("/finance/internal-payments", headers=headers)
+    assert available.status_code == 200, available.text
 
 
 @pytest.mark.asyncio
