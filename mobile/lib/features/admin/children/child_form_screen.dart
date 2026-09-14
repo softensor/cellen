@@ -109,8 +109,14 @@ class _ChildFormScreenState extends ConsumerState<ChildFormScreen> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _birthDate ?? DateTime(DateTime.now().year - 3),
-      firstDate: DateTime(DateTime.now().year - 18),
+      // Opens on 2000, where most intakes sit, so nobody scrolls a decade to
+      // reach the common case.
+      initialDate: _birthDate ?? DateTime(2000),
+      // Effectively unbounded. `firstDate` constrains the typed field as well
+      // as the calendar, so anything narrower silently refuses a date someone
+      // is trying to enter by hand. It used to be `year - 18`, which is why
+      // the limit read as 2008 and moved every January.
+      firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       locale: const Locale('pt', 'PT'),
     );
