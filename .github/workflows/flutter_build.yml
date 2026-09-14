@@ -83,6 +83,17 @@ jobs:
           path: |
             mobile/build/app/outputs/flutter-apk/app-debug.apk
             mobile/build/app/outputs/bundle/release/app-release.aab
+          # An APK and an AAB on every push, kept for the default ninety days,
+          # is what filled the account's 0.5 GB of Actions storage — which is
+          # shared across every repository, so it took the other projects down
+          # with it: uploads start failing outright with "Artifact storage
+          # quota has been hit", and usage is only recalculated every 6–12
+          # hours, so deleting things does not unblock the same day.
+          #
+          # One day is enough to download a build you are looking at. Anything
+          # meant to be kept should be attached to a release, not left in the
+          # artifact bucket by accident.
+          retention-days: 1
 
   # ─────────────────────────────────────────────
   # iOS IPA
@@ -131,6 +142,8 @@ jobs:
         with:
           name: ios-release
           path: mobile/build/ios/iphoneos/Runner.app
+          # Same reason as the Android bundle above.
+          retention-days: 1
 
   # ─────────────────────────────────────────────
   # Web — build + deploy to GitHub Pages
