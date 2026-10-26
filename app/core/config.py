@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     FINREG_TLS_CA_FILE: str | None = None
     FINREG_INTEGRATION_ENABLED: bool = False
 
+    # Public Cellen address. FinReg offers it as the "back to Cellen" link on
+    # delegated sessions; unset, launches simply carry no return target.
+    CELLEN_WEB_URL: str | None = None
+
     # Public website contact-form delivery. Gmail uses smtp.gmail.com:587 with
     # STARTTLS and an App Password (never the account's normal password).
     SMTP_HOST: str = "smtp.gmail.com"

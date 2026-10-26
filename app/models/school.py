@@ -67,6 +67,10 @@ class School(Base):
 #   Controls which features each role can ACCESS at this school.
 #   Default (missing key) = True (access granted).
 #   Platform admin sets explicit False to restrict a role from a feature.
+#
+# finreg_erp is an offline mirror only. FinReg's manifest is the authority for
+# the ERP add-on (`erp_entitled`/`erp_capabilities`); this key is consulted
+# solely when an older FinReg does not report those fields.
 # ---------------------------------------------------------------------------
 _SEGMENT_DEFAULTS: dict[str, dict] = {
     "preschool": {

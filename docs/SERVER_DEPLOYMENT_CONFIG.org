@@ -83,6 +83,12 @@ Required Cellen environment variable names are =FINREG_BASE_URL=,
 =FINREG_TLS_CA_FILE=, and =FINREG_INTEGRATION_ENABLED=.  Secret values must be
 mounted or stored outside Git.
 
+Optional =CELLEN_WEB_URL= is Cellen's public app address (for example
+=https://softensor.github.io/cellen/=, the GitHub Pages base href).  When set,
+every delegated FinReg launch carries
+it as the host return target, and the FinReg session offers "voltar a Cellen";
+when unset, launches simply carry no return target.
+
 * Safe deployment order and progress
 
 1. DONE: Back up the Cellen PostgreSQL database before integration deployment

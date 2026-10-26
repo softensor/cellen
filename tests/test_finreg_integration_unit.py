@@ -17,11 +17,14 @@ from app.services.finreg import (
 )
 from app.services.finreg_events import synchronize_connection
 from app.models.school import _SEGMENT_DEFAULTS
+from app.core.config import settings
+from app.routers import finreg as finreg_router
 from app.routers.finreg import (
     FINREG_ERP_CAPABILITIES,
     _allowed_local_capabilities,
     _finreg_plan,
     _linked_guardian_child,
+    _manifest_plan,
     _plan_allowed_capabilities,
 )
 
@@ -98,7 +101,7 @@ def test_custom_roles_are_first_class_finreg_policy_options():
     ) == {"billing"}
 
 
-def test_finreg_plan_defaults_to_the_billing_surface_and_hides_erp_workspaces():
+def test_a_school_manifest_without_the_add_on_hides_erp_workspaces():
     school = SimpleNamespace(features={}, resolved_features={})
     workspaces = {
         "billing",
@@ -113,24 +116,58 @@ def test_finreg_plan_defaults_to_the_billing_surface_and_hides_erp_workspaces():
         "purchasing",
         "treasury",
     }
+    manifest = {
+        "navigable_capabilities": sorted(workspaces - FINREG_ERP_CAPABILITIES),
+        "erp_capabilities": [],
+        "erp_entitled": False,
+    }
 
-    assert _finreg_plan(school) == {
+    assert _manifest_plan(school, manifest) == {
         "plan": "billing",
         "erp_enabled": False,
-        "erp_capabilities": sorted(FINREG_ERP_CAPABILITIES),
+        "erp_capabilities": [],
     }
-    assert _plan_allowed_capabilities(school, workspaces) == workspaces - FINREG_ERP_CAPABILITIES
+    assert (
+        _plan_allowed_capabilities(school, workspaces, manifest)
+        == workspaces - FINREG_ERP_CAPABILITIES
+    )
     assert FINREG_ERP_CAPABILITIES == {"accounting", "payroll", "purchasing", "treasury"}
 
 
-def test_finreg_erp_add_on_unlocks_the_full_workspace_set():
+def test_finreg_erp_add_on_in_the_manifest_unlocks_the_full_workspace_set():
+    # The local mirror is deliberately off: FinReg's manifest decides.
+    school = SimpleNamespace(features={}, resolved_features={})
+    workspaces = {
+        "billing", "accounting", "payroll", "purchasing", "treasury",
+    }
+    manifest = {
+        "navigable_capabilities": sorted(workspaces),
+        "erp_capabilities": sorted(FINREG_ERP_CAPABILITIES & workspaces),
+        "erp_entitled": True,
+    }
+
+    plan = _manifest_plan(school, manifest)
+    assert plan["plan"] == "erp"
+    assert plan["erp_enabled"] is True
+    assert plan["erp_capabilities"] == sorted(FINREG_ERP_CAPABILITIES & workspaces)
+    assert _plan_allowed_capabilities(school, workspaces, manifest) == workspaces
+
+
+def test_an_older_finreg_keeps_the_local_plan_mirror():
     features = {"finreg_erp": True}
     school = SimpleNamespace(features=features, resolved_features=features)
     workspaces = {"billing", "accounting", "payroll", "purchasing", "treasury"}
 
     assert _finreg_plan(school)["plan"] == "erp"
-    assert _finreg_plan(school)["erp_enabled"] is True
+    assert _manifest_plan(school, {"vertical": "school"})["erp_enabled"] is True
     assert _plan_allowed_capabilities(school, workspaces) == workspaces
+
+    plain = SimpleNamespace(features={}, resolved_features={})
+    assert _manifest_plan(plain, {"vertical": "school"})["erp_enabled"] is False
+    assert (
+        _plan_allowed_capabilities(plain, workspaces)
+        == workspaces - FINREG_ERP_CAPABILITIES
+    )
 
 
 def test_every_school_segment_sells_the_billing_plan_by_default():
@@ -141,12 +178,126 @@ def test_every_school_segment_sells_the_billing_plan_by_default():
 
 def test_the_plan_is_enforced_on_capabilities_launch_and_local_policy():
     router = Path("app/routers/finreg.py").read_text()
-    assert "manifest[\"finreg_plan\"] = _finreg_plan(school)" in router
+    assert 'manifest["finreg_plan"] = _manifest_plan(school, manifest)' in router
     assert "capability_id in FINREG_ERP_CAPABILITIES" in router
     assert '"code": "finreg_erp_not_enabled"' in router
-    assert router.count("_plan_allowed_capabilities(") == 4
+    assert router.count("_plan_allowed_capabilities(") == 5
     assert "available_set = _plan_allowed_capabilities(" in router
     assert "available = _plan_allowed_capabilities(" in router
+    assert 'return_to = {"label": "Cellen", "url": settings.CELLEN_WEB_URL}' in router
+
+
+class _LaunchAdapter:
+    """Stands in for FinReg's HTTP adapter on the launch path only."""
+
+    manifest: dict = {}
+    launches: list[dict] = []
+
+    async def capabilities(self, _external_user_id):
+        return type(self).manifest
+
+    async def workspace_launch(self, **kwargs):
+        type(self).launches.append(kwargs)
+        return {
+            "url": "https://finreg.test/#/delegated?code=abc",
+            "target_path": "/billing",
+            "expires_in": 60,
+        }
+
+
+class _LaunchSession:
+    def __init__(self, school, mode="pilot"):
+        self.school = school
+        self.mode = mode
+
+    async def execute(self, _statement):
+        connection = SimpleNamespace(mode=self.mode)
+        return SimpleNamespace(scalar_one_or_none=lambda: connection)
+
+    async def get(self, _model, _identifier):
+        return self.school
+
+
+def _launch_school():
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        features={},
+        resolved_features={},
+    )
+
+
+def _launch_user():
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        username="admin",
+        email="admin@cellen.app",
+        _roles={"school_admin"},
+        _roles_list=["school_admin"],
+    )
+
+
+def _launch_manifest(*, erp_entitled: bool) -> dict:
+    workspaces = [{"capability_id": "billing"}, {"capability_id": "accounting"}]
+    navigable = ["billing"] + (["accounting"] if erp_entitled else [])
+    return {
+        "erp_entitled": erp_entitled,
+        "erp_capabilities": (
+            sorted(FINREG_ERP_CAPABILITIES) if erp_entitled else []
+        ),
+        "navigable_capabilities": navigable,
+        "workspaces": workspaces,
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_erp_addon_cannot_be_launched_without_the_entitlement(
+    monkeypatch,
+):
+    _LaunchAdapter.manifest = _launch_manifest(erp_entitled=False)
+    _LaunchAdapter.launches = []
+    monkeypatch.setattr(finreg_router, "HttpFinregAdapter", _LaunchAdapter)
+    monkeypatch.setattr(settings, "CELLEN_WEB_URL", None)
+    session = _LaunchSession(_launch_school())
+    user = _launch_user()
+
+    with pytest.raises(HTTPException) as raised:
+        await finreg_router.workspace_launch(
+            "accounting", user=user, school_id=uuid.uuid4(), db=session
+        )
+
+    assert raised.value.status_code == 403
+    assert raised.value.detail["code"] == "finreg_erp_not_enabled"
+    assert _LaunchAdapter.launches == []
+
+    # The base billing plan still launches; without a host address the mint
+    # carries no return target rather than a broken one.
+    result = await finreg_router.workspace_launch(
+        "billing", user=user, school_id=uuid.uuid4(), db=session
+    )
+    assert result["url"].startswith("https://finreg.test/")
+    assert _LaunchAdapter.launches[0]["capability_id"] == "billing"
+    assert _LaunchAdapter.launches[0]["return_to"] is None
+
+
+@pytest.mark.asyncio
+async def test_the_erp_launch_carries_the_host_return_target(monkeypatch):
+    _LaunchAdapter.manifest = _launch_manifest(erp_entitled=True)
+    _LaunchAdapter.launches = []
+    monkeypatch.setattr(finreg_router, "HttpFinregAdapter", _LaunchAdapter)
+    monkeypatch.setattr(settings, "CELLEN_WEB_URL", "https://cellen.test")
+
+    await finreg_router.workspace_launch(
+        "accounting",
+        user=_launch_user(),
+        school_id=uuid.uuid4(),
+        db=_LaunchSession(_launch_school()),
+    )
+
+    assert _LaunchAdapter.launches[0]["capability_id"] == "accounting"
+    assert _LaunchAdapter.launches[0]["return_to"] == {
+        "label": "Cellen",
+        "url": "https://cellen.test",
+    }
 
 
 def test_local_module_access_is_separate_from_finreg_control_plane():
@@ -205,24 +356,30 @@ def test_host_consumes_the_manifest_and_launches_without_sdk_types():
     assert "finreg_client_sdk" not in models
 
 
-def test_each_capability_has_one_launcher_tab_and_mints_at_the_tap():
+def test_finreg_has_one_entry_card_and_the_native_tabs_never_depend_on_it():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert "length: widget.workspaces.length" in host
-    assert "widget.workspaces[index]" in host
+    assert "FinReg — facturação e conformidade" in host
+    assert "_NativeSchoolFinanceTabs" in host
+    # The workspace menu is gone: FinReg owns its own navigation. The only
+    # tabs left are the school's own three areas.
+    assert "widget.workspaces.length" not in host
+    assert "_FinregWorkspaceMenu" not in host
+    assert "DefaultTabController(" in host
+    assert "length: 3" in host
     assert "FinregSchoolBillingModule(" not in host
-    assert "const Tab(icon: Icon(Icons.school_outlined)" not in host
-    assert "TabController(" in host
     assert "IndexedStack" not in host
     assert "initialRoute:" not in host
     assert "onSessionExpired:" not in host
     assert "finregUrlLauncher(" in host
     assert "LaunchMode.externalApplication" in host
     assert "webOnlyWindowName: '_blank'" in host
-    assert "if (_opening != null) return;" in host
-    assert "_opening = workspace.capabilityId" in host
+    assert "if (_opening) return;" in host
     assert "'Abrir no FinReg'" in host
+    # The card's failure branch must not replace the school tabs.
+    assert "O FinReg está indisponível" in host
+    assert "const Expanded(child: _NativeSchoolFinanceTabs())" in host
 
 
 def test_school_billing_resolves_and_validates_payer_learner_relationships():
@@ -248,7 +405,7 @@ def test_vertical_host_does_not_reimplement_finreg_sales_state():
     assert "_CellenFinregAdapter" not in host
     assert "FinregSalesRepository" not in host
     assert "FinregEmbeddedModuleHost(" not in host
-    assert "launchForCapability" in host
+    assert "_open(" in host
     assert "_createWorkspaceLaunch" in host
 
 
@@ -315,7 +472,7 @@ def test_embedded_session_is_retired_and_launch_never_exposes_credentials():
     assert "localeTag: localeTag" not in host
 
 
-def test_school_composition_uses_contextual_sources_without_duplicate_modules():
+def test_school_composition_uses_native_tabs_without_duplicate_modules():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
@@ -324,7 +481,10 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
     assert "finregEmbeddedModules" not in host
     assert "GuardiansListScreen()" in host
     assert "EmployeesListScreen()" in host
-    assert "_SchoolContextualModule" in host
+    # FinReg's workspace list is not mirrored as host panes.
+    assert "_NativeSchoolFinanceTabs" in host
+    assert "_SchoolBillingOperations()" in host
+    assert "_SchoolContextualModule" not in host
     assert "_CompositionReadiness" in host
     assert "'/finreg/composition-readiness/$capabilityId'" in host
     assert ".label(" in host
@@ -358,15 +518,13 @@ def test_school_employee_payroll_handoff_is_complete_and_reviewable():
     assert "N.º de inscrição no INSS *" in form
     assert "Salário base" in form
     assert "Preparar processamento salarial" in listing
-    assert "'payroll': _SchoolContextDefinition(" in Path(
+    host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    payroll_block = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text().split("'payroll': _SchoolContextDefinition(", 1)[1].split(
-        "child: EmployeesListScreen()", 1
-    )[0]
-    assert "authoritativeFirst: true" in payroll_block
+    # Payroll itself is FinReg's: the host only hands over the employee
+    # record and leaves the mapping review to FinReg's payroll workspace.
+    assert "EmployeesListScreen()" in host
+    assert "_SchoolContextDefinition" not in host
 
 
 def test_release_grants_catalog_and_employee_integration_scopes():

@@ -296,7 +296,10 @@ Required Cellen configuration names include `FINREG_BASE_URL`,
 `FINREG_TIMEOUT_SECONDS`, `FINREG_VERIFY_TLS`, optional `FINREG_TLS_CA_FILE`,
 and `FINREG_INTEGRATION_ENABLED`. `FINREG_BASE_URL` is the Finreg origin, not
 the API mount point: a legacy value ending in `/api/v1` is normalized, but new
-deployments write the origin. Document names, never secret values.
+deployments write the origin. Optional `CELLEN_WEB_URL` is Cellen's own public
+address; when set, delegated FinReg launches carry it as the host return
+target and the FinReg session offers "voltar a Cellen". Document names, never
+secret values.
 
 ## 11. VPS deployment
 
