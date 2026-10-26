@@ -5,12 +5,18 @@
 
 * Status
 
-- Cellen branch: =integration/finreg-kit-launcher= (supersedes the VPS checkout)
-- Finreg: no branch, no code change, no deploy — production stays at =4977a0b=
+- Cellen: kit adoption + delegated-launch de-embed merged and deployed
+  (=c5f1696=, PR #40); the VPS checkout is superseded
+- Finreg: no code change, no deploy — production stays at =4977a0b=; a
+  web-only hotfix for the delegated login (=f62eab5=) is live
 - Connector kit: =softensor/finreg-kit= at =.github/finreg-kit-ref=
   (=856a909858c1104ce6996eb30d3794bdf92485cd=)
-- Phase: kit adoption + delegated-launch de-embed implemented; pilot stays
-  =shadow= (non-fiscal); promotion ladder untouched
+- Live pilot: Rainha Njinga is in =pilot= mode with AGT =offline= (21
+  offline-finalized documents), not =shadow=
+- Commercial surface: the fiscal core (billing, catalog, parties, payments,
+  receivables, recurring billing, reporting) is the default; the full ERP
+  (accounting, payroll, purchasing, treasury) is the paid add-on behind
+  =schools.features.finreg_erp=
 
 * Decision
 

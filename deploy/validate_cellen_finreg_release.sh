@@ -145,6 +145,11 @@ connection=$(sql cellen "SELECT fc.mode||'|'||fc.kill_switch||'|'||fc.finreg_com
 IFS='|' read -r mode kill_switch linked_company <<<"$connection"
 [[ ${mode:-} == "$EXPECTED_MODE" ]] && pass 'Integration mode' "$mode" || fail 'Integration mode' "expected=$EXPECTED_MODE actual=${mode:-missing}"
 [[ ${kill_switch:-} == false ]] && pass 'Kill switch is open' || fail 'Kill switch is open' "${kill_switch:-missing}"
+# finreg_is_active() also requires the per-school Finreg feature switch. A
+# pilot connection with features.finreg=false silently keeps the internal
+# (non-fiscal) payment register, so acceptance must see the switch too.
+finreg_switch=$(sql cellen "SELECT coalesce((features->>'finreg')::boolean, true) FROM schools WHERE slug='$SCHOOL_SLUG';" 2>/dev/null || true)
+[[ ${finreg_switch:-} == t ]] && pass 'Finance mode uses Finreg' || fail 'Finance mode uses Finreg' "features.finreg=${finreg_switch:-missing} (school would keep the internal payment register)"
 [[ -n ${company_id:-} && ${linked_company:-} == "$company_id" ]] && pass 'Cellen links to the correct Finreg tenant' "$company_id" || fail 'Cellen links to the correct Finreg tenant'
 mapping_errors=$(sql cellen "SELECT count(*) FROM finreg_entity_mappings m JOIN schools s ON s.id=m.school_id WHERE s.slug='$SCHOOL_SLUG' AND (m.status<>'confirmed' OR m.last_error_code IS NOT NULL);" 2>/dev/null || echo query_failed)
 [[ $mapping_errors == 0 ]] && pass 'No unresolved mapping errors' || fail 'No unresolved mapping errors' "$mapping_errors"

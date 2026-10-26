@@ -69,8 +69,22 @@ if [[ $CELLEN_ONLY -eq 0 ]]; then
   "$FINREG_DIR/.venv/bin/python" -m app.cli.validate_module_manifests >/dev/null
 fi
 "$FINREG_DIR/.venv/bin/python" -m app.cli.refresh_company_manifest_fingerprints
-"$FINREG_DIR/.venv/bin/python" -m app.cli.grant_integration_client_scopes \
-  "$CLIENT_KEY" \
+# The Finreg CLI (app.cli.grant_integration_client_scopes) queries
+# IntegrationClient without loading the model registry, so a standalone run
+# dies with NoReferencedTableError on the companies table. Load the registry
+# and call grant() directly until Finreg fixes its CLI under change control.
+"$FINREG_DIR/.venv/bin/python" -c '
+import asyncio
+import sys
+
+from app.models.registry import load_model_registry
+
+load_model_registry()
+
+from app.cli.grant_integration_client_scopes import grant
+
+asyncio.run(grant(sys.argv[1], sys.argv[2:]))
+' "$CLIENT_KEY" \
   billing_plans:read billing_plans:write \
   capabilities:read \
   customers:read customers:write \

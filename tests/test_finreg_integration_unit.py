@@ -16,7 +16,14 @@ from app.services.finreg import (
     school_context,
 )
 from app.services.finreg_events import synchronize_connection
-from app.routers.finreg import _allowed_local_capabilities, _linked_guardian_child
+from app.models.school import _SEGMENT_DEFAULTS
+from app.routers.finreg import (
+    FINREG_ERP_CAPABILITIES,
+    _allowed_local_capabilities,
+    _finreg_plan,
+    _linked_guardian_child,
+    _plan_allowed_capabilities,
+)
 
 
 def test_primary_finance_route_opens_finreg_without_an_embedded_copy():
@@ -89,6 +96,57 @@ def test_custom_roles_are_first_class_finreg_policy_options():
     assert _allowed_local_capabilities(
         school, user, {"billing", "payroll"}
     ) == {"billing"}
+
+
+def test_finreg_plan_defaults_to_the_billing_surface_and_hides_erp_workspaces():
+    school = SimpleNamespace(features={}, resolved_features={})
+    workspaces = {
+        "billing",
+        "catalog",
+        "parties",
+        "payments",
+        "receivables",
+        "recurring_billing",
+        "reporting",
+        "accounting",
+        "payroll",
+        "purchasing",
+        "treasury",
+    }
+
+    assert _finreg_plan(school) == {
+        "plan": "billing",
+        "erp_enabled": False,
+        "erp_capabilities": sorted(FINREG_ERP_CAPABILITIES),
+    }
+    assert _plan_allowed_capabilities(school, workspaces) == workspaces - FINREG_ERP_CAPABILITIES
+    assert FINREG_ERP_CAPABILITIES == {"accounting", "payroll", "purchasing", "treasury"}
+
+
+def test_finreg_erp_add_on_unlocks_the_full_workspace_set():
+    features = {"finreg_erp": True}
+    school = SimpleNamespace(features=features, resolved_features=features)
+    workspaces = {"billing", "accounting", "payroll", "purchasing", "treasury"}
+
+    assert _finreg_plan(school)["plan"] == "erp"
+    assert _finreg_plan(school)["erp_enabled"] is True
+    assert _plan_allowed_capabilities(school, workspaces) == workspaces
+
+
+def test_every_school_segment_sells_the_billing_plan_by_default():
+    for segment, defaults in _SEGMENT_DEFAULTS.items():
+        assert defaults["finreg"] is True, segment
+        assert defaults["finreg_erp"] is False, segment
+
+
+def test_the_plan_is_enforced_on_capabilities_launch_and_local_policy():
+    router = Path("app/routers/finreg.py").read_text()
+    assert "manifest[\"finreg_plan\"] = _finreg_plan(school)" in router
+    assert "capability_id in FINREG_ERP_CAPABILITIES" in router
+    assert '"code": "finreg_erp_not_enabled"' in router
+    assert router.count("_plan_allowed_capabilities(") == 4
+    assert "available_set = _plan_allowed_capabilities(" in router
+    assert "available = _plan_allowed_capabilities(" in router
 
 
 def test_local_module_access_is_separate_from_finreg_control_plane():

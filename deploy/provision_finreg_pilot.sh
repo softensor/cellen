@@ -108,7 +108,13 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 -d cellen \
   --set=connection_id="$CONNECTION_ID" --set=school_id="$SCHOOL_ID" --set=company_id="$COMPANY_ID" \
   --set=legal_name="$LEGAL_NAME" --set=tax_id="$TAX_ID" <<'SQL'
 BEGIN;
-UPDATE schools SET legal_name = :'legal_name', nif = :'tax_id'
+UPDATE schools
+SET legal_name = :'legal_name', nif = :'tax_id',
+    -- A Finreg pilot must also expose the Finreg finance mode; without this
+    -- switch finreg_is_active() stays false and the school keeps the internal
+    -- (non-fiscal) payment register.
+    features = jsonb_set(
+      coalesce(features, '{}'::jsonb), '{finreg}', 'true'::jsonb)
 WHERE id = :'school_id'::uuid;
 INSERT INTO finreg_school_connections
   (id, school_id, finreg_company_id, mode, kill_switch, last_event_sequence)

@@ -145,6 +145,38 @@ def _allowed_local_capabilities(school: School, user, available: set[str]) -> se
     return allowed & available
 
 
+# The school profile's optional workspaces. They form the full-ERP add-on and
+# stay hidden unless the school's plan includes them; everything else in the
+# profile (billing, parties, catalog, receivables, payments, recurring billing,
+# reporting) is the base billing surface every Finreg school gets.
+FINREG_ERP_CAPABILITIES = frozenset({
+    "accounting",
+    "payroll",
+    "purchasing",
+    "treasury",
+})
+
+
+def _finreg_erp_enabled(school: School) -> bool:
+    return bool(school.resolved_features.get("finreg_erp", False))
+
+
+def _finreg_plan(school: School) -> dict:
+    enabled = _finreg_erp_enabled(school)
+    return {
+        "plan": "erp" if enabled else "billing",
+        "erp_enabled": enabled,
+        "erp_capabilities": sorted(FINREG_ERP_CAPABILITIES),
+    }
+
+
+def _plan_allowed_capabilities(school: School, capabilities: set[str]) -> set[str]:
+    """Narrow a workspace set to what this school's Finreg plan includes."""
+    if _finreg_erp_enabled(school):
+        return capabilities
+    return capabilities - FINREG_ERP_CAPABILITIES
+
+
 async def _school(db: AsyncSession, school_id) -> School:
     school = await db.get(School, school_id)
     if school is None:
@@ -265,6 +297,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
     if connection is None:
         raise HTTPException(status_code=409, detail="Finreg is not configured for this school")
     if connection.mode == "fake":
+        school = await _school(db, school_id)
         manifest = await FakeFinregAdapter().capabilities(str(user.id))
         return {**manifest, "company_id": str(connection.finreg_company_id),
                 "terminology": {"customer": "guardian", "beneficiary": "pupil"},
@@ -273,7 +306,8 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
                 "configured_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
                 "effective_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
                 "blocked_capabilities": {},
-                "manifest_fingerprint": "0" * 64, "country_pack": "angola"}
+                "manifest_fingerprint": "0" * 64, "country_pack": "angola",
+                "finreg_plan": _finreg_plan(school)}
     try:
         manifest = await HttpFinregAdapter().capabilities(str(user.id))
         if str(manifest.get("company_id")) != str(connection.finreg_company_id):
@@ -287,7 +321,9 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             str(item["capability_id"])
             for item in manifest.get("workspaces") or []
         }
-        allowed = _allowed_local_capabilities(school, user, workspace_ids)
+        allowed = _plan_allowed_capabilities(
+            school, _allowed_local_capabilities(school, user, workspace_ids)
+        )
         manifest["workspaces"] = [
             item for item in manifest.get("workspaces") or []
             if item.get("capability_id") in allowed
@@ -298,6 +334,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             or item.get("presentation") == "service"
         ]
         manifest["locally_granted_capabilities"] = sorted(allowed)
+        manifest["finreg_plan"] = _finreg_plan(school)
         return manifest
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
 
@@ -394,6 +431,11 @@ async def workspace_launch(
     if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
         raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
     school = await _school(db, school_id)
+    if capability_id in FINREG_ERP_CAPABILITIES and not _finreg_erp_enabled(school):
+        raise HTTPException(status_code=403, detail={
+            "code": "finreg_erp_not_enabled",
+            "message": "The full FinReg ERP add-on is not enabled for this school",
+        })
     manifest = await HttpFinregAdapter().capabilities(str(user.id))
     workspace_ids = {
         str(item["capability_id"])
@@ -439,10 +481,12 @@ async def local_access_policy(
     manifest = validate_school_capabilities(
         await HttpFinregAdapter().capabilities(str(user.id))
     )
-    available = sorted(
-        str(item["capability_id"])
-        for item in manifest.get("workspaces") or []
+    manifest_workspaces = manifest.get("workspaces") or []
+    available_set = _plan_allowed_capabilities(
+        school,
+        {str(item["capability_id"]) for item in manifest_workspaces},
     )
+    available = sorted(available_set)
     configured = (school.features or {}).get("finreg_role_capabilities")
     if not isinstance(configured, dict):
         configured = {"finance_officer": available}
@@ -465,7 +509,10 @@ async def local_access_policy(
     feature_keys = sorted(CUSTOM_PERMISSIONS)
     return {
         "available_capabilities": available,
-        "workspaces": manifest.get("workspaces") or [],
+        "workspaces": [
+            item for item in manifest_workspaces
+            if str(item.get("capability_id")) in available_set
+        ],
         "role_capabilities": {
             role: sorted(
                 set(configured.get(role) or [])
@@ -525,10 +572,10 @@ async def update_local_access_policy(
     manifest = validate_school_capabilities(
         await HttpFinregAdapter().capabilities(str(user.id))
     )
-    available = {
-        str(item["capability_id"])
-        for item in manifest.get("workspaces") or []
-    }
+    available = _plan_allowed_capabilities(
+        school,
+        {str(item["capability_id"]) for item in manifest.get("workspaces") or []},
+    )
     role_workspaces = {
         role: set(values) & available
         for role, values in (manifest.get("role_workspaces") or {}).items()
