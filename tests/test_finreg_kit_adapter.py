@@ -151,6 +151,29 @@ async def test_workspace_launch_mints_a_delegated_url(finreg):
     assert finreg.launch_codes[next(iter(finreg.launch_codes))]["roles"] == [
         "finance_officer"
     ]
+    # No host address, no return target — never a dangling one.
+    assert finreg.launch_codes[next(iter(finreg.launch_codes))]["return_to"] is None
+
+
+@pytest.mark.asyncio
+async def test_workspace_launch_carries_the_host_return_target(finreg):
+    adapter = HttpFinregAdapter()
+
+    await adapter.workspace_launch(
+        capability_id="billing",
+        external_user_id="user-1",
+        display_name="Ana",
+        roles=["finance_officer"],
+        web_base_url="https://cellen.test",
+        actor_reference="user-1",
+        return_to={"label": "Cellen", "url": "https://cellen.test"},
+    )
+
+    code = next(iter(finreg.launch_codes))
+    assert finreg.launch_codes[code]["return_to"] == {
+        "label": "Cellen",
+        "url": "https://cellen.test",
+    }
 
 
 @pytest.mark.asyncio

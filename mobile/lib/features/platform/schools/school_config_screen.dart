@@ -25,6 +25,10 @@ import '../../../core/theme/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Segment defaults (mirrors app/models/school.py — keep in sync)
+//
+// finreg_erp is deliberately not editable here any more. FinReg's manifest is
+// the authority for the ERP add-on; the key remains just as an offline mirror
+// for an older FinReg that does not report `erp_entitled`.
 // ---------------------------------------------------------------------------
 
 const _segmentDefaults = <String, Map<String, bool>>{
@@ -347,12 +351,6 @@ const _allFeatures = <_Feat>[
       'Activar facturação fiscal Finreg. Desactivado: usar controlo interno de pagamentos sem facturas nem recibos fiscais.',
       _Cat.finance,
       Icons.account_balance_wallet_outlined),
-  _Feat(
-      'finreg_erp',
-      'Finreg ERP completo',
-      'Contabilidade, RH, Compras e Tesouraria no Finreg. Acrescento pago; sem ele a integração apresenta apenas a facturação.',
-      _Cat.finance,
-      Icons.account_balance_outlined),
   // Funções disponíveis
   _Feat(
       'role_teacher',
@@ -788,7 +786,6 @@ class _SchoolConfigScreenState extends ConsumerState<SchoolConfigScreen>
                   for (final f in _allFeatures)
                     if (f.cat != _Cat.roles &&
                         f.key != 'finreg' &&
-                        f.key != 'finreg_erp' &&
                         _effectiveFeat(f.key))
                       f.key,
                 },
@@ -1510,9 +1507,7 @@ final _customPermissionOptions =
     description: 'Turmas, anos lectivos, matrículas e afectações'
   ),
   for (final feature in _allFeatures)
-    if (feature.cat != _Cat.roles &&
-        feature.key != 'finreg' &&
-        feature.key != 'finreg_erp')
+    if (feature.cat != _Cat.roles && feature.key != 'finreg')
       (
         key: feature.key,
         label: feature.label,

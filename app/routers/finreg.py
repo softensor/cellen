@@ -158,6 +158,8 @@ FINREG_ERP_CAPABILITIES = frozenset({
 
 
 def _finreg_erp_enabled(school: School) -> bool:
+    """Legacy local mirror, used only when FinReg's manifest predates the
+    `erp_entitled` field. FinReg is the authority for the add-on."""
     return bool(school.resolved_features.get("finreg_erp", False))
 
 
@@ -170,8 +172,36 @@ def _finreg_plan(school: School) -> dict:
     }
 
 
-def _plan_allowed_capabilities(school: School, capabilities: set[str]) -> set[str]:
-    """Narrow a workspace set to what this school's Finreg plan includes."""
+def _manifest_plan(school: School, manifest: dict | None = None) -> dict:
+    """The plan a school is on, as FinReg's own manifest reports it.
+
+    New manifests carry `erp_entitled` and the ERP workspaces the tenant
+    actually owns and composed. An older FinReg has neither, so the school's
+    local mirror keeps the previous behaviour until the host is upgraded.
+    """
+    if isinstance(manifest, dict) and "erp_entitled" in manifest:
+        entitled = bool(manifest.get("erp_entitled"))
+        return {
+            "plan": "erp" if entitled else "billing",
+            "erp_enabled": entitled,
+            "erp_capabilities": sorted(
+                str(value) for value in manifest.get("erp_capabilities") or []
+            ),
+        }
+    return _finreg_plan(school)
+
+
+def _plan_allowed_capabilities(
+    school: School, capabilities: set[str], manifest: dict | None = None
+) -> set[str]:
+    """Narrow a workspace set to what FinReg says this tenant may navigate."""
+    navigable = (
+        manifest.get("navigable_capabilities")
+        if isinstance(manifest, dict)
+        else None
+    )
+    if isinstance(navigable, list):
+        return capabilities & {str(value) for value in navigable}
     if _finreg_erp_enabled(school):
         return capabilities
     return capabilities - FINREG_ERP_CAPABILITIES
@@ -307,7 +337,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
                 "effective_capabilities": ["billing", "receivables", "payments", "recurring_billing", "integrations"],
                 "blocked_capabilities": {},
                 "manifest_fingerprint": "0" * 64, "country_pack": "angola",
-                "finreg_plan": _finreg_plan(school)}
+                "finreg_plan": _manifest_plan(school, manifest)}
     try:
         manifest = await HttpFinregAdapter().capabilities(str(user.id))
         if str(manifest.get("company_id")) != str(connection.finreg_company_id):
@@ -322,7 +352,9 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             for item in manifest.get("workspaces") or []
         }
         allowed = _plan_allowed_capabilities(
-            school, _allowed_local_capabilities(school, user, workspace_ids)
+            school,
+            _allowed_local_capabilities(school, user, workspace_ids),
+            manifest,
         )
         manifest["workspaces"] = [
             item for item in manifest.get("workspaces") or []
@@ -334,7 +366,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
             or item.get("presentation") == "service"
         ]
         manifest["locally_granted_capabilities"] = sorted(allowed)
-        manifest["finreg_plan"] = _finreg_plan(school)
+        manifest["finreg_plan"] = _manifest_plan(school, manifest)
         return manifest
     except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
 
@@ -431,21 +463,24 @@ async def workspace_launch(
     if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
         raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
     school = await _school(db, school_id)
-    if capability_id in FINREG_ERP_CAPABILITIES and not _finreg_erp_enabled(school):
-        raise HTTPException(status_code=403, detail={
-            "code": "finreg_erp_not_enabled",
-            "message": "The full FinReg ERP add-on is not enabled for this school",
-        })
-    manifest = await HttpFinregAdapter().capabilities(str(user.id))
-    workspace_ids = {
-        str(item["capability_id"])
-        for item in manifest.get("workspaces") or []
-    }
-    if capability_id not in _allowed_local_capabilities(
-        school, user, workspace_ids
-    ):
-        raise HTTPException(status_code=403, detail="Module is not granted to this school role")
     try:
+        manifest = await HttpFinregAdapter().capabilities(str(user.id))
+        plan = _manifest_plan(school, manifest)
+        if capability_id in FINREG_ERP_CAPABILITIES and not plan["erp_enabled"]:
+            raise HTTPException(status_code=403, detail={
+                "code": "finreg_erp_not_enabled",
+                "message": "The full FinReg ERP add-on is not enabled for this school",
+            })
+        workspace_ids = {
+            str(item["capability_id"])
+            for item in manifest.get("workspaces") or []
+        }
+        if capability_id not in _allowed_local_capabilities(
+            school, user, _plan_allowed_capabilities(school, workspace_ids, manifest)
+        ):
+            raise HTTPException(
+                status_code=403, detail="Module is not granted to this school role"
+            )
         roles = list(
             getattr(user, "_roles_list", None)
             or getattr(user, "roles", None)
@@ -456,6 +491,11 @@ async def workspace_launch(
             or getattr(user, "email", None)
             or str(user.id)
         )
+        return_to = None
+        if settings.CELLEN_WEB_URL and settings.CELLEN_WEB_URL.startswith(
+            ("http://", "https://")
+        ):
+            return_to = {"label": "Cellen", "url": settings.CELLEN_WEB_URL}
         return await HttpFinregAdapter().workspace_launch(
             capability_id=capability_id,
             external_user_id=str(user.id),
@@ -463,6 +503,7 @@ async def workspace_launch(
             roles=roles,
             web_base_url=settings.FINREG_WEB_URL or settings.finreg_origin,
             actor_reference=str(user.id),
+            return_to=return_to,
         )
     except FinregError as exc:
         raise HTTPException(
@@ -485,6 +526,7 @@ async def local_access_policy(
     available_set = _plan_allowed_capabilities(
         school,
         {str(item["capability_id"]) for item in manifest_workspaces},
+        manifest,
     )
     available = sorted(available_set)
     configured = (school.features or {}).get("finreg_role_capabilities")
@@ -575,6 +617,7 @@ async def update_local_access_policy(
     available = _plan_allowed_capabilities(
         school,
         {str(item["capability_id"]) for item in manifest.get("workspaces") or []},
+        manifest,
     )
     role_workspaces = {
         role: set(values) & available

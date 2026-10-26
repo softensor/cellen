@@ -45,6 +45,9 @@ class FinregManifest {
     required this.manifestFingerprint,
     required this.countryPack,
     required this.workspaces,
+    this.navigableCapabilities = const [],
+    this.erpCapabilities = const [],
+    this.erpEntitled = false,
   });
 
   final String? companyId;
@@ -57,25 +60,51 @@ class FinregManifest {
   final String? countryPack;
   final List<FinregWorkspace> workspaces;
 
+  /// What FinReg lets this tenant navigate. Additive; an older FinReg omits
+  /// it and then the host falls back to the local plan mirror.
+  final List<String> navigableCapabilities;
+
+  /// The ERP workspaces FinReg has both entitled and composed.
+  final List<String> erpCapabilities;
+
+  /// Whether the ERP add-on is on this tenant's plan.
+  final bool erpEntitled;
+
   /// Workspaces Cellen can offer here: operational, with an id to launch.
   List<FinregWorkspace> get operationalWorkspaces => workspaces
       .where((item) => item.operational && item.capabilityId.isNotEmpty)
       .toList(growable: false);
 
-  factory FinregManifest.fromJson(Map<String, dynamic> value) => FinregManifest(
-        companyId: value['company_id']?.toString(),
-        apiVersion: value['api_version']?.toString() ?? '',
-        schemaVersion: value['schema_version']?.toString() ?? '',
-        vertical: value['vertical']?.toString() ?? '',
-        agtChannel: value['agt_channel']?.toString() ?? 'disabled',
-        nonFiscal: value['non_fiscal'] as bool? ?? false,
-        manifestFingerprint: value['manifest_fingerprint']?.toString(),
-        countryPack: value['country_pack']?.toString(),
-        workspaces: (value['workspaces'] as List? ?? const [])
-            .map((raw) =>
-                FinregWorkspace.fromJson(Map<String, dynamic>.from(raw as Map)))
-            .toList(growable: false),
-      );
+  factory FinregManifest.fromJson(Map<String, dynamic> value) {
+    // New FinReg releases report `erp_entitled`/`erp_capabilities` directly.
+    // Against an older one, the backend's `finreg_plan` already resolved the
+    // school's local mirror, so the host keeps a truthful plan line.
+    final legacyPlan = value['finreg_plan'] is Map
+        ? Map<String, dynamic>.from(value['finreg_plan'] as Map)
+        : const <String, dynamic>{};
+    return FinregManifest(
+      companyId: value['company_id']?.toString(),
+      apiVersion: value['api_version']?.toString() ?? '',
+      schemaVersion: value['schema_version']?.toString() ?? '',
+      vertical: value['vertical']?.toString() ?? '',
+      agtChannel: value['agt_channel']?.toString() ?? 'disabled',
+      nonFiscal: value['non_fiscal'] as bool? ?? false,
+      manifestFingerprint: value['manifest_fingerprint']?.toString(),
+      countryPack: value['country_pack']?.toString(),
+      workspaces: (value['workspaces'] as List? ?? const [])
+          .map((raw) =>
+              FinregWorkspace.fromJson(Map<String, dynamic>.from(raw as Map)))
+          .toList(growable: false),
+      navigableCapabilities: List<String>.from(
+          value['navigable_capabilities'] as List? ?? const []),
+      erpCapabilities: List<String>.from(value['erp_capabilities'] as List? ??
+          legacyPlan['erp_capabilities'] as List? ??
+          const []),
+      erpEntitled: value['erp_entitled'] as bool? ??
+          legacyPlan['erp_enabled'] as bool? ??
+          false,
+    );
+  }
 }
 
 /// A single-use delegated launch: the URL to open, nothing else.

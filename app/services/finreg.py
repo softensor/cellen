@@ -253,6 +253,7 @@ class HttpFinregAdapter:
     async def workspace_launch(self, *, capability_id: str, external_user_id: str,
                                display_name: str, roles: list[str],
                                web_base_url: str, actor_reference: str,
+                               return_to: dict | None = None,
                                correlation_id: str | None = None) -> dict:
         """Mint a single-use delegated launch: ``{url, target_path, expires_in}``."""
         if not roles:
@@ -265,6 +266,7 @@ class HttpFinregAdapter:
                 external_user_id=external_user_id,
                 display_name=display_name,
                 roles=roles,
+                return_to=return_to,
                 correlation_id=correlation_id,
             )
         except _KIT_FAILURES as exc:
@@ -278,7 +280,20 @@ class FakeFinregAdapter:
         self.results: dict[str, dict] = {}
 
     async def capabilities(self, actor_reference: str) -> dict:
-        return {"api_version": "v1", "schema_version": "school/v1", "vertical": "school", "non_fiscal": True}
+        # Mirrors the additive fields a current FinReg manifest carries, so
+        # the fake path exercises the same plan logic as production.
+        return {
+            "api_version": "v1",
+            "schema_version": "school/v1",
+            "vertical": "school",
+            "non_fiscal": True,
+            "navigable_capabilities": [
+                "billing", "receivables", "payments",
+                "recurring_billing", "integrations",
+            ],
+            "erp_capabilities": [],
+            "erp_entitled": False,
+        }
 
     async def execute(self, operation: str, payload: dict, *, idempotency_key: str, correlation_id: str, actor_reference: str) -> dict:
         if idempotency_key in self.results:
