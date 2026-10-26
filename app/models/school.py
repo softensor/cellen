@@ -99,6 +99,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
         "finreg": True,
+        "finreg_erp": False,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -141,6 +142,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
         "finreg": True,
+        "finreg_erp": False,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -181,6 +183,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
         "finreg": True,
+        "finreg_erp": False,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -221,6 +224,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
         "finreg": True,
+        "finreg_erp": False,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,
@@ -261,6 +265,7 @@ _SEGMENT_DEFAULTS: dict[str, dict] = {
         # ── Financeiro ─────────────────────────────────────
         "finance": True,
         "finreg": True,
+        "finreg_erp": False,
         # ── Funções disponíveis ────────────────────────────
         "absences": True,
         "role_teacher": True,

@@ -582,7 +582,7 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
       useRootNavigator: false,
       context: context,
       builder: (_) => AlertDialog(
-        title: Text('Preço para ${year['name']}'),
+        title: Text('Preço para ${year['year_label']}'),
         content: TextFormField(
           controller: ctrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -636,7 +636,7 @@ class _PriceTableDialogState extends ConsumerState<_PriceTableDialog> {
                           .firstOrNull;
                       return ListTile(
                         dense: true,
-                        title: Text(year['name'] as String? ?? ''),
+                        title: Text(year['year_label'] as String? ?? ''),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

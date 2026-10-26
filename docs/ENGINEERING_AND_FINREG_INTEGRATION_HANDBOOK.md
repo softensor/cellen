@@ -345,10 +345,11 @@ The combined acceptance suite is:
 
 ```bash
 cd /var/www/cellen
-sudo bash deploy/validate_cellen_finreg_release.sh --mode shadow
+sudo bash deploy/validate_cellen_finreg_release.sh --mode pilot --agt-channel offline
 ```
 
-Use the actual controlled state when appropriate:
+Use the actual controlled state when appropriate (Rainha Njinga runs `pilot` /
+`offline`; `shadow` was only the initial provisioning mode):
 
 - `shadow` requires AGT `disabled` and non-fiscal draft behaviour.
 - `pilot` allows only the documented `offline` or approved `sandbox` channel.
