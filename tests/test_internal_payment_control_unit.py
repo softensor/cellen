@@ -75,7 +75,9 @@ def test_ui_switches_exclusively_between_finreg_and_internal_control():
     assert "Encarregado pagador (opcional)" in internal
     assert "Navigator.pop(dialogContext, true)" in internal
     assert "InternalPaymentControl(" in academic
-    assert "generate_invoice = finreg_active" in academic
+    # A Finreg school's matrícula must be issued by Finreg, never locally.
+    assert "enqueue_enrollment_fee_instruction(" in academic
+    assert "DocumentEmissionService" not in academic
     config = (root / "mobile/lib/features/platform/schools/school_config_screen.dart").read_text()
     assert "'finreg'" in config
     assert "Desactivado: usar controlo interno de pagamentos" in config

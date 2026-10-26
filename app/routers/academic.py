@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Optional
 
@@ -10,7 +11,10 @@ from app.core.dependencies import get_current_user, get_school_id, require_schoo
 from app.models.academic import (
     Activity, Enrollment, Schedule, ScheduleSlot, ScheduleTeacher, SchoolYear, Turma
 )
-from app.models.finance import InternalPaymentControl, Invoice
+from app.models.finance import BillingItem, InternalPaymentControl, Invoice
+from app.models.finreg_integration import FinregBillingInstruction
+from app.services.finreg import FinregError
+from app.services.finreg_dispatch import dispatch_instruction, enqueue_enrollment_fee_instruction
 from app.services.payment_control import finreg_is_active
 from app.schemas.academic import (
     ActivityCreate, ActivityResponse, ActivityUpdate,
@@ -21,6 +25,19 @@ from app.schemas.academic import (
 )
 
 router = APIRouter(prefix="/academic", tags=["Academic"])
+logger = logging.getLogger(__name__)
+
+
+async def _fee_instruction_status(
+    db: AsyncSession, enrollment: Enrollment,
+) -> Optional[str]:
+    if not enrollment.fee_instruction_id:
+        return None
+    return (await db.execute(
+        select(FinregBillingInstruction.status).where(
+            FinregBillingInstruction.id == enrollment.fee_instruction_id
+        )
+    )).scalar_one_or_none()
 
 
 # ─── Turmas ───────────────────────────────────────────────────────────────────
@@ -592,6 +609,15 @@ async def list_enrollments(
         )
     )).scalars().all()
     internal_map = {payment.enrollment_id: payment for payment in internal_rows}
+    instruction_ids = [e.fee_instruction_id for e in enrollments if e.fee_instruction_id]
+    instruction_status_map: dict[uuid.UUID, str] = {}
+    if instruction_ids:
+        instruction_rows = (await db.execute(
+            select(FinregBillingInstruction.id, FinregBillingInstruction.status).where(
+                FinregBillingInstruction.id.in_(instruction_ids)
+            )
+        )).all()
+        instruction_status_map = {row[0]: row[1] for row in instruction_rows}
     finreg_active = await finreg_is_active(db, school_id)
 
     # Retroactively activate enrollments whose fee invoice is already paid
@@ -619,6 +645,7 @@ async def list_enrollments(
         year_id = sched_year.get(e.schedule_id)
         data.school_year = year_map.get(year_id) if year_id else None
         data.payment_control_mode = "finreg" if finreg_active else "internal"
+        data.fee_instruction_status = instruction_status_map.get(e.fee_instruction_id)
         internal_payment = internal_map.get(e.id)
         if internal_payment:
             data.internal_payment_id = internal_payment.id
@@ -633,27 +660,11 @@ async def create_enrollment(
     body: EnrollmentCreate,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_school_admin),
+    user=Depends(require_school_admin),
 ):
     from sqlalchemy.exc import IntegrityError
-    from app.models.person import ChildGuardian
+    from app.models.person import Child, ChildGuardian, Guardian
 
-    # Spec 5.1: active enrollment requires a primary-contact guardian
-    if body.status == "active":
-        grd_result = await db.execute(
-            select(ChildGuardian.guardian_id).where(
-                ChildGuardian.child_id == body.child_id,
-                ChildGuardian.is_primary_contact,
-            )
-        )
-        if grd_result.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=422,
-                detail="Active enrollment requires the child to have a primary-contact guardian",
-            )
-
-    enrollment_fee = body.enrollment_fee
-    finreg_active = await finreg_is_active(db, school_id)
     primary_guardian_id = (await db.execute(
         select(ChildGuardian.guardian_id).where(
             ChildGuardian.school_id == school_id,
@@ -661,16 +672,83 @@ async def create_enrollment(
             ChildGuardian.is_primary_contact,
         )
     )).scalar_one_or_none()
-    if enrollment_fee and enrollment_fee > 0 and not finreg_active and primary_guardian_id is None:
+
+    # Spec 5.1: active enrollment requires a primary-contact guardian
+    if body.status == "active" and primary_guardian_id is None:
         raise HTTPException(
             status_code=422,
-            detail="A cobrança da matrícula requer um encarregado principal responsável pelo pagamento",
+            detail="Active enrollment requires the child to have a primary-contact guardian",
         )
-    # The server owns this choice. The legacy client flag cannot enable the
-    # internal controller for a Finreg school or fiscal emission for another.
-    generate_invoice = finreg_active
+
+    enrollment_fee = body.enrollment_fee
+    charges_fee = bool(enrollment_fee and enrollment_fee > 0)
+    finreg_active = await finreg_is_active(db, school_id)
+
+    guardian = school_year = child = billing_item = None
+    if charges_fee:
+        if primary_guardian_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="A cobrança da matrícula requer um encarregado principal responsável pelo pagamento",
+            )
+        guardian = (await db.execute(
+            select(Guardian).where(
+                Guardian.id == primary_guardian_id,
+                Guardian.school_id == school_id,
+            )
+        )).scalar_one_or_none()
+        if guardian is None:
+            raise HTTPException(status_code=422, detail="Encarregado principal inválido")
+
+    # A Finreg school's matrícula is issued by Finreg. Refuse before writing
+    # anything when the catalogue cannot support a compliant invoice.
+    if charges_fee and finreg_active:
+        billing_item = (await db.execute(
+            select(BillingItem).where(
+                BillingItem.school_id == school_id,
+                BillingItem.code == "MATRICULA",
+                BillingItem.is_active.is_(True),
+            )
+        )).scalar_one_or_none()
+        if billing_item is None:
+            raise HTTPException(
+                status_code=422,
+                detail="O serviço de matrícula (MATRICULA) não está ativo no catálogo da escola",
+            )
+        if not billing_item.finreg_tax_option_code:
+            raise HTTPException(
+                status_code=422,
+                detail="O serviço de matrícula não tem tratamento fiscal Finreg configurado",
+            )
+        if billing_item.iva_rate == 0 and not billing_item.iva_exemption_reason:
+            raise HTTPException(
+                status_code=422,
+                detail="O serviço de matrícula não tem motivo de isenção de IVA configurado",
+            )
+        school_year = (await db.execute(
+            select(SchoolYear).where(
+                SchoolYear.id == body.school_year_id,
+                SchoolYear.school_id == school_id,
+            )
+        )).scalar_one_or_none()
+        if school_year is None:
+            raise HTTPException(status_code=422, detail="Ano letivo inválido")
+        child = (await db.execute(
+            select(Child).where(
+                Child.id == body.child_id,
+                Child.school_id == school_id,
+            )
+        )).scalar_one_or_none()
+        if child is None:
+            raise HTTPException(status_code=404, detail="Child not found")
+
+    # The server owns the payment path. The legacy client flag cannot enable
+    # the internal controller for a Finreg school or vice versa.
     enrollment_data = body.model_dump(exclude={'generate_invoice'})
     enrollment = Enrollment(school_id=school_id, **enrollment_data)
+    if charges_fee:
+        # A charged enrollment is only active once its fee is settled.
+        enrollment.status = "pending"
     db.add(enrollment)
     try:
         await db.flush()
@@ -678,63 +756,24 @@ async def create_enrollment(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Child already has an active enrollment for this school year")
 
-    # Fiscal emission and internal control are mutually exclusive.
-    if enrollment_fee and enrollment_fee > 0 and generate_invoice:
-        try:
-            from decimal import Decimal
-            from app.models.person import ChildGuardian, Guardian
-            from app.services.finance import DocumentEmissionService
-            from app.utils.agt import today_luanda
-
-            grd_r = await db.execute(
-                select(ChildGuardian.guardian_id).where(
-                    ChildGuardian.child_id == body.child_id,
-                    ChildGuardian.is_primary_contact == True,
-                )
-            )
-            guardian_id = grd_r.scalar_one_or_none()
-
-            customer_nif = "999999999"
-            customer_name = "Consumidor Final"
-            is_final_consumer = True
-
-            if guardian_id:
-                g_r = await db.execute(select(Guardian).where(Guardian.id == guardian_id))
-                guardian = g_r.scalar_one_or_none()
-                if guardian:
-                    customer_name = f"{guardian.first_name} {guardian.last_name}"
-                    if guardian.nif:
-                        customer_nif = guardian.nif
-                        is_final_consumer = False
-
-            invoice_date = enrollment.enrollment_date or today_luanda()
-            emission = DocumentEmissionService(db, school_id)
-            invoice = await emission.emit_invoice(
-                document_type="FT",
-                invoice_date=invoice_date,
-                billing_guardian_id=guardian_id,
-                customer_nif=customer_nif,
-                customer_name=customer_name,
-                is_final_consumer=is_final_consumer,
-                lines=[{
-                    "description": "Taxa de Matrícula",
-                    "unit_price": float(enrollment_fee),
-                    "quantity": 1,
-                    "iva_rate": 0,
-                }],
-                child_id=body.child_id,
-                school_year_id=body.school_year_id,
-                description="Taxa de Matrícula",
-            )
-            enrollment.fee_invoice_id = invoice.id
-        except Exception as exc:
-            await db.rollback()
-            raise HTTPException(
-                status_code=502,
-                detail="Não foi possível criar a cobrança fiscal da matrícula",
-            ) from exc
-    elif enrollment_fee and enrollment_fee > 0:
-        enrollment.status = "pending"
+    instruction = None
+    if charges_fee and finreg_active:
+        instruction = await enqueue_enrollment_fee_instruction(
+            db,
+            school_id=school_id,
+            enrollment_id=enrollment.id,
+            child_id=body.child_id,
+            child_name=f"{child.first_name} {child.last_name}",
+            school_year_id=body.school_year_id,
+            school_year_label=school_year.year_label,
+            enrollment_date=enrollment.enrollment_date,
+            guardian=guardian,
+            billing_item=billing_item,
+            unit_price=enrollment_fee,
+            actor_reference=str(user.id),
+        )
+        enrollment.fee_instruction_id = instruction.id
+    elif charges_fee:
         db.add(InternalPaymentControl(
             school_id=school_id,
             enrollment_id=enrollment.id,
@@ -748,7 +787,23 @@ async def create_enrollment(
 
     await db.commit()
     await db.refresh(enrollment)
-    return enrollment
+
+    # Dispatch inline for a fast, observable result; the outbox retries the
+    # same instruction identity if this call cannot reach Finreg.
+    if instruction is not None:
+        try:
+            await dispatch_instruction(db, instruction)
+        except FinregError as exc:
+            logger.warning(
+                "Enrollment fee instruction %s for enrollment %s left for the outbox: %s",
+                instruction.id, enrollment.id, exc.code,
+            )
+
+    response = EnrollmentResponse.model_validate(enrollment)
+    response.payment_control_mode = "finreg" if finreg_active else "internal"
+    if instruction is not None:
+        response.fee_instruction_status = instruction.status
+    return response
 
 
 @router.get("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
@@ -766,7 +821,12 @@ async def get_enrollment(
     enrollment = result.scalar_one_or_none()
     if enrollment is None:
         raise HTTPException(status_code=404, detail="Enrollment not found")
-    return enrollment
+    response = EnrollmentResponse.model_validate(enrollment)
+    response.fee_instruction_status = await _fee_instruction_status(db, enrollment)
+    response.payment_control_mode = (
+        "finreg" if await finreg_is_active(db, school_id) else "internal"
+    )
+    return response
 
 
 @router.patch("/enrollments/{enrollment_id}", response_model=EnrollmentResponse)
@@ -807,7 +867,12 @@ async def update_enrollment(
         setattr(enrollment, field, value)
     await db.commit()
     await db.refresh(enrollment)
-    return enrollment
+    response = EnrollmentResponse.model_validate(enrollment)
+    response.fee_instruction_status = await _fee_instruction_status(db, enrollment)
+    response.payment_control_mode = (
+        "finreg" if await finreg_is_active(db, school_id) else "internal"
+    )
+    return response
 
 
 @router.delete("/enrollments/{enrollment_id}")

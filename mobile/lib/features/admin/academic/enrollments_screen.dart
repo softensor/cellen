@@ -20,6 +20,8 @@ class Enrollment {
   final String status;
   final double? enrollmentFee;
   final String? feeInvoiceId;
+  final String? feeInstructionId;
+  final String? feeInstructionStatus;
   final String paymentControlMode;
   final String? internalPaymentId;
   final String? internalPaymentStatus;
@@ -34,6 +36,8 @@ class Enrollment {
     required this.status,
     this.enrollmentFee,
     this.feeInvoiceId,
+    this.feeInstructionId,
+    this.feeInstructionStatus,
     this.paymentControlMode = 'internal',
     this.internalPaymentId,
     this.internalPaymentStatus,
@@ -69,7 +73,10 @@ class Enrollment {
           ? double.tryParse(json['enrollment_fee'].toString())
           : null,
       feeInvoiceId: json['fee_invoice_id']?.toString(),
-      paymentControlMode: json['payment_control_mode']?.toString() ?? 'internal',
+      feeInstructionId: json['fee_instruction_id']?.toString(),
+      feeInstructionStatus: json['fee_instruction_status']?.toString(),
+      paymentControlMode:
+          json['payment_control_mode']?.toString() ?? 'internal',
       internalPaymentId: json['internal_payment_id']?.toString(),
       internalPaymentStatus: json['internal_payment_status']?.toString(),
     );
@@ -88,8 +95,10 @@ final enrollmentsProvider =
       .toList();
 });
 
-final paymentControlModeProvider = FutureProvider.autoDispose<String>((ref) async {
-  final data = await ref.read(apiClientProvider).get('/academic/payment-control-mode');
+final paymentControlModeProvider =
+    FutureProvider.autoDispose<String>((ref) async {
+  final data =
+      await ref.read(apiClientProvider).get('/academic/payment-control-mode');
   return (data as Map)['mode']?.toString() ?? 'internal';
 });
 
@@ -100,12 +109,10 @@ class EnrollmentsScreen extends ConsumerStatefulWidget {
   const EnrollmentsScreen({super.key});
 
   @override
-  ConsumerState<EnrollmentsScreen> createState() =>
-      _EnrollmentsScreenState();
+  ConsumerState<EnrollmentsScreen> createState() => _EnrollmentsScreenState();
 }
 
-class _EnrollmentsScreenState
-    extends ConsumerState<EnrollmentsScreen> {
+class _EnrollmentsScreenState extends ConsumerState<EnrollmentsScreen> {
   String? _schoolYearFilter;
 
   @override
@@ -123,19 +130,16 @@ class _EnrollmentsScreenState
         child: const Icon(Icons.add),
       ),
       body: enrollmentsAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline,
-                  size: 48, color: Colors.red),
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 8),
               Text(e.toString()),
               TextButton(
-                onPressed: () =>
-                    ref.invalidate(enrollmentsProvider),
+                onPressed: () => ref.invalidate(enrollmentsProvider),
                 child: const Text('Tentar novamente'),
               ),
             ],
@@ -143,15 +147,16 @@ class _EnrollmentsScreenState
         ),
         data: (enrollments) {
           // Build list of unique school years for filter
-          final schoolYears =
-              enrollments.map((e) => e.schoolYear).toSet().toList()
-                ..sort((a, b) => b.compareTo(a));
+          final schoolYears = enrollments
+              .map((e) => e.schoolYear)
+              .toSet()
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
 
           final filtered = _schoolYearFilter == null
               ? enrollments
               : enrollments
-                  .where(
-                      (e) => e.schoolYear == _schoolYearFilter)
+                  .where((e) => e.schoolYear == _schoolYearFilter)
                   .toList();
 
           if (enrollments.isEmpty) {
@@ -161,9 +166,7 @@ class _EnrollmentsScreenState
                 children: [
                   Icon(Icons.how_to_reg,
                       size: 64,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant),
+                      color: Theme.of(context).colorScheme.outlineVariant),
                   const SizedBox(height: 16),
                   Text('Nenhuma matrícula encontrada',
                       style: Theme.of(context).textTheme.bodyLarge),
@@ -177,8 +180,7 @@ class _EnrollmentsScreenState
               // School year filter
               if (schoolYears.isNotEmpty)
                 Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -186,22 +188,19 @@ class _EnrollmentsScreenState
                         FilterChip(
                           label: const Text('Todos'),
                           selected: _schoolYearFilter == null,
-                          onSelected: (_) => setState(
-                              () => _schoolYearFilter = null),
+                          onSelected: (_) =>
+                              setState(() => _schoolYearFilter = null),
                           showCheckmark: false,
                         ),
                         const SizedBox(width: 8),
                         ...schoolYears.map(
                           (year) => Padding(
-                            padding:
-                                const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.only(right: 8),
                             child: FilterChip(
                               label: Text(year),
-                              selected:
-                                  _schoolYearFilter == year,
-                              onSelected: (_) => setState(
-                                  () =>
-                                      _schoolYearFilter = year),
+                              selected: _schoolYearFilter == year,
+                              onSelected: (_) =>
+                                  setState(() => _schoolYearFilter = year),
                               showCheckmark: false,
                             ),
                           ),
@@ -214,8 +213,7 @@ class _EnrollmentsScreenState
               // Table
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: () async =>
-                      ref.invalidate(enrollmentsProvider),
+                  onRefresh: () async => ref.invalidate(enrollmentsProvider),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
@@ -236,13 +234,14 @@ class _EnrollmentsScreenState
                           DataCell(e.hasFee
                               ? _FeeCell(
                                   fee: e.enrollmentFee!,
-                                  hasInvoice: e.feeInvoiceId != null,
+                                  hasInvoice: e.feeInvoiceId != null ||
+                                      e.feeInstructionId != null,
                                 )
-                              : const Text('—', style: TextStyle(color: Colors.grey))),
+                              : const Text('—',
+                                  style: TextStyle(color: Colors.grey))),
                           DataCell(_PaymentStatusCell(enrollment: e)),
                           DataCell(_StatusChip(
-                              status: e.status,
-                              label: e.statusLabel)),
+                              status: e.status, label: e.statusLabel)),
                         ]);
                       }).toList(),
                     ),
@@ -357,9 +356,7 @@ class _CreateEnrollmentSheetState
       final data = await api.get('/children') as List;
       if (mounted) {
         setState(() {
-          _children = data
-              .map((e) => e as Map<String, dynamic>)
-              .toList();
+          _children = data.map((e) => e as Map<String, dynamic>).toList();
           _loadingChildren = false;
         });
       }
@@ -370,13 +367,10 @@ class _CreateEnrollmentSheetState
 
   Future<void> _loadSchedules(dynamic api) async {
     try {
-      final data =
-          await api.get('/academic/schedules') as List;
+      final data = await api.get('/academic/schedules') as List;
       if (mounted) {
         setState(() {
-          _schedules = data
-              .map((e) => e as Map<String, dynamic>)
-              .toList();
+          _schedules = data.map((e) => e as Map<String, dynamic>).toList();
           _loadingSchedules = false;
         });
       }
@@ -387,13 +381,10 @@ class _CreateEnrollmentSheetState
 
   Future<void> _loadSchoolYears(dynamic api) async {
     try {
-      final data =
-          await api.get('/schools/school-years') as List;
+      final data = await api.get('/schools/school-years') as List;
       if (mounted) {
         setState(() {
-          _schoolYears = data
-              .map((e) => e as Map<String, dynamic>)
-              .toList();
+          _schoolYears = data.map((e) => e as Map<String, dynamic>).toList();
           _loadingYears = false;
         });
       }
@@ -454,7 +445,9 @@ class _CreateEnrollmentSheetState
           '${_enrollmentDate.year.toString().padLeft(4, '0')}-${_enrollmentDate.month.toString().padLeft(2, '0')}-${_enrollmentDate.day.toString().padLeft(2, '0')}';
 
       final feeText = _feeCtrl.text.trim();
-      final fee = feeText.isNotEmpty ? double.tryParse(feeText.replaceAll(',', '.')) : null;
+      final fee = feeText.isNotEmpty
+          ? double.tryParse(feeText.replaceAll(',', '.'))
+          : null;
       final paymentMode = await ref.read(paymentControlModeProvider.future);
 
       await api.post('/academic/enrollments', data: {
@@ -482,7 +475,8 @@ class _CreateEnrollmentSheetState
         _loadingChildren || _loadingSchedules || _loadingYears;
     final terms = SchoolTerms.of(ref.watch(schoolInfoProvider).valueOrNull);
     final displayFmt = DateFormat('dd/MM/yyyy');
-    final paymentMode = ref.watch(paymentControlModeProvider).valueOrNull ?? 'internal';
+    final paymentMode =
+        ref.watch(paymentControlModeProvider).valueOrNull ?? 'internal';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -493,8 +487,7 @@ class _CreateEnrollmentSheetState
       ),
       child: isLoadingData
           ? const SizedBox(
-              height: 120,
-              child: Center(child: CircularProgressIndicator()))
+              height: 120, child: Center(child: CircularProgressIndicator()))
           : Form(
               key: _formKey,
               child: SingleChildScrollView(
@@ -507,8 +500,7 @@ class _CreateEnrollmentSheetState
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
-                          ?.copyWith(
-                              fontWeight: FontWeight.bold),
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 16),
 
@@ -530,22 +522,22 @@ class _CreateEnrollmentSheetState
                         labelText: '${terms.student} *',
                         prefixIcon: Icon(terms.studentIcon),
                       ),
-                      items: _children
-                          .map((c) {
-                                final fullName = (c['full_name'] as String?) ??
-                                    (c['name'] as String?);
-                                final composed = fullName ??
-                                    [c['first_name']?.toString(), c['last_name']?.toString()]
-                                        .where((s) => s != null && s.isNotEmpty)
-                                        .join(' ');
-                                return DropdownMenuItem(
-                                  value: c['id']?.toString() ?? '',
-                                  child: Text(composed.isNotEmpty ? composed : c['id']?.toString() ?? ''),
-                                );
-                              })
-                          .toList(),
-                      onChanged: (v) =>
-                          setState(() => _selectedChildId = v),
+                      items: _children.map((c) {
+                        final fullName = (c['full_name'] as String?) ??
+                            (c['name'] as String?);
+                        final composed = fullName ??
+                            [
+                              c['first_name']?.toString(),
+                              c['last_name']?.toString()
+                            ].where((s) => s != null && s.isNotEmpty).join(' ');
+                        return DropdownMenuItem(
+                          value: c['id']?.toString() ?? '',
+                          child: Text(composed.isNotEmpty
+                              ? composed
+                              : c['id']?.toString() ?? ''),
+                        );
+                      }).toList(),
+                      onChanged: (v) => setState(() => _selectedChildId = v),
                       validator: (v) => v == null
                           ? 'Seleccione um ${terms.student.toLowerCase()}'
                           : null,
@@ -561,10 +553,8 @@ class _CreateEnrollmentSheetState
                       ),
                       items: _schedules
                           .map((s) => DropdownMenuItem(
-                                value:
-                                    s['id']?.toString() ?? '',
-                                child: Text(
-                                    _scheduleLabel(s)),
+                                value: s['id']?.toString() ?? '',
+                                child: Text(_scheduleLabel(s)),
                               ))
                           .toList(),
                       onChanged: (v) {
@@ -573,25 +563,18 @@ class _CreateEnrollmentSheetState
                           // Auto-populate school year if
                           // schedule carries school_year_id
                           if (v != null) {
-                            final sch = _schedules
-                                .firstWhere(
-                                    (s) =>
-                                        s['id']?.toString() ==
-                                        v,
-                                    orElse: () => {});
-                            final syId = sch[
-                                    'school_year_id']
-                                ?.toString();
-                            if (syId != null &&
-                                syId.isNotEmpty) {
+                            final sch = _schedules.firstWhere(
+                                (s) => s['id']?.toString() == v,
+                                orElse: () => {});
+                            final syId = sch['school_year_id']?.toString();
+                            if (syId != null && syId.isNotEmpty) {
                               _selectedSchoolYearId = syId;
                             }
                           }
                         });
                       },
-                      validator: (v) => v == null
-                          ? 'Seleccione um horário'
-                          : null,
+                      validator: (v) =>
+                          v == null ? 'Seleccione um horário' : null,
                     ),
                     const SizedBox(height: 12),
 
@@ -604,19 +587,14 @@ class _CreateEnrollmentSheetState
                       ),
                       items: _schoolYears
                           .map((y) => DropdownMenuItem(
-                                value:
-                                    y['id']?.toString() ?? '',
-                                child: Text(
-                                    y['year_label']
-                                            as String? ??
-                                        ''),
+                                value: y['id']?.toString() ?? '',
+                                child: Text(y['year_label'] as String? ?? ''),
                               ))
                           .toList(),
-                      onChanged: (v) => setState(
-                          () => _selectedSchoolYearId = v),
-                      validator: (v) => v == null
-                          ? 'Seleccione um ano lectivo'
-                          : null,
+                      onChanged: (v) =>
+                          setState(() => _selectedSchoolYearId = v),
+                      validator: (v) =>
+                          v == null ? 'Seleccione um ano lectivo' : null,
                     ),
                     const SizedBox(height: 12),
 
@@ -625,8 +603,7 @@ class _CreateEnrollmentSheetState
                       value: _status,
                       decoration: const InputDecoration(
                         labelText: 'Estado *',
-                        prefixIcon:
-                            Icon(Icons.flag_outlined),
+                        prefixIcon: Icon(Icons.flag_outlined),
                       ),
                       items: _statusOptions.entries
                           .map((e) => DropdownMenuItem(
@@ -634,8 +611,7 @@ class _CreateEnrollmentSheetState
                                 child: Text(e.value),
                               ))
                           .toList(),
-                      onChanged: (v) =>
-                          setState(() => _status = v!),
+                      onChanged: (v) => setState(() => _status = v!),
                     ),
                     const SizedBox(height: 12),
 
@@ -645,11 +621,9 @@ class _CreateEnrollmentSheetState
                       child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'Data de Matrícula',
-                          prefixIcon:
-                              Icon(Icons.calendar_today),
+                          prefixIcon: Icon(Icons.calendar_today),
                         ),
-                        child: Text(
-                            displayFmt.format(_enrollmentDate)),
+                        child: Text(displayFmt.format(_enrollmentDate)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -663,12 +637,15 @@ class _CreateEnrollmentSheetState
                         prefixIcon: Icon(Icons.payments_outlined),
                         suffixText: 'Kz',
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (_) => setState(() {}),
                       validator: (v) {
                         if (v != null && v.trim().isNotEmpty) {
-                          final parsed = double.tryParse(v.trim().replaceAll(',', '.'));
-                          if (parsed == null || parsed < 0) return 'Valor inválido';
+                          final parsed =
+                              double.tryParse(v.trim().replaceAll(',', '.'));
+                          if (parsed == null || parsed < 0)
+                            return 'Valor inválido';
                         }
                         return null;
                       },
@@ -678,14 +655,16 @@ class _CreateEnrollmentSheetState
                         padding: const EdgeInsets.only(top: 6),
                         child: Row(
                           children: [
-                            const Icon(Icons.info_outline, size: 14, color: Colors.blue),
+                            const Icon(Icons.info_outline,
+                                size: 14, color: Colors.blue),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 paymentMode == 'finreg'
                                     ? 'A cobrança será tratada pelo Finreg. A matrícula ficará pendente até ao pagamento.'
                                     : 'Será criado um controlo interno sem factura nem recibo fiscal. A matrícula será activada após confirmação do comprovativo.',
-                                style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.blue.shade700),
                               ),
                             ),
                           ],
@@ -697,9 +676,7 @@ class _CreateEnrollmentSheetState
                       Text(
                         _error!,
                         style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .error),
+                            color: Theme.of(context).colorScheme.error),
                       ),
                     ],
 
@@ -711,8 +688,7 @@ class _CreateEnrollmentSheetState
                               height: 20,
                               width: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white))
+                                  strokeWidth: 2, color: Colors.white))
                           : const Text('Criar Matrícula'),
                     ),
                   ],
@@ -771,7 +747,39 @@ class _PaymentStatusCell extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!enrollment.hasFee) return const Text('Não aplicável');
     if (enrollment.paymentControlMode == 'finreg') {
-      return const Chip(label: Text('Finreg'), visualDensity: VisualDensity.compact);
+      final status = enrollment.feeInstructionStatus;
+      if (status == null) {
+        return const Chip(
+            label: Text('Finreg'), visualDensity: VisualDensity.compact);
+      }
+      final paid = status == 'confirmed' && enrollment.status == 'active';
+      final label = paid
+          ? 'Pago'
+          : switch (status) {
+              'confirmed' => 'Aguarda pagamento',
+              'processing' => 'A emitir',
+              'unknown' => 'Em confirmação',
+              'rejected' => 'Rejeitado',
+              _ => 'Em emissão',
+            };
+      final color = paid
+          ? Colors.green
+          : switch (status) {
+              'rejected' => Colors.red,
+              'processing' || 'unknown' => Colors.blue,
+              _ => Colors.orange,
+            };
+      return Tooltip(
+        message:
+            'Factura emitida no Finreg; o pagamento é confirmado no Finreg',
+        child: Chip(
+          label: Text(label),
+          visualDensity: VisualDensity.compact,
+          side: BorderSide.none,
+          backgroundColor: color.withOpacity(.12),
+          labelStyle: TextStyle(color: color),
+        ),
+      );
     }
     final status = enrollment.internalPaymentStatus ?? 'pending';
     final label = switch (status) {
@@ -821,18 +829,15 @@ class _StatusChip extends StatelessWidget {
         color = Colors.orange;
     }
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         label,
-        style: TextStyle(
-            color: color,
-            fontSize: 11,
-            fontWeight: FontWeight.w600),
+        style:
+            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }

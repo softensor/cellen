@@ -81,6 +81,70 @@ async def enqueue_contract_instruction(
     return instruction
 
 
+ENROLLMENT_FEE_COMMAND = "enrollment_fee"
+
+
+async def enqueue_enrollment_fee_instruction(
+    db: AsyncSession, *, school_id, enrollment_id, child_id, child_name,
+    school_year_id, school_year_label, enrollment_date, guardian, billing_item,
+    unit_price, actor_reference: str,
+) -> FinregBillingInstruction:
+    """Stage the FinReg invoice for an enrollment fee.
+
+    Adds and flushes the instruction without committing so the caller can
+    commit it in the same transaction as the enrollment. Dispatching is the
+    caller's job (inline, then the outbox retries the same identity).
+    """
+    key = f"cellen-enrollment-fee-{enrollment_id}"
+    existing = (await db.execute(select(FinregBillingInstruction).where(
+        FinregBillingInstruction.school_id == school_id,
+        FinregBillingInstruction.idempotency_key == key,
+    ))).scalar_one_or_none()
+    if existing:
+        return existing
+    instruction = FinregBillingInstruction(
+        school_id=school_id,
+        idempotency_key=key,
+        command_type=ENROLLMENT_FEE_COMMAND,
+        payload={},
+    )
+    db.add(instruction)
+    await db.flush()
+    period = enrollment_date.strftime("%Y-%m")
+    instruction.payload = {
+        "actor_reference": actor_reference,
+        "guardian": {"external_id": str(guardian.id), "data": {
+            "tax_id": guardian.nif, "name": f"{guardian.first_name} {guardian.last_name}",
+            "email": guardian.email, "phone": guardian.mobile_first,
+            "address": guardian.street, "city": guardian.city, "country": "AO", "is_company": False,
+        }},
+        "products": [{"external_id": str(billing_item.id), "data": {
+            "sku": billing_item.code, "name": billing_item.name,
+            "description": billing_item.description, "unit_price": str(unit_price),
+            "tax_rate": str(billing_item.iva_rate),
+            "tax_option_code": billing_item.finreg_tax_option_code,
+            "tax_exemption_reason": billing_item.iva_exemption_reason, "is_service": True,
+        }}],
+        "draft": {"document": {
+            "client_request_id": str(instruction.id), "document_type": "invoice",
+            "document_date": enrollment_date.isoformat(), "due_date": None,
+            "lines": [{
+                "product_external_id": str(billing_item.id), "description": billing_item.name,
+                "quantity": "1", "unit_price": str(unit_price), "discount_pct": "0",
+                "tax_rate": str(billing_item.iva_rate),
+                "tax_option_code": billing_item.finreg_tax_option_code,
+                "tax_exemption_reason": billing_item.iva_exemption_reason,
+            }],
+        }, "context": school_context(
+            instruction_id=instruction.id, school_id=school_id, pupil_id=child_id,
+            pupil_name=child_name, enrolment_id=enrollment_id,
+            academic_year_id=school_year_id, academic_year_label=school_year_label,
+            billing_period=period,
+        )},
+    }
+    return instruction
+
+
 async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstruction, *, adapter=None):
     if not settings.FINREG_INTEGRATION_ENABLED:
         raise FinregError("integration_disabled", "Finreg integration is globally disabled")
@@ -155,3 +219,58 @@ async def dispatch_pending(db: AsyncSession, limit: int = 50) -> tuple[int, int]
         except FinregError:
             failed += 1
     return confirmed, failed
+
+
+async def reconcile_enrollment_fee_settlements(
+    db: AsyncSession, *, adapter=None, limit: int = 50,
+) -> int:
+    """Activate pending enrollments whose FinReg fee invoice is settled.
+
+    School payments are recorded in standalone FinReg, which emits no
+    integration event for its own UI, so settlement is read through the
+    integration API on each dispatcher tick. A partially settled invoice
+    keeps the enrollment pending; the next payment completes it.
+    """
+    from app.models.academic import Enrollment
+
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        return 0
+    rows = (await db.execute(
+        select(Enrollment, FinregBillingInstruction)
+        .join(
+            FinregBillingInstruction,
+            FinregBillingInstruction.id == Enrollment.fee_instruction_id,
+        )
+        .where(
+            Enrollment.status == "pending",
+            FinregBillingInstruction.status == "confirmed",
+            FinregBillingInstruction.finreg_document_id.is_not(None),
+        )
+        .order_by(Enrollment.created_at)
+        .with_for_update(skip_locked=True, of=Enrollment)
+        .limit(limit)
+    )).all()
+    if not rows:
+        return 0
+    adapter = adapter or HttpFinregAdapter()
+    activated = 0
+    for enrollment, instruction in rows:
+        connection = (await db.execute(select(FinregSchoolConnection).where(
+            FinregSchoolConnection.school_id == enrollment.school_id
+        ))).scalar_one_or_none()
+        if (connection is None or connection.kill_switch
+                or connection.mode not in {"pilot", "live"}):
+            continue
+        try:
+            settlement = await adapter.request(
+                "GET", f"documents/{instruction.id}/settlement", None,
+                actor_reference=f"cellen-enrollment-fee:{enrollment.school_id}",
+            )
+        except FinregError:
+            continue
+        if settlement.get("settled"):
+            enrollment.status = "active"
+            activated += 1
+    if activated:
+        await db.commit()
+    return activated
