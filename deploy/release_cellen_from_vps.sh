@@ -115,6 +115,39 @@ echo "==> Installing pinned Python dependencies"
   --prefer-binary \
   --requirement "$CELLEN_DIR/requirements.txt"
 
+echo "==> Installing the pinned connector kit"
+KIT_PIN=$(cat "$CELLEN_DIR/.github/finreg-kit-ref" 2>/dev/null || true)
+[[ $KIT_PIN =~ ^[0-9a-f]{40}$ ]] || {
+  echo "Missing a valid revision in .github/finreg-kit-ref." >&2
+  exit 2
+}
+KIT_REPO=${CELLEN_FINREG_KIT_DIR:-/var/www/finreg-kit}
+[[ -d $KIT_REPO/.git ]] || {
+  echo "finreg-kit checkout not found at $KIT_REPO." >&2
+  echo "Clone softensor/finreg-kit there once as $DEPLOY_USER:" >&2
+  echo "  runuser -u $DEPLOY_USER -- git clone https://github.com/softensor/finreg-kit.git $KIT_REPO" >&2
+  exit 2
+}
+runuser -u "$DEPLOY_USER" -- git -C "$KIT_REPO" fetch --quiet origin
+runuser -u "$DEPLOY_USER" -- \
+  git -C "$KIT_REPO" cat-file -e "$KIT_PIN^{commit}" || {
+  echo "finreg-kit revision $KIT_PIN is not present in $KIT_REPO." >&2
+  exit 2
+}
+KIT_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/cellen-finreg-kit-$DEPLOYED_SHA.XXXXXX")
+runuser -u "$DEPLOY_USER" -- \
+  git -C "$KIT_REPO" archive "$KIT_PIN" | tar -x -C "$KIT_STAGE"
+[[ -f $KIT_STAGE/src/finreg_kit/__init__.py ]] || {
+  echo "The pinned finreg-kit does not contain src/finreg_kit." >&2
+  exit 2
+}
+"$CELLEN_DIR/.venv/bin/pip" install \
+  --disable-pip-version-check \
+  --no-deps \
+  --force-reinstall \
+  "$KIT_STAGE"
+rm -rf "$KIT_STAGE"
+
 echo "==> Applying database migrations"
 set -a
 # shellcheck disable=SC1091

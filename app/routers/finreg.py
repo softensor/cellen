@@ -1,7 +1,6 @@
 import hashlib
 import json
 import uuid
-from urllib.parse import urlencode
 from datetime import date
 from decimal import Decimal
 
@@ -415,15 +414,12 @@ async def workspace_launch(
             or getattr(user, "email", None)
             or str(user.id)
         )
-        launch = await HttpFinregAdapter().request(
-            "POST",
-            "workspace-launches",
-            {
-                "capability_id": capability_id,
-                "external_user_id": str(user.id),
-                "display_name": display_name,
-                "roles": roles,
-            },
+        return await HttpFinregAdapter().workspace_launch(
+            capability_id=capability_id,
+            external_user_id=str(user.id),
+            display_name=display_name,
+            roles=roles,
+            web_base_url=settings.FINREG_WEB_URL or settings.finreg_origin,
             actor_reference=str(user.id),
         )
     except FinregError as exc:
@@ -431,73 +427,6 @@ async def workspace_launch(
             status_code=503 if exc.retryable else 403,
             detail={"code": exc.code, "message": exc.detail},
         ) from exc
-    web_url = settings.FINREG_WEB_URL or settings.FINREG_BASE_URL.removesuffix("/api/v1")
-    return {
-        "url": f"{web_url.rstrip('/')}/delegated#{urlencode({'code': launch['code']})}",
-        "target_path": launch["target_path"],
-        "expires_in": launch["expires_in"],
-    }
-
-
-@router.post("/embedded-session/{capability_id}")
-async def embedded_session(
-    capability_id: str,
-    response: Response,
-    user=Depends(require_finance_access),
-    school_id=Depends(get_school_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a user-bound Finreg session for the in-app module widgets."""
-    connection = (await db.execute(select(FinregSchoolConnection).where(
-        FinregSchoolConnection.school_id == school_id
-    ))).scalar_one_or_none()
-    if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
-        raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
-    school = await _school(db, school_id)
-    manifest = await HttpFinregAdapter().capabilities(str(user.id))
-    workspace_ids = {
-        str(item["capability_id"])
-        for item in manifest.get("workspaces") or []
-    }
-    if capability_id not in _allowed_local_capabilities(
-        school, user, workspace_ids
-    ):
-        raise HTTPException(status_code=403, detail="Module is not granted to this school role")
-    roles = list(
-        getattr(user, "_roles_list", None)
-        or getattr(user, "roles", None)
-        or []
-    )
-    display_name = (
-        getattr(user, "username", None)
-        or getattr(user, "email", None)
-        or str(user.id)
-    )
-    adapter = HttpFinregAdapter()
-    try:
-        launch = await adapter.request(
-            "POST",
-            "workspace-launches",
-            {
-                "capability_id": capability_id,
-                "external_user_id": str(user.id),
-                "display_name": display_name,
-                "roles": roles,
-            },
-            actor_reference=str(user.id),
-        )
-        session = await adapter.exchange_delegated(launch["code"])
-    except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 403,
-            detail={"code": exc.code, "message": exc.detail},
-        ) from exc
-    web_url = settings.FINREG_WEB_URL or settings.FINREG_BASE_URL.removesuffix("/api/v1")
-    response.headers["Cache-Control"] = "no-store"
-    return {
-        "api_base_url": f"{web_url.rstrip('/')}/api/v1",
-        **session,
-    }
 
 
 @router.get("/local-access-policy")

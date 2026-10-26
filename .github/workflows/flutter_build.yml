@@ -5,12 +5,10 @@ on:
     branches: [main, master, finance-improve]
     paths:
       - 'mobile/**'
-      - '.github/finreg-packages-ref'
   pull_request:
     branches: [main, master]
     paths:
       - 'mobile/**'
-      - '.github/finreg-packages-ref'
   workflow_dispatch:
 
 # Required for GitHub Pages deployment
@@ -34,21 +32,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Read pinned Finreg revision
-        id: finreg-ref
-        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: ${{ steps.finreg-ref.outputs.ref }}
-          token: ${{ secrets.FINREG_READ_TOKEN }}
-          path: finreg-source
-
-      - name: Expose Finreg sibling packages
-        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
 
       - uses: actions/setup-java@v4
         with:
@@ -105,21 +88,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read pinned Finreg revision
-        id: finreg-ref
-        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: ${{ steps.finreg-ref.outputs.ref }}
-          token: ${{ secrets.FINREG_READ_TOKEN }}
-          path: finreg-source
-
-      - name: Expose Finreg sibling packages
-        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.6'
@@ -154,21 +122,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Read pinned Finreg revision
-        id: finreg-ref
-        run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out pinned Finreg packages
-        uses: actions/checkout@v4
-        with:
-          repository: softensor/finreg
-          ref: ${{ steps.finreg-ref.outputs.ref }}
-          token: ${{ secrets.FINREG_READ_TOKEN }}
-          path: finreg-source
-
-      - name: Expose Finreg sibling packages
-        run: ln -s "$GITHUB_WORKSPACE/finreg-source" "$GITHUB_WORKSPACE/../finreg"
 
       - uses: subosito/flutter-action@v2
         with:

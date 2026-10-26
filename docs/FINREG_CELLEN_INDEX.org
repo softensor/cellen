@@ -1,22 +1,33 @@
 #+TITLE: Cellen–Finreg Sales and Billing Integration
-#+DATE: 2026-08-06
+#+DATE: 2026-10-26
 #+STARTUP: overview
 #+OPTIONS: toc:nil num:nil
 
 * Status
 
-- Cellen branch: =integration/finreg-school-billing=
-- Finreg branch: =integration/cellen-school-vertical=
-- Finreg checkout: =/workspace/finreg=
-- Phase: verified first-pass architecture and contract discovery
+- Cellen branch: =integration/finreg-kit-launcher= (supersedes the VPS checkout)
+- Finreg: no branch, no code change, no deploy — production stays at =4977a0b=
+- Connector kit: =softensor/finreg-kit= at =.github/finreg-kit-ref=
+  (=856a909858c1104ce6996eb30d3794bdf92485cd=)
+- Phase: kit adoption + delegated-launch de-embed implemented; pilot stays
+  =shadow= (non-fiscal); promotion ladder untouched
 
 * Decision
 
 Finreg remains an independent product, deployment, backend, database, and the
-sole fiscal system intended for AGT certification. Cellen retains its school
-domain and embeds an adapted Finreg sales/billing user interface. Cellen calls
-Finreg through a secure integration boundary; it does not copy Finreg backend
-logic or maintain a second fiscal ledger.
+sole fiscal system intended for AGT certification. Cellen keeps the school
+domain and never embeds Finreg packages:
+
+- the backend calls the Finreg integration API through =finreg-kit=;
+- the admin opens standalone Finreg through a single-use delegated launch
+  ("Abrir no FinReg"), landing on the workspace home;
+- guardians stay in native Cellen screens fed by the =/finreg/parent/*= proxy;
+- cash sessions are Cellen-native (=CashSessionsScreen=); the Finreg school
+  profile disables them by design.
+
+Schools are fiscal issuers: billing, receivables, payments and recurring
+billing stay operational, and the invoice → AGT =valid= → payment → receipt
+path remains the acceptance nucleus.
 
 * Documents
 
@@ -49,7 +60,6 @@ is merged.
 
 * Immediate gate
 
-Review =/workspace/finreg/docs/CELLEN_SCHOOL_VERTICAL_SPEC.org=. Confirm
-integration authentication, external mappings, school document context,
-uniform payment/receipt idempotency, and the single-backend safe-test policy
-before implementing fiscal writes.
+The cutover window is =deploy_finreg_school_finance.sh --cellen-only=: staged
+kit, scope grant, Cellen migration and a =cellen-api= restart only. Finreg is
+verified healthy before and after and is never restarted.

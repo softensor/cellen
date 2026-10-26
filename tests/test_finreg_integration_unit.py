@@ -19,16 +19,18 @@ from app.services.finreg_events import synchronize_connection
 from app.routers.finreg import _allowed_local_capabilities, _linked_guardian_child
 
 
-def test_primary_finance_route_uses_finreg_module_without_legacy_fallback():
+def test_primary_finance_route_opens_finreg_without_an_embedded_copy():
     root = Path(__file__).resolve().parents[1]
     router = (root / "mobile/lib/core/router/router.dart").read_text()
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
 
     assert "path: '/admin/finance'" in router
     assert "const FinregSalesHostScreen()" in router
-    assert "FinregEmbeddedModuleHost(" in host
+    assert "FinregEmbeddedModuleHost(" not in host
+    assert "package:finreg_app" not in host
+    assert "package:finreg_client_sdk" not in host
     assert "FinregSchoolBillingModule(" not in host
-    assert "capabilityOverrides: const {}" in host
+    assert "finregUrlLauncher(" in host
     assert "return const InvoicesScreen()" not in host
 
 
@@ -41,10 +43,11 @@ def test_school_extensions_and_parent_finreg_payments_are_wired():
     root = Path(__file__).resolve().parents[1]
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
-    assert "FinregEmbeddedModuleHost(" in host
-    assert "finregEmbeddedModules.containsKey" in host
+    assert "FinregEmbeddedModuleHost(" not in host
+    assert "finregEmbeddedModules" not in host
     assert "onOpenWorkspace: _openWorkspace" not in host
-    assert "package:url_launcher/url_launcher.dart" not in host
+    assert "package:url_launcher/url_launcher.dart" in host
+    assert "/finreg/workspace-launch/$capabilityId" in host
     assert "_SchoolBillingOperations" in host
     assert "'/admin/finance/payment-proofs'" in host
     assert "FinregAccountingOverviewScreen" not in host
@@ -102,7 +105,7 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     assert '@router.put("/local-access-policy")' in router
     assert router.count("user=Depends(require_school_admin)") >= 2
     assert "Local policy cannot grant a capability outside Finreg composition" in router
-    assert router.count("Module is not granted to this school role") == 2
+    assert router.count("Module is not granted to this school role") == 1
     assert "authority\": \"local_access_only" in router
     assert "Acessos e funções" in host
     assert "Não podem ativar módulos" in host
@@ -129,35 +132,39 @@ def test_finance_policy_is_enforced_by_navigation_and_backend():
     assert "final hasFinanceAccess" in navigation
 
 
-def test_host_parses_every_authoritative_workspace_without_capability_ids():
+def test_host_consumes_the_manifest_and_launches_without_sdk_types():
+    models = Path("mobile/lib/core/models/finreg_models.dart").read_text()
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert "value['workspaces']" in host
-    assert "workspace['capability_id']" in host
-    assert "workspace['route']" in host
-    assert "/finreg/embedded-session/$capabilityId" in host
-    assert "finregEmbeddedModules[workspace.capabilityId]" in host
+    assert "value['workspaces']" in models
+    assert "value['capability_id']" in models
+    assert "value['route']" in models
+    assert "value['agt_channel']" in models
+    assert "/finreg/workspace-launch/$capabilityId" in host
+    assert "FinregWorkspaceLaunch.fromJson" in host
+    assert "finreg_client_sdk" not in host
+    assert "finreg_client_sdk" not in models
 
 
-def test_each_capability_has_one_menu_entry_and_uses_current_finreg_ui():
+def test_each_capability_has_one_launcher_tab_and_mints_at_the_tap():
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
     assert "length: widget.workspaces.length" in host
-    assert "widget.workspaces[_selected]" in host
-    assert "capabilityOverrides: const {}" in host
+    assert "widget.workspaces[index]" in host
     assert "FinregSchoolBillingModule(" not in host
     assert "const Tab(icon: Icon(Icons.school_outlined)" not in host
-    assert "widget.capabilityOverrides[workspace.capabilityId]" in host
-    assert "widget.sessionForCapability(capabilityId)" in host
-    assert "_sessions.putIfAbsent" in host
-    assert "final Set<String> _visitedCapabilityIds" in host
-    assert "child: IndexedStack(" in host
-    assert "initialRoute:" in host
-    assert "key: ValueKey(" in host
-    assert "onSessionExpired:" in host
-    assert "_sessions.remove(capabilityId)" in host
+    assert "TabController(" in host
+    assert "IndexedStack" not in host
+    assert "initialRoute:" not in host
+    assert "onSessionExpired:" not in host
+    assert "finregUrlLauncher(" in host
+    assert "LaunchMode.externalApplication" in host
+    assert "webOnlyWindowName: '_blank'" in host
+    assert "if (_opening != null) return;" in host
+    assert "_opening = workspace.capabilityId" in host
+    assert "'Abrir no FinReg'" in host
 
 
 def test_school_billing_resolves_and_validates_payer_learner_relationships():
@@ -171,7 +178,8 @@ def test_school_billing_resolves_and_validates_payer_learner_relationships():
     assert "ChildGuardian.guardian_id == Guardian.id" in router
     assert "The learner is not associated with the selected payer" in router
     assert router.count("await _linked_guardian_child(") == 2
-    assert "FinregEmbeddedModuleHost(" in host
+    assert "FinregEmbeddedModuleHost(" not in host
+    assert "finregUrlLauncher(" in host
     assert "_CellenFinregAdapter" not in host
 
 
@@ -181,8 +189,9 @@ def test_vertical_host_does_not_reimplement_finreg_sales_state():
     ).read_text()
     assert "_CellenFinregAdapter" not in host
     assert "FinregSalesRepository" not in host
-    assert "FinregEmbeddedModuleHost(" in host
-    assert "session: snapshot.data!" in host
+    assert "FinregEmbeddedModuleHost(" not in host
+    assert "launchForCapability" in host
+    assert "_createWorkspaceLaunch" in host
 
 
 @pytest.mark.asyncio
@@ -221,29 +230,31 @@ def test_school_profile_requirements_have_an_authoritative_workspace():
 
 def test_workspace_launch_is_user_bound_and_never_exposes_client_credentials():
     router = Path("app/routers/finreg.py").read_text()
+    service = Path("app/services/finreg.py").read_text()
     assert '@router.post("/workspace-launch/{capability_id}")' in router
     assert 'getattr(user, "_roles_list", None)' in router
-    assert "/delegated#{urlencode" in router
-    assert '"external_user_id": str(user.id)' in router
-    assert '"roles": roles' in router
+    assert "await HttpFinregAdapter().workspace_launch(" in router
+    assert "external_user_id=str(user.id)" in router
+    assert "roles=roles" in router
     assert "FINREG_CLIENT_SECRET" not in router
-    assert "urlencode({'code': launch['code']})" in router
+    assert "/delegated#" not in router
+    assert "launch_workspace(" in service
 
 
-def test_embedded_session_reuses_delegated_security_without_external_navigation():
+def test_embedded_session_is_retired_and_launch_never_exposes_credentials():
     router = Path("app/routers/finreg.py").read_text()
     service = Path("app/services/finreg.py").read_text()
     host = Path(
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
-    assert '@router.post("/embedded-session/{capability_id}")' in router
-    assert 'response.headers["Cache-Control"] = "no-store"' in router
-    assert "exchange_delegated(launch[\"code\"])" in router
-    assert 'f"{settings.FINREG_BASE_URL}/auth/delegated/exchange"' in service
-    assert 'f"{settings.FINREG_BASE_URL}/auth/me"' in service
+    assert '@router.post("/embedded-session/{capability_id}")' not in router
+    assert "exchange_delegated" not in service
+    assert 'f"{settings.FINREG_BASE_URL}/auth/delegated/exchange"' not in service
+    assert 'f"{settings.FINREG_BASE_URL}/auth/me"' not in service
     assert "FINREG_CLIENT_SECRET" not in host
-    assert "launchUrl(" not in host
-    assert "localeTag: localeTag" in host
+    assert "finreg_client_sdk" not in host
+    assert "finregUrlLauncher(" in host
+    assert "localeTag: localeTag" not in host
 
 
 def test_school_composition_uses_contextual_sources_without_duplicate_modules():
@@ -251,15 +262,13 @@ def test_school_composition_uses_contextual_sources_without_duplicate_modules():
         "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
     ).read_text()
     assert "schoolBillingCapabilities" not in host
-    assert "capabilities.workspaces" in host
-    assert "finregEmbeddedModules.containsKey" in host
+    assert "manifest.operationalWorkspaces" in host
+    assert "finregEmbeddedModules" not in host
     assert "GuardiansListScreen()" in host
     assert "EmployeesListScreen()" in host
     assert "_SchoolContextualModule" in host
     assert "_CompositionReadiness" in host
     assert "'/finreg/composition-readiness/$capabilityId'" in host
-    assert "void didChangeDependencies()" in host
-    assert "_sessions.clear()" in host
     assert ".label(" in host
     assert "Localizations.localeOf(context).languageCode" in host
     assert '@router.get("/composition-readiness/{capability_id}")' in Path(
@@ -312,13 +321,18 @@ def test_release_grants_catalog_and_employee_integration_scopes():
 
 def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
     expected = Path(".github/finreg-packages-ref").read_text().strip()
+    kit = Path(".github/finreg-kit-ref").read_text().strip()
     assert re.fullmatch(r"[0-9a-f]{40}", expected)
+    assert re.fullmatch(r"[0-9a-f]{40}", kit)
 
     flutter = Path(".github/workflows/flutter_build.yml").read_text()
     backend = Path(".github/workflows/backend_tests.yml").read_text()
-    reference = "ref: ${{ steps.finreg-ref.outputs.ref }}"
-    assert flutter.count(reference) == 3
-    assert backend.count(reference) == 1
+    # The app no longer compiles FinReg packages; only the backend reads the
+    # FinReg contract source and imports the connector kit.
+    assert "ref: ${{ steps.finreg-ref.outputs.ref }}" not in flutter
+    assert backend.count("ref: ${{ steps.finreg-ref.outputs.ref }}") == 1
+    assert backend.count("ref: ${{ steps.kit-ref.outputs.ref }}") == 1
+    assert 'pip install "$GITHUB_WORKSPACE/finreg-kit"' in backend
     assert "continue-on-error: true" not in flutter
 
 
@@ -350,8 +364,9 @@ def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
     assert '@router.get("/reports/saft-sales")' in router
     navigation = Path("mobile/lib/core/router/router.dart").read_text()
     assert "initialCapabilityId: 'reporting'" in navigation
-    assert "initialFinregRoute: '/reports/control'" in navigation
-    assert "FinregEmbeddedModuleHost(" in host
+    assert "initialFinregRoute" not in navigation
+    assert "FinregEmbeddedModuleHost(" not in host
+    assert "finregUrlLauncher(" in host
 
 
 def test_legacy_reduced_operational_finreg_screen_is_not_shipped():
@@ -387,7 +402,7 @@ def test_aggregate_production_acceptance_runner_is_release_ready():
     assert "CELLEN_WEB_ORIGIN=https://softensor.github.io" in deploy
     assert "CORS_ALLOWED_ORIGINS" in deploy
     assert "validate_cellen_finreg_release.sh" in deploy
-    assert "Finreg permits the embedded Cellen Web origin" in source
+    assert "Finreg retains the legacy Cellen Web CORS origin" in source
     assert '--mode "$ACCEPTANCE_MODE"' in deploy
     assert '--agt-channel "$ACCEPTANCE_CHANNEL"' in deploy
 
@@ -413,6 +428,22 @@ def test_cellen_only_release_uses_the_supported_health_endpoint():
     assert "8001/ready" not in source
     assert "pg_dump -Fc" in source
     assert 'alembic" upgrade head' in source
+
+
+def test_cellen_cutover_stages_the_pinned_kit_and_never_restarts_finreg():
+    release = Path("deploy/release_cellen_from_vps.sh").read_text()
+    combined = Path("deploy/deploy_finreg_school_finance.sh").read_text()
+    pin = Path(".github/finreg-kit-ref").read_text().strip()
+
+    assert re.fullmatch(r"[0-9a-f]{40}", pin)
+    for source in (release, combined):
+        assert ".github/finreg-kit-ref" in source
+        assert 'git -C "$KIT_REPO" archive "$KIT_PIN"' in source
+        assert "--no-deps" in source
+        assert "--force-reinstall" in source
+    # The big-bang window must not touch the certified FinReg services.
+    assert "--cellen-only" in combined
+    assert "systemctl restart cellen-api" in combined
 
 
 def test_finreg_promotions_use_bounded_readiness_polling():
@@ -450,10 +481,8 @@ def test_agt_mode_lifecycle_is_explicit_and_fail_closed():
     assert "series_code LIKE 'OFF%'" in sandbox.read_text()
     assert "current channel=$AGT_CHANNEL" in live
     assert "set_agt_channel 5000413178 production" in live
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
-    assert "agtChannel: value['agt_channel']" in host
+    models = Path("mobile/lib/core/models/finreg_models.dart").read_text()
+    assert "value['agt_channel']" in models
 
 
 @pytest.mark.asyncio

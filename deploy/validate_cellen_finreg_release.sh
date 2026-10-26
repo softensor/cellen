@@ -73,9 +73,12 @@ done
 check 'Finreg is ready' curl -fsS http://127.0.0.1:8003/ready
 check 'Cellen is healthy' curl -fsS http://127.0.0.1:8001/health
 finreg_cors=$(set -a; source /etc/finreg.env; set +a; printf '%s' "${CORS_ALLOWED_ORIGINS:-}")
+# Legacy-only: the embedded Web host used to call FinReg's API cross-origin
+# from this origin. Delegated launch opens FinReg on its own origin, so a
+# missing entry no longer breaks the release -- report it, do not gate on it.
 [[ ",$finreg_cors," == *,https://softensor.github.io,* ]] \
-  && pass 'Finreg permits the embedded Cellen Web origin' \
-  || fail 'Finreg permits the embedded Cellen Web origin' "$finreg_cors"
+  && pass 'Finreg retains the legacy Cellen Web CORS origin' \
+  || warn 'Finreg retains the legacy Cellen Web CORS origin' "$finreg_cors"
 check 'Redis is ready' redis-cli ping
 check 'Finreg PostgreSQL is ready' sudo -u postgres psql -X -d finreg -c 'SELECT 1;'
 check 'Cellen PostgreSQL is ready' sudo -u postgres psql -X -d cellen -c 'SELECT 1;'
