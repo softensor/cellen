@@ -11,6 +11,7 @@ on:
       - 'requirements*.txt'
       - 'pytest.ini'
       - '.github/finreg-packages-ref'
+      - '.github/finreg-kit-ref'
   pull_request:
     branches: [main, master]
     paths:
@@ -21,6 +22,7 @@ on:
       - 'requirements*.txt'
       - 'pytest.ini'
       - '.github/finreg-packages-ref'
+      - '.github/finreg-kit-ref'
   workflow_dispatch:
 
 jobs:
@@ -53,6 +55,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read pinned finreg-kit revision
+        id: kit-ref
+        run: echo "ref=$(cat .github/finreg-kit-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned finreg-kit
+        uses: actions/checkout@v4
+        with:
+          repository: softensor/finreg-kit
+          ref: ${{ steps.kit-ref.outputs.ref }}
+          token: ${{ secrets.FINREG_READ_TOKEN }}
+          path: finreg-kit
+
       - name: Read pinned Finreg revision
         id: finreg-ref
         run: echo "ref=$(cat .github/finreg-packages-ref)" >> "$GITHUB_OUTPUT"
@@ -76,6 +90,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-test.txt
+
+      - name: Install the connector kit
+        run: pip install "$GITHUB_WORKSPACE/finreg-kit"
 
       - name: Rehearse complete database migration history
         run: alembic upgrade head

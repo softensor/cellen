@@ -1,9 +1,9 @@
 import 'package:cellen/core/api/api_client.dart';
-import 'package:finreg_app/embedded_modules.dart';
-import 'package:finreg_client_sdk/finreg_client_sdk.dart';
+import 'package:cellen/core/models/finreg_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/auth/auth_state.dart';
@@ -14,62 +14,88 @@ import '../employees/employees_list_screen.dart';
 import '../guardians/guardians_list_screen.dart';
 import 'internal_payments_screen.dart';
 
-Future<FinregCapabilities> _loadFinregCapabilities(ApiClient api) async {
-  final value =
-      Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
-  return FinregCapabilities(
-      companyId: value['company_id']?.toString(),
-      apiVersion: value['api_version'] as String,
-      schemaVersion: value['schema_version'] as String,
-      vertical: value['vertical'] as String,
-      terminology: Map<String, String>.from(value['terminology'] as Map? ?? {}),
-      enabledModules: Set<String>.from(value['enabled_modules'] as List? ?? []),
-      configuredCapabilities:
-          Set<String>.from(value['configured_capabilities'] as List? ?? []),
-      effectiveCapabilities:
-          Set<String>.from(value['effective_capabilities'] as List? ?? []),
-      blockedCapabilities: (value['blocked_capabilities'] as Map? ?? const {})
-          .map((key, value) => MapEntry(
-              key.toString(), Set<String>.from(value as List? ?? const []))),
-      hostSurfaces: (value['host_surfaces'] as List? ?? const []).map((raw) {
-        final surface = Map<String, dynamic>.from(raw as Map);
-        return FinregHostSurface(
-            id: surface['id'].toString(),
-            capabilityId: surface['capability_id'].toString(),
-            presentation: surface['presentation'].toString(),
-            labels: Map<String, String>.from(surface['labels'] as Map),
-            icon: surface['icon'].toString(),
-            order: surface['order'] as int,
-            operational: surface['operational'] as bool,
-            blockedReasons: List<String>.from(
-                surface['blocked_reasons'] as List? ?? const []));
-      }).toList(growable: false),
-      workspaces: (value['workspaces'] as List? ?? const []).map((raw) {
-        final workspace = Map<String, dynamic>.from(raw as Map);
-        return FinregWorkspace(
-            capabilityId: workspace['capability_id'].toString(),
-            title: workspace['title'].toString(),
-            description: workspace['description'].toString(),
-            route: workspace['route'].toString(),
-            operational: workspace['operational'] as bool,
-            blockedReasons: List<String>.from(
-                workspace['blocked_reasons'] as List? ?? const []));
-      }).toList(growable: false),
-      manifestFingerprint: value['manifest_fingerprint']?.toString(),
-      countryPack: value['country_pack']?.toString(),
-      agtChannel: value['agt_channel']?.toString() ?? 'disabled',
-      nonFiscal: value['non_fiscal'] as bool? ?? false);
+/// Open a delegated launch address.
+///
+/// A deliberately public seam, as in Mwenenzo: `url_launcher` answers through
+/// a platform channel that `flutter test` does not serve, so a widget test
+/// driving the real button would fail on a missing plugin instead of on the
+/// launch flow. Tests replace this; production never does.
+Future<bool> Function(
+  Uri url, {
+  LaunchMode mode,
+  String? webOnlyWindowName,
+}) finregUrlLauncher = launchUrl;
+
+/// How one capability is painted here. FinReg's manifest decides which
+/// capabilities exist and whether they are operational; this registry only
+/// supplies an icon and a label in the host's languages. A capability the
+/// host has never heard of still appears, under the manifest's own title.
+class _WorkspaceLook {
+  const _WorkspaceLook(this.icon, this.labels);
+
+  final IconData icon;
+  final Map<String, String> labels;
+
+  String label(String languageCode, String fallback) {
+    final normalized = languageCode.toLowerCase().split(RegExp('[-_]')).first;
+    return labels[normalized] ?? labels['pt'] ?? fallback;
+  }
 }
 
+const _workspaceLooks = <String, _WorkspaceLook>{
+  'parties': _WorkspaceLook(
+      Icons.people_outline, {'pt': 'Pessoas e entidades', 'en': 'Parties'}),
+  'catalog': _WorkspaceLook(
+      Icons.category_outlined, {'pt': 'Catálogo', 'en': 'Catalog'}),
+  'billing': _WorkspaceLook(Icons.receipt_long_outlined,
+      {'pt': 'Vendas e facturação', 'en': 'Sales and billing'}),
+  'receivables': _WorkspaceLook(Icons.request_quote_outlined,
+      {'pt': 'Contas a receber', 'en': 'Receivables'}),
+  'payments': _WorkspaceLook(Icons.payments_outlined,
+      {'pt': 'Pagamentos e recibos', 'en': 'Payments and receipts'}),
+  'recurring_billing': _WorkspaceLook(Icons.autorenew_outlined,
+      {'pt': 'Cobrança recorrente', 'en': 'Recurring billing'}),
+  'accounting': _WorkspaceLook(Icons.account_balance_outlined,
+      {'pt': 'Contabilidade', 'en': 'Accounting'}),
+  'reporting': _WorkspaceLook(
+      Icons.analytics_outlined, {'pt': 'Relatórios', 'en': 'Reporting'}),
+  'purchasing': _WorkspaceLook(
+      Icons.shopping_cart_outlined, {'pt': 'Compras', 'en': 'Purchasing'}),
+  'treasury': _WorkspaceLook(Icons.account_balance_wallet_outlined,
+      {'pt': 'Tesouraria', 'en': 'Treasury'}),
+  'integrations': _WorkspaceLook(
+      Icons.hub_outlined, {'pt': 'Integrações', 'en': 'Integrations'}),
+  'cash_sessions': _WorkspaceLook(Icons.point_of_sale_outlined,
+      {'pt': 'Sessões de caixa', 'en': 'Cash sessions'}),
+};
+
+String _workspaceLabel(String capabilityId, String languageCode) {
+  final look = _workspaceLooks[capabilityId];
+  return look?.label(languageCode, capabilityId) ?? capabilityId;
+}
+
+Future<FinregManifest> _loadFinregManifest(ApiClient api) async {
+  final value =
+      Map<String, dynamic>.from(await api.get('/finreg/capabilities') as Map);
+  return FinregManifest.fromJson(value);
+}
+
+/// Cellen's door into FinReg's own application.
+///
+/// FinReg used to be compiled into this app and mounted as a tab. That copy
+/// could only ever be as current as the last Cellen release, and it made one
+/// product's router fight the other's for the address bar. The workspace now
+/// opens in FinReg itself: this screen lists what the school's manifest
+/// offers, and each tap mints a single-use launch code and hands the address
+/// to the browser. There is no token, no embedded router and no second copy
+/// of FinReg's UI here.
 class FinregSalesHostScreen extends ConsumerStatefulWidget {
   const FinregSalesHostScreen({
     super.key,
     this.initialCapabilityId = 'billing',
-    this.initialFinregRoute,
   });
 
   final String initialCapabilityId;
-  final String? initialFinregRoute;
 
   @override
   ConsumerState<FinregSalesHostScreen> createState() =>
@@ -78,7 +104,7 @@ class FinregSalesHostScreen extends ConsumerStatefulWidget {
 
 class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   late Future<dynamic> _paymentMode;
-  Future<FinregCapabilities>? _capabilities;
+  Future<FinregManifest>? _manifest;
 
   @override
   void initState() {
@@ -91,39 +117,19 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
     setState(() {
       _paymentMode =
           ref.read(apiClientProvider).get('/finance/internal-payments/mode');
-      _capabilities = null;
+      _manifest = null;
     });
   }
 
-  Future<FinregEmbeddedSession> _createEmbeddedSession(
+  /// Mint a single-use launch code for one workspace. Minted at the tap,
+  /// never with the screen: the code lives under a minute, so one fetched
+  /// with the manifest would be dead by the time anyone pressed the button.
+  Future<FinregWorkspaceLaunch> _createWorkspaceLaunch(
       String capabilityId) async {
-    final localeTag = Localizations.localeOf(context).languageCode;
     final payload = Map<String, dynamic>.from(await ref
         .read(apiClientProvider)
-        .post('/finreg/embedded-session/$capabilityId') as Map);
-    final tokens = Map<String, dynamic>.from(payload['tokens'] as Map);
-    final user = Map<String, dynamic>.from(payload['user'] as Map);
-    return FinregEmbeddedSession(
-      apiBaseUrl: payload['api_base_url'].toString(),
-      accessToken: tokens['access_token'].toString(),
-      refreshToken: tokens['refresh_token'].toString(),
-      userId: user['id'].toString(),
-      email: user['email'].toString(),
-      fullName: user['full_name'].toString(),
-      role: user['role'].toString(),
-      companyId: user['company_id'].toString(),
-      companyName: user['company_name']?.toString(),
-      permissions: Set<String>.from(user['permissions'] as List? ?? const []),
-      enabledModules:
-          Set<String>.from(user['enabled_modules'] as List? ?? const []),
-      effectiveCapabilities:
-          Set<String>.from(user['effective_capabilities'] as List? ?? const []),
-      verticalProfile:
-          user['vertical_profile']?.toString() ?? 'generic_service',
-      moduleManifestFingerprint:
-          user['module_manifest_fingerprint']?.toString(),
-      localeTag: localeTag,
-    );
+        .post('/finreg/workspace-launch/$capabilityId') as Map);
+    return FinregWorkspaceLaunch.fromJson(payload);
   }
 
   Future<Map<String, dynamic>> _compositionReadiness(
@@ -167,9 +173,9 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
         if (value['mode'] != 'finreg') {
           return const InternalPaymentsScreen();
         }
-        _capabilities ??= _loadFinregCapabilities(ref.read(apiClientProvider));
-        return FutureBuilder<FinregCapabilities>(
-          future: _capabilities!,
+        _manifest ??= _loadFinregManifest(ref.read(apiClientProvider));
+        return FutureBuilder<FinregManifest>(
+          future: _manifest!,
           builder: (context, capabilitySnapshot) {
             if (capabilitySnapshot.hasError) {
               return Center(
@@ -188,17 +194,13 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
             if (!capabilitySnapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final capabilities = capabilitySnapshot.data!;
-            if (capabilities.vertical != 'school') {
+            final manifest = capabilitySnapshot.data!;
+            if (manifest.vertical != 'school') {
               return const Center(
                   child: Text(
                       'O perfil financeiro desta organização não é escolar.'));
             }
-            final workspaces = capabilities.workspaces
-                .where((item) =>
-                    item.operational &&
-                    finregEmbeddedModules.containsKey(item.capabilityId))
-                .toList(growable: false);
+            final workspaces = manifest.operationalWorkspaces;
             if (workspaces.isEmpty) {
               return Center(
                 child: Text(portuguese
@@ -206,15 +208,13 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
                     : 'No financial modules are available for this profile.'),
               );
             }
-            return _EmbeddedFinregMenu(
+            return _FinregWorkspaceMenu(
               key: ValueKey(workspaces
                   .map((workspace) => workspace.capabilityId)
                   .join('|')),
               workspaces: workspaces,
               initialCapabilityId: widget.initialCapabilityId,
-              initialFinregRoute: widget.initialFinregRoute,
-              sessionForCapability: _createEmbeddedSession,
-              capabilityOverrides: const {},
+              launchForCapability: _createWorkspaceLaunch,
               contextualCapabilities: const {
                 'billing': _SchoolContextDefinition(
                   labels: {
@@ -272,42 +272,40 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
   }
 }
 
-class _EmbeddedFinregMenu extends StatefulWidget {
-  const _EmbeddedFinregMenu({
+class _FinregWorkspaceMenu extends StatefulWidget {
+  const _FinregWorkspaceMenu({
     super.key,
     required this.workspaces,
-    required this.sessionForCapability,
-    required this.capabilityOverrides,
+    required this.launchForCapability,
     required this.contextualCapabilities,
     required this.readinessForCapability,
     this.onManageAccess,
     this.initialCapabilityId,
-    this.initialFinregRoute,
   });
 
   final List<FinregWorkspace> workspaces;
-  final Future<FinregEmbeddedSession> Function(String capabilityId)
-      sessionForCapability;
-  final Map<String, Widget> capabilityOverrides;
+  final Future<FinregWorkspaceLaunch> Function(String capabilityId)
+      launchForCapability;
   final Map<String, _SchoolContextDefinition> contextualCapabilities;
   final Future<Map<String, dynamic>> Function(String capabilityId)
       readinessForCapability;
   final VoidCallback? onManageAccess;
   final String? initialCapabilityId;
-  final String? initialFinregRoute;
 
   @override
-  State<_EmbeddedFinregMenu> createState() => _EmbeddedFinregMenuState();
+  State<_FinregWorkspaceMenu> createState() => _FinregWorkspaceMenuState();
 }
 
-class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
+class _FinregWorkspaceMenuState extends State<_FinregWorkspaceMenu>
     with SingleTickerProviderStateMixin {
   late final TabController _controller;
   late int _selected;
-  final Map<String, Future<FinregEmbeddedSession>> _sessions = {};
   final Map<String, Future<Map<String, dynamic>>> _readiness = {};
-  final Set<String> _visitedCapabilityIds = {};
-  String? _localeTag;
+
+  /// Capability currently being minted/opened; one at a time, so a double
+  /// tap cannot burn two launch codes.
+  String? _opening;
+  String? _launchError;
 
   @override
   void initState() {
@@ -315,7 +313,6 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
     final initialIndex = widget.workspaces.indexWhere(
         (workspace) => workspace.capabilityId == widget.initialCapabilityId);
     _selected = initialIndex < 0 ? 0 : initialIndex;
-    _visitedCapabilityIds.add(widget.workspaces[_selected].capabilityId);
     _controller = TabController(
       length: widget.workspaces.length,
       initialIndex: _selected,
@@ -327,21 +324,9 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
     if (!_controller.indexIsChanging && _selected != _controller.index) {
       setState(() {
         _selected = _controller.index;
-        _visitedCapabilityIds.add(
-          widget.workspaces[_controller.index].capabilityId,
-        );
+        _launchError = null;
       });
     }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final localeTag = Localizations.localeOf(context).languageCode;
-    if (_localeTag != null && _localeTag != localeTag) {
-      _sessions.clear();
-    }
-    _localeTag = localeTag;
   }
 
   @override
@@ -352,8 +337,47 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
     super.dispose();
   }
 
+  Future<void> _open(FinregWorkspace workspace) async {
+    if (_opening != null) return;
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    setState(() {
+      _opening = workspace.capabilityId;
+      _launchError = null;
+    });
+    try {
+      final launch = await widget.launchForCapability(workspace.capabilityId);
+      final uri = Uri.tryParse(launch.url);
+      if (uri == null || !uri.hasScheme) {
+        throw Exception(portuguese
+            ? 'O FinReg não devolveu o endereço do módulo'
+            : 'FinReg did not return the workspace address');
+      }
+      final opened = await finregUrlLauncher(
+        uri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened) {
+        throw Exception(portuguese
+            ? 'O navegador não permitiu abrir o FinReg'
+            : 'The browser did not open FinReg');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() =>
+            _launchError = error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _opening = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final localeCode = Localizations.localeOf(context).languageCode;
+    final index =
+        _selected < widget.workspaces.length ? _selected : widget.workspaces.length - 1;
+    final selected = widget.workspaces[index];
     return Column(
       children: [
         Material(
@@ -368,12 +392,11 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
                   tabs: [
                     for (final workspace in widget.workspaces)
                       Tab(
-                        icon: Icon(
-                          finregEmbeddedModules[workspace.capabilityId]!.icon,
-                        ),
-                        text: finregEmbeddedModules[workspace.capabilityId]!
-                            .label(
-                                Localizations.localeOf(context).languageCode),
+                        icon: Icon(_workspaceLooks[workspace.capabilityId]
+                                ?.icon ??
+                            Icons.apps_outlined),
+                        text: _workspaceLabel(
+                            workspace.capabilityId, localeCode),
                       ),
                   ],
                 ),
@@ -381,7 +404,7 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
               if (widget.onManageAccess != null)
                 IconButton(
                   onPressed: widget.onManageAccess,
-                  tooltip: Localizations.localeOf(context).languageCode == 'pt'
+                  tooltip: localeCode == 'pt'
                       ? 'Acesso local aos módulos'
                       : 'Local module access',
                   icon: const Icon(Icons.admin_panel_settings_outlined),
@@ -389,33 +412,34 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
             ],
           ),
         ),
-        Expanded(
-          child: IndexedStack(
-            index: _selected,
-            children: [
-              for (final workspace in widget.workspaces)
-                if (_visitedCapabilityIds.contains(workspace.capabilityId))
-                  _buildWorkspace(workspace)
-                else
-                  const SizedBox.shrink(),
-            ],
-          ),
-        ),
+        Expanded(child: _buildWorkspace(selected)),
       ],
     );
   }
 
   Widget _buildWorkspace(FinregWorkspace workspace) {
-    final override = widget.capabilityOverrides[workspace.capabilityId];
-    if (override != null) return override;
-    final contextDefinition =
+    final definition =
         widget.contextualCapabilities[workspace.capabilityId];
-    if (contextDefinition == null) return _buildAuthoritativeModule(workspace);
+    final pane = _WorkspaceLaunchPanel(
+      workspace: workspace,
+      label: _workspaceLabel(workspace.capabilityId,
+          Localizations.localeOf(context).languageCode),
+      icon: _workspaceLooks[workspace.capabilityId]?.icon ?? Icons.apps_outlined,
+      opening: _opening == workspace.capabilityId,
+      locked: _opening != null && _opening != workspace.capabilityId,
+      error: _launchError,
+      onOpen: () => _open(workspace),
+    );
+    if (definition == null) return pane;
     return _SchoolContextualModule(
+      // One tab controller per capability: without the key Flutter reuses the
+      // previous workspace's controller, so a sub-tab chosen in billing would
+      // carry over and open parties on its FinReg pane instead of guardians.
+      key: ValueKey(workspace.capabilityId),
       capabilityId: workspace.capabilityId,
-      definition: contextDefinition,
-      authoritative: _buildAuthoritativeModule(workspace),
-      readiness: contextDefinition.showReadiness
+      definition: definition,
+      authoritative: pane,
+      readiness: definition.showReadiness
           ? _readiness.putIfAbsent(
               workspace.capabilityId,
               () => widget.readinessForCapability(workspace.capabilityId),
@@ -425,54 +449,101 @@ class _EmbeddedFinregMenuState extends State<_EmbeddedFinregMenu>
           setState(() => _readiness.remove(workspace.capabilityId)),
     );
   }
+}
 
-  Widget _buildAuthoritativeModule(FinregWorkspace workspace) {
-    final capabilityId = workspace.capabilityId;
-    final session = _sessions.putIfAbsent(
-      capabilityId,
-      () => widget.sessionForCapability(capabilityId),
-    );
-    return FutureBuilder<FinregEmbeddedSession>(
-      future: session,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          final portuguese =
-              Localizations.localeOf(context).languageCode == 'pt';
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(portuguese
-                    ? 'Não foi possível abrir este módulo.'
-                    : 'This module could not be opened.'),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () =>
-                      setState(() => _sessions.remove(capabilityId)),
-                  icon: const Icon(Icons.refresh),
-                  label: Text(portuguese ? 'Tentar novamente' : 'Retry'),
-                ),
-              ],
+/// The one action this screen exists for, stated with its consequences.
+class _WorkspaceLaunchPanel extends StatelessWidget {
+  const _WorkspaceLaunchPanel({
+    required this.workspace,
+    required this.label,
+    required this.icon,
+    required this.opening,
+    required this.locked,
+    required this.error,
+    required this.onOpen,
+  });
+
+  final FinregWorkspace workspace;
+  final String label;
+  final IconData icon;
+  final bool opening;
+  final bool locked;
+  final String? error;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    final blocked = workspace.blockedReasons;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            CircleAvatar(
+              radius: 32,
+              backgroundColor:
+                  theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+              child: Icon(icon, size: 32, color: theme.colorScheme.primary),
             ),
-          );
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return FinregEmbeddedModuleHost(
-          key: ValueKey('$capabilityId|${widget.initialFinregRoute}|'
-              '${snapshot.data!.accessToken}'),
-          capabilityId: capabilityId,
-          session: snapshot.data!,
-          initialRoute: capabilityId == widget.initialCapabilityId
-              ? widget.initialFinregRoute
-              : null,
-          onSessionExpired: () {
-            if (!mounted) return;
-            setState(() => _sessions.remove(capabilityId));
-          },
-        );
-      },
+            const SizedBox(height: 16),
+            Text(label,
+                textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
+            if (workspace.description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(workspace.description,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            ],
+            if (blocked.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              for (final reason in blocked)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• $reason',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.error)),
+                ),
+            ],
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed:
+                  opening || locked || blocked.isNotEmpty ? null : onOpen,
+              icon: opening
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.open_in_new),
+              label: Text(opening
+                  ? (portuguese ? 'A abrir o FinReg…' : 'Opening FinReg…')
+                  : (portuguese ? 'Abrir no FinReg' : 'Open in FinReg')),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              portuguese
+                  ? 'O FinReg abre num separador próprio, com uma sessão de '
+                      'uso único. Volte aqui para abrir outro módulo.'
+                  : 'FinReg opens in its own tab with a single-use session. '
+                      'Come back here to open another module.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 16),
+              Text(error!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.error)),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -641,9 +712,8 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
                           value: _roleCapabilities[definition.key]
                                   ?.contains(capability) ??
                               false,
-                          title: Text(finregEmbeddedModules[capability]
-                                  ?.label(portuguese ? 'pt' : 'en') ??
-                              capability),
+                          title: Text(
+                              _workspaceLabel(capability, portuguese ? 'pt' : 'en')),
                           onChanged: _roleWorkspaces[definition.key]
                                       ?.contains(capability) !=
                                   true
@@ -814,6 +884,7 @@ class _SchoolContextDefinition {
 
 class _SchoolContextualModule extends StatelessWidget {
   const _SchoolContextualModule({
+    super.key,
     required this.capabilityId,
     required this.definition,
     required this.authoritative,

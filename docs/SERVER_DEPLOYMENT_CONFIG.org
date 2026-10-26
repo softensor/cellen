@@ -53,9 +53,12 @@ is =condo.167.235.158.77.nip.io=.  Ports 80 and 443 belong to Nginx.
 * Finreg connection target
 
 The paired Finreg tenant must resolve the declarative =school= profile before
-Cellen exposes its embedded finance workspace. The deployment helper validates
-the manifests, migrates Finreg, persists that profile, and restarts both
-services. The returned manifest fingerprint is retained as release evidence.
+Cellen enables its finance launch surface. A Finreg release deploys the helper,
+validates the manifests, migrates Finreg, persists that profile, and restarts
+both services. A Cellen-only cutover runs the same script with
+=--cellen-only=: it stages the pinned connector kit, grants scopes, refreshes
+the fingerprint, migrates Cellen and restarts only =cellen-api=. The returned
+manifest fingerprint is retained as release evidence.
 
 Finreg was absent at the initial audit and was installed successfully on
 2026-08-06.  Its verified allocation is:

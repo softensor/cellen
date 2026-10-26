@@ -15,6 +15,7 @@ import '../../features/admin/children/child_form_screen.dart';
 import '../../features/admin/employees/employees_list_screen.dart';
 import '../../features/admin/employees/employee_form_screen.dart';
 import '../../features/admin/finance/finance_dashboard_screen.dart';
+import '../../features/admin/finance/cash_sessions_screen.dart';
 import '../../features/admin/finance/finreg_sales_host_screen.dart';
 import '../../features/admin/finance/expenses_screen.dart';
 import '../../features/admin/academic/turmas_screen.dart';
@@ -1147,7 +1148,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/finance/invoices',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'billing',
-                    initialFinregRoute: '/billing/invoices',
                   )),
           GoRoute(
               path: '/admin/finance/expenses',
@@ -1159,25 +1159,21 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/finance/receipts',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'payments',
-                    initialFinregRoute: '/accounting/payments',
                   )),
           GoRoute(
               path: '/admin/finance/credit-notes',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'billing',
-                    initialFinregRoute: '/billing/credit-notes',
                   )),
           GoRoute(
               path: '/admin/finance/saft',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'reporting',
-                    initialFinregRoute: '/reports/control',
                   )),
           GoRoute(
               path: '/admin/finance/delinquent',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'reporting',
-                    initialFinregRoute: '/reports/control',
                   )),
           GoRoute(
               path: '/admin/finance/billing-items',
@@ -1198,23 +1194,18 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/finance/statement',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'receivables',
-                    initialFinregRoute: '/billing/reports',
                   )),
           GoRoute(
               path: '/admin/finance/audit-log',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'reporting',
-                    initialFinregRoute: '/reports/control',
                   )),
           GoRoute(
               path: '/admin/finance/payment-references',
               builder: (_, __) => const PaymentReferencesScreen()),
           GoRoute(
               path: '/admin/finance/cash-sessions',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'cash_sessions',
-                    initialFinregRoute: '/billing/pos/sessions',
-                  )),
+              builder: (_, __) => const CashSessionsScreen()),
           GoRoute(
               path: '/admin/finance/legacy',
               builder: (_, __) => const FinanceDashboardScreen()),

@@ -118,7 +118,7 @@ idempotency, and timeout recovery.
 | live     | Finreg is authoritative; duplicate Cellen writes disabled  |
 
 Cellen consumes both the configured and operational capability sets returned
-by Finreg. Only operational capabilities render embedded workflows or authorize
+by Finreg. Only operational capabilities get a launcher tab or authorize
 writes; capabilities blocked by the subscription are shown as blocked and fail
 closed. The finance host provides an explicit manifest refresh so an audited
 owner composition change is visible without a new application deployment.

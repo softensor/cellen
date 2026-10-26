@@ -13,7 +13,9 @@ class Settings(BaseSettings):
 
     # Finreg is the sole issuer for schools explicitly placed in pilot/live.
     # Credentials remain server-side and are never returned to Flutter.
-    FINREG_BASE_URL: str = "http://localhost:8001/api/v1"
+    # FINREG_BASE_URL is the FinReg ORIGIN (no /api/v1): the connector kit
+    # appends /api/v1/integrations itself.
+    FINREG_BASE_URL: str = "http://localhost:8001"
     FINREG_WEB_URL: str | None = None
     FINREG_CLIENT_ID: str | None = None
     FINREG_CLIENT_SECRET: str | None = None
@@ -38,6 +40,14 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env")
+
+    @property
+    def finreg_origin(self) -> str:
+        """FinReg origin, tolerating the pre-kit env form with ``/api/v1``."""
+        base = (self.FINREG_BASE_URL or "").strip().rstrip("/")
+        if base.endswith("/api/v1"):
+            base = base[: -len("/api/v1")]
+        return base
 
 
 settings = Settings()
