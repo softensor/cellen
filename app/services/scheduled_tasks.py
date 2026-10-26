@@ -162,7 +162,10 @@ async def run_scheduled_tasks():
 
 async def run_finreg_dispatcher():
     """Continuously drain the transactional Finreg outbox with safe retries."""
-    from app.services.finreg_dispatch import dispatch_pending
+    from app.services.finreg_dispatch import (
+        dispatch_pending,
+        reconcile_enrollment_fee_settlements,
+    )
     from app.services.finreg_events import synchronize_enabled_connections
 
     while True:
@@ -170,10 +173,13 @@ async def run_finreg_dispatcher():
             try:
                 confirmed, failed = await dispatch_pending(db)
                 events, sync_failed = await synchronize_enabled_connections(db)
+                activated = await reconcile_enrollment_fee_settlements(db)
                 if confirmed or failed:
                     logger.info("Finreg outbox: confirmed=%d failed=%d", confirmed, failed)
                 if events or sync_failed:
                     logger.info("Finreg events: processed=%d failed=%d", events, sync_failed)
+                if activated:
+                    logger.info("Finreg enrollment fees: activated=%d enrollments", activated)
             except Exception:
                 logger.exception("Finreg outbox dispatch failed")
         await asyncio.sleep(30)

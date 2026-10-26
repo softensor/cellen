@@ -30,6 +30,16 @@ DEFAULT_EXPENSE_CATEGORIES = [
 
 from decimal import Decimal as _D
 
+
+def _governed_tax_option(iva_rate, exemption_reason) -> str | None:
+    """Mirror migration 0027 so seeded items are Finreg-ready from day one."""
+    if iva_rate == 0 and exemption_reason:
+        return "IVA_ISE"
+    if iva_rate == 14:
+        return "IVA_NOR"
+    return None
+
+
 _BILLING_ITEMS_BY_SEGMENT: dict[str, list[dict]] = {
     "preschool": [
         {"code": "MENS-BERC",   "name": "Mensalidade Berçário",            "unit_price": _D("45000.00"), "iva_rate": _D("0"), "iva_exemption_reason": "M10"},
@@ -138,7 +148,12 @@ async def create_school(
     # Seed segment-appropriate billing items
     from app.models.billing_item import BillingItem
     for bi_data in _BILLING_ITEMS_BY_SEGMENT.get(segment, _BILLING_ITEMS_BY_SEGMENT["preschool"]):
-        db.add(BillingItem(school_id=school.id, **bi_data))
+        item = dict(bi_data)
+        item.setdefault(
+            "finreg_tax_option_code",
+            _governed_tax_option(item.get("iva_rate"), item.get("iva_exemption_reason")),
+        )
+        db.add(BillingItem(school_id=school.id, **item))
 
     # Create school_admin user
     admin_user = User(
