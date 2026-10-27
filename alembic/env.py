@@ -53,9 +53,11 @@ from app.models.finreg_integration import (  # noqa: F401
     FinregSchoolConnection,
 )
 from app.models.billing import (  # noqa: F401
-    BillingRun, ExtracurricularModality, SchoolFeePolicy, StudentFinanceProfile,
-    StudentModalityEnrollment, StudentTransportAssignment, TransportRoute,
+    BillingRun, DunningDelivery, ExtracurricularModality, LateFeeAssessment,
+    SchoolFeePolicy, StudentFinanceProfile, StudentModalityEnrollment,
+    StudentTransportAssignment, TransportRoute,
 )
+from app.models.principia_pay import PrincipiaPayConnection  # noqa: F401
 
 target_metadata = Base.metadata
 

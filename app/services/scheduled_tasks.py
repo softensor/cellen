@@ -163,6 +163,70 @@ async def _daily_auto_generate_billing():
             logger.exception("Error in automatic fee generation")
 
 
+async def _daily_assess_late_fees():
+    """Apply each opted-in school's multa bands to its overdue documents."""
+    from sqlalchemy import select
+
+    from app.models.academic import SchoolYear
+    from app.models.billing import SchoolFeePolicy
+    from app.services.billing_run import BillingError
+    from app.services.late_fees import assess_late_fees
+
+    async with AsyncSessionLocal() as db:
+        try:
+            school_ids = {
+                row[0]
+                for row in (
+                    await db.execute(
+                        select(SchoolFeePolicy.school_id)
+                        .join(
+                            SchoolYear,
+                            SchoolYear.id == SchoolFeePolicy.school_year_id,
+                        )
+                        .where(
+                            SchoolFeePolicy.late_fee_enabled.is_(True),
+                            SchoolYear.is_active.is_(True),
+                        )
+                    )
+                ).all()
+            }
+            assessed = 0
+            for school_id in school_ids:
+                try:
+                    result = await assess_late_fees(db, school_id=school_id)
+                    assessed += result["totals"]["count"]
+                except BillingError as exc:
+                    logger.warning(
+                        "Late fees skipped for school %s: %s", school_id, exc.code
+                    )
+                except Exception:
+                    await db.rollback()
+                    logger.exception(
+                        "Late fee assessment failed for school %s", school_id
+                    )
+            if assessed:
+                logger.info("Late fees: assessed=%d", assessed)
+        except Exception:
+            logger.exception("Error in daily late-fee assessment")
+
+
+async def _daily_dunning():
+    """Send each opted-in school's reminder ladder for the day."""
+    from app.services.dunning import run_due_dunning
+
+    async with AsyncSessionLocal() as db:
+        try:
+            totals = await run_due_dunning(db)
+            if totals["sent"] or totals["failed"] or totals["skipped"]:
+                logger.info(
+                    "Dunning: schools=%d sent=%d failed=%d skipped=%d",
+                    totals["schools"], totals["sent"],
+                    totals["failed"], totals["skipped"],
+                )
+        except Exception:
+            logger.exception("Error in daily dunning")
+
+
 async def run_scheduled_tasks():
     """Main loop: wait until midnight Luanda, then run daily tasks."""
     while True:
@@ -175,6 +239,8 @@ async def run_scheduled_tasks():
         await _daily_expire_payment_references()
         await _daily_breach_payment_plans()
         await _daily_auto_generate_billing()
+        await _daily_assess_late_fees()
+        await _daily_dunning()
 
 
 async def run_finreg_dispatcher():
@@ -185,6 +251,8 @@ async def run_finreg_dispatcher():
     )
     from app.services.billing_run import apply_confirmed_plan_results, refresh_open_runs
     from app.services.finreg_events import synchronize_enabled_connections
+    from app.services.late_fees import reconcile_assessments
+    from app.services.principia_pay import reconcile_references
 
     while True:
         async with AsyncSessionLocal() as db:
@@ -194,6 +262,8 @@ async def run_finreg_dispatcher():
                 activated = await reconcile_enrollment_fee_settlements(db)
                 plans = await apply_confirmed_plan_results(db)
                 runs = await refresh_open_runs(db)
+                late_fees = await reconcile_assessments(db)
+                rail = await reconcile_references(db)
                 if confirmed or failed:
                     logger.info("Finreg outbox: confirmed=%d failed=%d", confirmed, failed)
                 if events or sync_failed:
@@ -202,6 +272,13 @@ async def run_finreg_dispatcher():
                     logger.info("Finreg enrollment fees: activated=%d enrollments", activated)
                 if plans or runs:
                     logger.info("Fee automation: plans synced=%d runs refreshed=%d", plans, runs)
+                if late_fees:
+                    logger.info("Late fees: reconciled=%d assessments", late_fees)
+                if rail["checked"]:
+                    logger.info(
+                        "Reference payments: checked=%d settled=%d failed=%d",
+                        rail["checked"], rail["settled"], rail["failed"],
+                    )
             except Exception:
                 logger.exception("Finreg outbox dispatch failed")
         await asyncio.sleep(30)

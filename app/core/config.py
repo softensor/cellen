@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     # delegated sessions; unset, launches simply carry no return target.
     CELLEN_WEB_URL: str | None = None
 
+    # principia-pay reference payments. The product token is the platform
+    # contract; each school self-registers its own Client so a payment
+    # settles into that school's own account, never a pooled one. A
+    # reference is only ever opened against a finalized FinReg receivable,
+    # and its settlement is posted back to FinReg.
+    PRINCIPIA_PAY_BASE_URL: str = "https://princpay.167.235.158.77.nip.io"
+    PRINCIPIA_PAY_PRODUCT_TOKEN: str | None = None
+    PRINCIPIA_PAY_SOURCE_SYSTEM: str = "cellen"
+    PRINCIPIA_PAY_CALLBACK_URL: str | None = None
+    PRINCIPIA_PAY_PROVIDER: str = "appypay"
+
     # Public website contact-form delivery. Gmail uses smtp.gmail.com:587 with
     # STARTTLS and an App Password (never the account's normal password).
     SMTP_HOST: str = "smtp.gmail.com"

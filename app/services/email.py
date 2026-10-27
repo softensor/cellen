@@ -54,12 +54,49 @@ def _send_contact_submission_email(
     )
 
     try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(username, password)
-            smtp.send_message(msg)
+        _smtp_send(msg, username=username, password=password)
     except (OSError, smtplib.SMTPException) as exc:
         logger.warning("Website contact email delivery failed: %s", exc)
         raise EmailDeliveryError("Unable to deliver email") from exc
+
+
+async def send_email(
+    *, to: str, subject: str, body: str, reply_to: str | None = None
+) -> None:
+    """Send one transactional email through the configured SMTP provider.
+
+    Used by finance dunning; unlike the contact form it addresses the
+    school's own guardian, never the platform inbox.
+    """
+    await asyncio.to_thread(_send_email, to=to, subject=subject, body=body, reply_to=reply_to)
+
+
+def _send_email(*, to: str, subject: str, body: str, reply_to: str | None) -> None:
+    username = settings.SMTP_USERNAME
+    password = settings.SMTP_PASSWORD
+    sender = settings.SMTP_FROM_EMAIL or username
+    if not username or not password or not sender:
+        raise EmailDeliveryError("Email delivery is not configured")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.set_content(body)
+
+    try:
+        _smtp_send(msg, username=username, password=password)
+    except (OSError, smtplib.SMTPException) as exc:
+        logger.warning("Email delivery to %s failed: %s", to, exc)
+        raise EmailDeliveryError("Unable to deliver email") from exc
+
+
+def _smtp_send(msg: EmailMessage, *, username: str, password: str) -> None:
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as smtp:
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
+        smtp.login(username, password)
+        smtp.send_message(msg)

@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.base import DecimalFloat
 
@@ -328,6 +328,19 @@ class PaymentReferenceCreate(BaseModel):
     external_id: Optional[str] = None
 
 
+class RailReferenceCreate(BaseModel):
+    """Open a principia-pay reference against one open debt row.
+
+    ``document_id`` is whatever the debt screen showed: a FinReg document id
+    for a FinReg-active school, a local invoice id otherwise. The amount is
+    optional -- omitted means the full outstanding balance.
+    """
+
+    document_id: str = Field(min_length=1, max_length=64)
+    amount: Optional[DecimalFloat] = None
+    return_url: Optional[str] = Field(default=None, max_length=500)
+
+
 class PaymentReferenceMarkPaid(BaseModel):
     paid_at: Optional[datetime] = None
     amount: DecimalFloat
@@ -341,13 +354,21 @@ class PaymentReferenceResponse(BaseModel):
     school_id: uuid.UUID
     invoice_id: Optional[uuid.UUID] = None
     billing_guardian_id: uuid.UUID
-    entity: str
-    reference: str
+    entity: Optional[str] = None
+    reference: Optional[str] = None
     amount: Optional[DecimalFloat] = None
     status: str
     expires_at: Optional[datetime] = None
     provider: str
     external_id: Optional[str] = None
+    caller_reference: Optional[str] = None
+    checkout_url: Optional[str] = None
+    rail_status: Optional[str] = None
+    paid_amount: Optional[DecimalFloat] = None
+    finreg_document_id: Optional[uuid.UUID] = None
+    finreg_document_number: Optional[str] = None
+    finreg_document_external_id: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
     created_at: datetime
     paid_at: Optional[datetime] = None
 

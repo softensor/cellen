@@ -1300,6 +1300,11 @@ async def parent_documents(current_user=Depends(require_parent), db: AsyncSessio
         total = document.get("gross_total", 0)
         output.append({
             "id": str(item.id), "finreg": True,
+            # The debt read model and principia-pay key off the FinReg
+            # document, not the outbox instruction. Null until the event
+            # sync has seen the document's confirmation.
+            "document_id": str(item.finreg_document_id)
+            if item.finreg_document_id else None,
             "child_id": context.get("pupil_id"),
             "child_name": context.get("pupil_name") or "—",
             "document_type": document.get("document_type", "invoice"),

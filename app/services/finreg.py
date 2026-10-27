@@ -304,3 +304,45 @@ class FakeFinregAdapter:
         result = outcome or {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_key)), "status": "confirmed"}
         self.results[idempotency_key] = result
         return result
+
+    async def request(self, method: str, operation: str, payload: dict | None, *,
+                      idempotency_key: str | None = None, correlation_id: str | None = None,
+                      actor_reference: str) -> dict | list:
+        """Answer read calls with an honest empty result.
+
+        Fake mode has no FinReg documents, so a debt or report read is empty
+        rather than invented. Tests inject ``outcomes`` keyed by ``METHOD path``
+        (or by operation alone) to exercise the mapping layer.
+        """
+        key = f"{method.upper()} {operation.split('?')[0]}"
+        outcome = self.outcomes.get(key, self.outcomes.get(operation))
+        if isinstance(outcome, FinregError):
+            raise outcome
+        if outcome is not None:
+            return outcome
+        path = operation.split("?")[0]
+        if method.upper() == "POST" and path.startswith("payments/"):
+            # Reference-payment settlement and its receipt are mutations;
+            # fake mode confirms them deterministically, exactly like the
+            # outbox's execute() path confirms issuance.
+            key = idempotency_key or f"{method.upper()} {operation}"
+            if key in self.results:
+                return self.results[key]
+            result = {
+                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, key)),
+                "status": "confirmed",
+            }
+            self.results[key] = result
+            return result
+        if path == "receivables":
+            return {"as_of": None, "count": 0, "total_outstanding": 0.0, "rows": []}
+        if path == "reports/sales-by-product":
+            return []
+        if path.startswith("reports/"):
+            return {"period": {}, "rows": [], "invoice_count": 0,
+                    "total_gross": 0.0, "payment_count": 0, "total_collected": 0.0,
+                    "by_method": []}
+        raise FinregError(
+            "fake_read_unavailable",
+            f"FakeFinregAdapter has no canned answer for {method} {operation}",
+        )

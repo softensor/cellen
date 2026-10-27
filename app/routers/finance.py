@@ -106,6 +106,7 @@ from app.schemas.finance import (
     PaymentReferenceCreate,
     PaymentReferenceMarkPaid,
     PaymentReferenceResponse,
+    RailReferenceCreate,
     PaymentResponse,
     ReceiptResponse,
     ReminderCreate,
@@ -136,6 +137,8 @@ from app.services.finreg_dispatch import (
 )
 from app.services.storage import save_upload
 from app.services.payment_control import finreg_is_active
+from app.services.billing_run import BillingError
+from app.services import principia_pay
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
@@ -2440,6 +2443,45 @@ async def parent_payment_references(
         ).order_by(PaymentReference.created_at.desc())
     )
     return result.scalars().all()
+
+
+@router.post(
+    "/parent/payment-references/principia-pay",
+    response_model=PaymentReferenceResponse,
+    status_code=201,
+)
+async def parent_create_rail_reference(
+    body: RailReferenceCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    """Parent opens a payment reference for one of their own debts.
+
+    The debt must already be open and belong to this guardian; the server
+    looks the document up in the debt read model, so a parent can never
+    name someone else's invoice.
+    """
+    guardian_id = getattr(current_user, "guardian_id", None)
+    if guardian_id is None:
+        raise HTTPException(status_code=403, detail="No guardian linked")
+    school_id = getattr(current_user, "_school_id", None)
+    if not school_id:
+        raise HTTPException(status_code=403, detail="School context required")
+    try:
+        reference = await principia_pay.create_reference(
+            db,
+            school_id=school_id,
+            document_id=body.document_id,
+            amount=body.amount,
+            guardian_id=guardian_id,
+            return_url=body.return_url,
+        )
+    except BillingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    return PaymentReferenceResponse.model_validate(reference)
 
 
 @router.get("/parent/receipts", response_model=list[ReceiptResponse])

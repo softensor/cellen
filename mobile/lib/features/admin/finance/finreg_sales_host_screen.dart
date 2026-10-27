@@ -733,10 +733,34 @@ class _SchoolBillingOperations extends StatelessWidget {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
     final operations = <({IconData icon, String pt, String en, String route})>[
       (
+        icon: Icons.dashboard_outlined,
+        pt: 'Painel financeiro',
+        en: 'Finance home',
+        route: '/admin/finance/home'
+      ),
+      (
         icon: Icons.bolt_outlined,
         pt: 'Gerar dívidas',
         en: 'Generate debts',
         route: '/admin/finance/billing-run'
+      ),
+      (
+        icon: Icons.warning_amber_outlined,
+        pt: 'Controlo de dívidas',
+        en: 'Debt control',
+        route: '/admin/finance/debt-control'
+      ),
+      (
+        icon: Icons.bar_chart_outlined,
+        pt: 'Relatório por serviço',
+        en: 'Service report',
+        route: '/admin/finance/service-report'
+      ),
+      (
+        icon: Icons.qr_code_2_outlined,
+        pt: 'Pagamentos por referência',
+        en: 'Reference payments',
+        route: '/admin/finance/principia-pay'
       ),
       (
         icon: Icons.tune_outlined,
