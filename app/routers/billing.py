@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,14 +41,16 @@ from app.models.billing import (
     StudentTransportAssignment,
     TransportRoute,
 )
-from app.models.finance import BillingItem, BillingItemPrice, Invoice
+from app.models.finance import BillingItem, BillingItemPrice, Invoice, PaymentReference
 from app.models.finreg_integration import FinregBillingInstruction
 from app.models.person import Child, ChildGuardian
 from app.schemas.billing import (
     BillingPreviewRequest,
     BillingRunRequest,
+    DunningRunRequest,
     EndDatedBody,
     FeePolicyUpdate,
+    LateFeeAssessRequest,
     ModalityCreate,
     ModalityEnrollmentCreate,
     ModalityUpdate,
@@ -79,6 +81,16 @@ from app.services.billing_run import (
     refresh_run_status,
     run_billing,
     serialize_run,
+)
+from app.schemas.finance import PaymentReferenceResponse, RailReferenceCreate
+from app.services import principia_pay
+from app.services.debt_control import dashboard as finance_dashboard
+from app.services.debt_control import list_debts, service_report
+from app.services.dunning import list_deliveries, run_dunning
+from app.services.late_fees import (
+    assess_late_fees,
+    list_assessments,
+    validate_bands,
 )
 from app.services.finance import DocumentEmissionService
 from app.services.finreg import FinregError
@@ -519,10 +531,16 @@ async def get_fee_policy_endpoint(
         if policy is not None and policy.default_tuition_billing_item_id
         else None
     )
+    late_fee_item = (
+        await db.get(BillingItem, policy.late_fee_billing_item_id)
+        if policy is not None and policy.late_fee_billing_item_id
+        else None
+    )
     return {
         "school_year": _year_payload(school_year),
         "policy": _policy_payload(policy),
         "default_tuition_item": _item_payload(item),
+        "late_fee_item": _item_payload(late_fee_item),
     }
 
 
@@ -538,6 +556,41 @@ async def update_fee_policy(
     if body.default_tuition_billing_item_id is not None:
         item = await _item_or_422(
             db, school_id, body.default_tuition_billing_item_id
+        )
+    late_fee_item = None
+    if body.late_fee_billing_item_id is not None:
+        late_fee_item = await _item_or_422(
+            db, school_id, body.late_fee_billing_item_id
+        )
+    try:
+        bands = validate_bands(
+            [band.model_dump(mode="json") for band in body.late_fee_bands]
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+    if body.late_fee_enabled and not bands:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "late_fee_no_bands",
+                "message": "Active as multas e defina pelo menos uma faixa.",
+            },
+        )
+    if body.late_fee_enabled and late_fee_item is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "late_fee_item_missing",
+                "message": "Escolha o serviço fiscal usado para emitir a multa.",
+            },
+        )
+    if body.dunning_enabled and not body.dunning_schedule:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "dunning_no_schedule",
+                "message": "Active os avisos e defina pelo menos um passo.",
+            },
         )
 
     policy = await get_fee_policy(db, school_id, school_year.id)
@@ -557,6 +610,17 @@ async def update_fee_policy(
     policy.billing_day = body.billing_day
     policy.auto_generate = body.auto_generate
     policy.proration_policy = body.proration_policy
+    policy.late_fee_enabled = body.late_fee_enabled
+    policy.late_fee_billing_item_id = (
+        late_fee_item.id if late_fee_item is not None else None
+    )
+    policy.late_fee_base = body.late_fee_base
+    policy.late_fee_bands = bands
+    policy.dunning_enabled = body.dunning_enabled
+    policy.dunning_schedule = [
+        step.model_dump(mode="json") for step in body.dunning_schedule
+    ]
+    policy.dunning_message_template = body.dunning_message_template
     await mark_plans_stale(
         db, school_id=school_id, school_year_id=school_year.id
     )
@@ -566,7 +630,48 @@ async def update_fee_policy(
         "school_year": _year_payload(school_year),
         "policy": _policy_payload(policy),
         "default_tuition_item": _item_payload(item),
+        "late_fee_item": _item_payload(late_fee_item),
     }
+
+
+# ─── late fees (multas) ─────────────────────────────────────────────────────
+
+@router.get("/late-fees")
+async def list_late_fees(
+    status: Optional[str] = None,
+    student_id: Optional[uuid.UUID] = None,
+    limit: int = 500,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    return await list_assessments(
+        db, school_id=school_id, status=status, student_id=student_id, limit=limit
+    )
+
+
+@router.post("/late-fees/assess")
+async def assess_late_fees_endpoint(
+    body: LateFeeAssessRequest,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_finance_access),
+):
+    """Compute (and optionally issue) the school's multa bands.
+
+    ``dry_run`` returns exactly what would be assessed without touching a
+    fiscal document; shadow-mode schools always answer in preview form.
+    """
+    try:
+        return await assess_late_fees(
+            db,
+            school_id=school_id,
+            as_of=body.as_of,
+            dry_run=body.dry_run,
+            issued_by=_employee_id(user),
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
 
 
 # ─── extracurricular modalities ─────────────────────────────────────────────
@@ -1476,6 +1581,13 @@ async def student_finance_summary(
             )
         ).all()
     )
+    debts = None
+    debts_error = None
+    try:
+        debts = await list_debts(db, school_id=school_id, student_id=child.id)
+    except BillingError as exc:
+        debts_error = {"code": exc.code, "message": exc.detail}
+
     return {
         "child": {
             "id": str(child.id),
@@ -1502,7 +1614,85 @@ async def student_finance_summary(
             _transport_assignment_payload(assignment, route, child)
             for assignment, route in transport_rows
         ],
+        "debts": debts,
+        "debts_error": debts_error,
     }
+
+
+# ─── debt control and reports ───────────────────────────────────────────────
+
+@router.get("/debts")
+async def debts_endpoint(
+    as_of: Optional[date] = None,
+    overdue_only: bool = False,
+    student_id: Optional[uuid.UUID] = None,
+    guardian_id: Optional[uuid.UUID] = None,
+    service: Optional[str] = None,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Every open debt, from FinReg or from local invoices, in one shape."""
+    try:
+        return await list_debts(
+            db,
+            school_id=school_id,
+            as_of=as_of,
+            overdue_only=overdue_only,
+            student_id=student_id,
+            guardian_id=guardian_id,
+            service=service,
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+
+
+@router.get("/students/{child_id}/debts")
+async def student_debts_endpoint(
+    child_id: uuid.UUID,
+    overdue_only: bool = False,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    child = await _child_or_404(db, school_id, child_id)
+    try:
+        return await list_debts(
+            db, school_id=school_id, student_id=child.id, overdue_only=overdue_only
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+
+
+@router.get("/reports/services")
+async def services_report_endpoint(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    today = today_luanda()
+    start = date_from or today.replace(day=1)
+    end = date_to or today
+    try:
+        return await service_report(
+            db, school_id=school_id, date_from=start, date_to=end
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+
+
+@router.get("/dashboard")
+async def finance_dashboard_endpoint(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    try:
+        return await finance_dashboard(db, school_id=school_id)
+    except BillingError as exc:
+        _raise_billing(exc)
 
 
 # ─── billing runs ───────────────────────────────────────────────────────────
@@ -1589,6 +1779,203 @@ async def rebuild_student_plans(
             billing_month=body.billing_month,
             school_year_id=body.school_year_id,
             actor_id=_actor_id(user),
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# principia-pay reference payments
+#
+# A reference is only ever opened against an open debt (FinReg receivable or
+# local invoice), and its settlement goes back to the engine that owns the
+# school. The rail never sees a fiscal document; the fiscal identity stays
+# here.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def _rail_reference_or_404(
+    db: AsyncSession, *, school_id: uuid.UUID, reference_id: uuid.UUID
+) -> PaymentReference:
+    row = (
+        await db.execute(
+            select(PaymentReference).where(
+                PaymentReference.id == reference_id,
+                PaymentReference.school_id == school_id,
+                PaymentReference.provider == principia_pay.PROVIDER,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Referência não encontrada")
+    return row
+
+
+@router.get("/principia-pay")
+async def principia_pay_connection_status(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    return await principia_pay.connection_status(db, school_id=school_id)
+
+
+@router.post("/principia-pay/register")
+async def register_principia_pay(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_school_admin),
+):
+    try:
+        await principia_pay.ensure_connection(db, school_id=school_id)
+    except BillingError as exc:
+        _raise_billing(exc)
+    return await principia_pay.connection_status(db, school_id=school_id)
+
+
+@router.get("/principia-pay/references")
+async def list_rail_references(
+    status_filter: Optional[str] = None,
+    billing_guardian_id: Optional[uuid.UUID] = None,
+    limit: int = 100,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    rows = await principia_pay.list_references(
+        db,
+        school_id=school_id,
+        status_filter=status_filter,
+        guardian_id=billing_guardian_id,
+        limit=limit,
+    )
+    return [PaymentReferenceResponse.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/principia-pay/references",
+    response_model=PaymentReferenceResponse,
+    status_code=201,
+)
+async def create_rail_reference(
+    body: RailReferenceCreate,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_finance_access),
+):
+    try:
+        reference = await principia_pay.create_reference(
+            db,
+            school_id=school_id,
+            document_id=body.document_id,
+            amount=body.amount,
+            return_url=body.return_url,
+            requested_by=_employee_id(user) or _actor_id(user),
+        )
+    except BillingError as exc:
+        _raise_billing(exc)
+    return PaymentReferenceResponse.model_validate(reference)
+
+
+@router.post(
+    "/principia-pay/references/{reference_id}/refresh",
+    response_model=PaymentReferenceResponse,
+)
+async def refresh_rail_reference(
+    reference_id: uuid.UUID,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    reference = await _rail_reference_or_404(
+        db, school_id=school_id, reference_id=reference_id
+    )
+    try:
+        await principia_pay.refresh_reference(db, reference=reference)
+    except BillingError as exc:
+        _raise_billing(exc)
+    return PaymentReferenceResponse.model_validate(reference)
+
+
+@router.post("/principia-pay/callback", include_in_schema=False)
+async def principia_pay_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    """Public rail webhook. The HMAC is per school; the poll is authoritative."""
+    body = await request.body()
+    signature = request.headers.get(
+        principia_pay.PrincipiaPayClient.WEBHOOK_SIGNATURE_HEADER
+    )
+    try:
+        return await principia_pay.handle_callback(
+            db, body=body, signature=signature
+        )
+    except BillingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dunning (cobrança amigável)
+#
+# The ladder is policy data; these endpoints preview it and show exactly
+# what was delivered on which channel. Sending itself runs daily at Luanda
+# midnight.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _delivery_payload(row) -> dict:
+    return {
+        "id": str(row.id),
+        "source_kind": row.source_kind,
+        "source_id": str(row.source_id),
+        "document_number": row.document_number,
+        "guardian_id": str(row.guardian_id) if row.guardian_id else None,
+        "student_id": str(row.student_id) if row.student_id else None,
+        "level": row.level,
+        "offset_days": row.offset_days,
+        "channel": row.channel,
+        "status": row.status,
+        "error": row.error,
+        "message_snapshot": row.message_snapshot,
+        "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/dunning/deliveries")
+async def get_dunning_deliveries(
+    status_filter: Optional[str] = None,
+    billing_guardian_id: Optional[uuid.UUID] = None,
+    limit: int = 200,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    rows = await list_deliveries(
+        db,
+        school_id=school_id,
+        status=status_filter,
+        guardian_id=billing_guardian_id,
+        limit=limit,
+    )
+    return [_delivery_payload(row) for row in rows]
+
+
+@router.post("/dunning/run")
+async def run_dunning_now(
+    body: DunningRunRequest,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Preview (dry_run) or send today's reminders for this school."""
+    try:
+        return await run_dunning(
+            db,
+            school_id=school_id,
+            as_of=body.as_of,
+            dry_run=body.dry_run,
         )
     except BillingError as exc:
         _raise_billing(exc)

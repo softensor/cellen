@@ -44,7 +44,6 @@ import '../../features/teacher/caderneta/caderneta_form_screen.dart';
 import '../../features/teacher/attendance/attendance_screen.dart';
 import '../../features/parent/dashboard/parent_dashboard_screen.dart';
 import '../../features/parent/caderneta/child_caderneta_screen.dart';
-import '../../features/parent/finance/parent_invoices_screen.dart';
 import '../../features/parent/finance/parent_internal_payments_screen.dart';
 import '../../features/parent/menu/food_menu_screen.dart';
 import '../../features/messages/messages_screen.dart';
@@ -55,14 +54,18 @@ import '../../features/events/events_screen.dart';
 import '../../features/admin/finance/student_billing_plans_screen.dart';
 import '../../features/admin/finance/billing_items_screen.dart';
 import '../../features/admin/finance/billing_run_screen.dart';
+import '../../features/admin/finance/debt_control_screen.dart';
+import '../../features/admin/finance/dunning_screen.dart';
 import '../../features/admin/finance/fee_policy_screen.dart';
+import '../../features/admin/finance/finance_home_screen.dart';
 import '../../features/admin/finance/modalities_screen.dart';
+import '../../features/admin/finance/principia_pay_screen.dart';
+import '../../features/admin/finance/service_report_screen.dart';
 import '../../features/admin/finance/transport_screen.dart';
 import '../../features/admin/finance/credit_balances_screen.dart';
 import '../../features/admin/finance/parent_payment_review_screen.dart';
 import '../../features/admin/finance/payment_plans_screen.dart';
 import '../../features/admin/finance/payment_references_screen.dart';
-import '../../features/admin/finance/reminders_screen.dart';
 import '../../features/announcements/announcements_screen.dart';
 import '../../features/documents/documents_screen.dart';
 import '../../features/appointments/appointments_screen.dart';
@@ -1149,6 +1152,18 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/finance',
               builder: (_, __) => const FinregSalesHostScreen()),
           GoRoute(
+              path: '/admin/finance/home',
+              builder: (_, __) => const FinanceHomeScreen()),
+          GoRoute(
+              path: '/admin/finance/debt-control',
+              builder: (_, __) => const DebtControlScreen()),
+          GoRoute(
+              path: '/admin/finance/service-report',
+              builder: (_, __) => const ServiceReportScreen()),
+          GoRoute(
+              path: '/admin/finance/principia-pay',
+              builder: (_, __) => const PrincipiaPayScreen()),
+          GoRoute(
               path: '/admin/finance/invoices',
               builder: (_, __) => const FinregSalesHostScreen(
                     initialCapabilityId: 'billing',
@@ -1188,9 +1203,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   )),
           GoRoute(
               path: '/admin/finance/delinquent',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'reporting',
-                  )),
+              builder: (_, __) => const DebtControlScreen()),
           GoRoute(
               path: '/admin/finance/billing-items',
               builder: (_, __) => const BillingItemsScreen()),
@@ -1205,7 +1218,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const PaymentPlansScreen()),
           GoRoute(
               path: '/admin/finance/reminders',
-              builder: (_, __) => const RemindersScreen()),
+              builder: (_, __) => const DunningScreen()),
           GoRoute(
               path: '/admin/finance/statement',
               builder: (_, __) => const FinregSalesHostScreen(

@@ -49,6 +49,13 @@ DEFAULT_POLICY: dict = {
     "billing_day": 1,
     "auto_generate": False,
     "proration_policy": "pro_rata_days",
+    "late_fee_enabled": False,
+    "late_fee_billing_item_id": None,
+    "late_fee_base": "outstanding",
+    "late_fee_bands": [],
+    "dunning_enabled": False,
+    "dunning_schedule": [],
+    "dunning_message_template": None,
 }
 
 
@@ -116,6 +123,17 @@ def policy_values(policy: Optional[SchoolFeePolicy]) -> dict:
         "billing_day": policy.billing_day,
         "auto_generate": policy.auto_generate,
         "proration_policy": policy.proration_policy,
+        "late_fee_enabled": policy.late_fee_enabled,
+        "late_fee_billing_item_id": (
+            str(policy.late_fee_billing_item_id)
+            if policy.late_fee_billing_item_id
+            else None
+        ),
+        "late_fee_base": policy.late_fee_base,
+        "late_fee_bands": policy.late_fee_bands or [],
+        "dunning_enabled": policy.dunning_enabled,
+        "dunning_schedule": policy.dunning_schedule or [],
+        "dunning_message_template": policy.dunning_message_template,
         "is_default": False,
     }
 

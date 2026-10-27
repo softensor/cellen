@@ -17,7 +17,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer,
-    Numeric, String, UniqueConstraint, func
+    Numeric, String, Text, UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,6 +48,10 @@ class SchoolFeePolicy(Base):
             "proration_policy IN ('pro_rata_days', 'full_month', 'no_charge')",
             name="ck_fee_policy_proration",
         ),
+        CheckConstraint(
+            "late_fee_base IN ('outstanding', 'document_total')",
+            name="ck_fee_policy_late_fee_base",
+        ),
         Index("ix_school_fee_policies_school_id", "school_id"),
     )
 
@@ -77,6 +81,23 @@ class SchoolFeePolicy(Base):
     proration_policy: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pro_rata_days"
     )
+    # Late fees and dunning are policy data, never code constants. Bands are
+    # anchored to the invoice month so the director's "10% from day 10 to 30,
+    # 15% from day 10 of the next month" is one editable row, not a branch.
+    late_fee_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    late_fee_billing_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("billing_items.id", ondelete="SET NULL"), nullable=True
+    )
+    # What the band percentage applies to: what is still owed, or the whole
+    # document. Schools choose; default follows the director's reading of a
+    # multa sobre o valor em dívida.
+    late_fee_base: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="outstanding"
+    )
+    late_fee_bands: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    dunning_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dunning_schedule: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    dunning_message_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -309,3 +330,117 @@ class BillingRun(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LateFeeAssessment(Base):
+    """One policy band applied to one overdue document.
+
+    A later band is assessed as a top-up: the sum of a document's assessments
+    never exceeds the highest band percentage. The unique key is the band, so
+    a retried assessment cannot issue a second fiscal note for the same band.
+    """
+    __tablename__ = "late_fee_assessments"
+    __table_args__ = (
+        UniqueConstraint(
+            "school_id", "source_kind", "source_id", "band_id",
+            name="uq_late_fee_source_band",
+        ),
+        CheckConstraint(
+            "source_kind IN ('finreg_document', 'internal_invoice')",
+            name="ck_late_fee_source_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'issued', 'failed', 'cancelled')",
+            name="ck_late_fee_status",
+        ),
+        CheckConstraint("band_percent >= 0 AND band_percent <= 100", name="ck_late_fee_pct"),
+        CheckConstraint("fee_amount >= 0", name="ck_late_fee_amount"),
+        Index("ix_late_fee_assessments_school", "school_id", "assessed_on"),
+        Index("ix_late_fee_assessments_source", "school_id", "source_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    document_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    student_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("children.id", ondelete="SET NULL"), nullable=True
+    )
+    guardian_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="SET NULL"), nullable=True
+    )
+    band_id: Mapped[str] = mapped_column(String(60), nullable=False)
+    band_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    incremental_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    base_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    fee_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    assessed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    instruction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finreg_billing_instructions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    finreg_debit_note_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    internal_invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True
+    )
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DunningDelivery(Base):
+    """One reminder attempt for one source document and schedule offset.
+
+    The unique key is the idempotency boundary: the daily sweep may run many
+    times, but a guardian receives a given reminder level on a given channel
+    exactly once per document.
+    """
+    __tablename__ = "dunning_deliveries"
+    __table_args__ = (
+        UniqueConstraint(
+            "school_id", "source_kind", "source_id", "offset_days", "channel",
+            name="uq_dunning_source_offset_channel",
+        ),
+        CheckConstraint(
+            "source_kind IN ('finreg_document', 'internal_invoice')",
+            name="ck_dunning_source_kind",
+        ),
+        CheckConstraint(
+            "status IN ('sent', 'failed', 'skipped')",
+            name="ck_dunning_status",
+        ),
+        Index("ix_dunning_deliveries_school", "school_id", "created_at"),
+        Index("ix_dunning_deliveries_guardian", "school_id", "guardian_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    document_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    guardian_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="SET NULL"), nullable=True
+    )
+    student_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("children.id", ondelete="SET NULL"), nullable=True
+    )
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    offset_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    message_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

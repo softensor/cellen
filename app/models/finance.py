@@ -508,6 +508,9 @@ class PaymentReference(Base):
     __tablename__ = "payment_references"
     __table_args__ = (
         UniqueConstraint("provider", "external_id", name="uq_payment_refs_provider_external"),
+        UniqueConstraint(
+            "provider", "caller_reference", name="uq_payment_refs_provider_caller"
+        ),
         Index("ix_payment_references_school_id", "school_id"),
         Index("ix_payment_references_invoice_id", "invoice_id"),
         Index("ix_payment_references_status", "school_id", "status"),
@@ -524,16 +527,38 @@ class PaymentReference(Base):
         UUID(as_uuid=True), ForeignKey("guardians.id", ondelete="RESTRICT"), nullable=False
     )
 
-    entity: Mapped[str] = mapped_column(String(10), nullable=False)  # 5-digit Multicaixa entity
-    reference: Mapped[str] = mapped_column(String(20), nullable=False)  # 9-digit reference
+    # A rail reference may arrive as entity/reference digits (Multicaixa) or
+    # as a hosted checkout URL (AppyPay redirect); either pair can be absent.
+    entity: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    reference: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)  # null = open amount
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     # active, paid, expired, cancelled
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     provider: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
-    # manual, proxypay, appypay, emis_gpo
+    # manual, proxypay, appypay, emis_gpo, principia_pay
     external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # The one key the product and the rail both know before the create
+    # response exists; principia-pay echoes it on every webhook and keys its
+    # own create idempotency on it.
+    caller_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # ── FinReg-anchored references (reference payments are fiscal) ──
+    # A reference may only be opened against a finalized receivable that still
+    # has outstanding. The settlement is posted back to FinReg, so these
+    # columns carry the fiscal identity the rail never sees.
+    finreg_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    finreg_document_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    finreg_document_external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    checkout_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    rail_status: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    paid_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True

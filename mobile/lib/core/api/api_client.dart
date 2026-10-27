@@ -294,7 +294,14 @@ class ApiClient {
       final data = e.response!.data;
       String message;
       if (data is Map) {
-        message = data['detail']?.toString() ??
+        final detail = data['detail'];
+        // FastAPI carries validation/billing errors as
+        // {"detail": {"code": ..., "message": ...}}; surface the message,
+        // not the map's toString.
+        final detailMessage =
+            detail is Map ? detail['message']?.toString() : null;
+        message = detailMessage ??
+            detail?.toString() ??
             data['message']?.toString() ??
             e.message ??
             'Unknown error';

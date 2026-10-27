@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/currency_provider.dart';
@@ -28,6 +30,11 @@ class ParentInvoice {
   final String? rejectionReason;
   final bool isFinreg;
 
+  /// The id the debt read model knows this document by. For FinReg documents
+  /// the row id is the outbox instruction, so the payable id comes from the
+  /// server; for local invoices it is the invoice id itself.
+  final String? payDocumentId;
+
   const ParentInvoice({
     required this.id,
     required this.childId,
@@ -43,6 +50,7 @@ class ParentInvoice {
     this.proofStatus,
     this.rejectionReason,
     this.isFinreg = false,
+    this.payDocumentId,
   });
 
   factory ParentInvoice.fromJson(Map<String, dynamic> json) {
@@ -84,6 +92,9 @@ class ParentInvoice {
       proofStatus: proofStatus,
       rejectionReason: rejectionReason,
       isFinreg: json['finreg'] as bool? ?? false,
+      payDocumentId: json['finreg'] == true
+          ? json['document_id']?.toString()
+          : json['id']?.toString(),
     );
   }
 
@@ -808,7 +819,8 @@ class _ReceiptsTab extends ConsumerWidget {
                       ? () async {
                           final bytes = await ref
                               .read(apiClientProvider)
-                              .getBytes('/finreg/parent/receipts/${r['id']}/pdf');
+                              .getBytes(
+                                  '/finreg/parent/receipts/${r['id']}/pdf');
                           await Printing.sharePdf(
                               bytes: bytes,
                               filename: 'finreg-recibo-${r['id']}.pdf');
@@ -854,13 +866,35 @@ class _InvoiceCard extends ConsumerWidget {
     required this.onPaymentSubmitted,
   });
 
+  Future<void> _payByReference(BuildContext context, WidgetRef ref) async {
+    try {
+      final data = await ref.read(apiClientProvider).post(
+        '/finance/parent/payment-references/principia-pay',
+        data: {'document_id': invoice.payDocumentId},
+      ) as Map;
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _ParentReferenceDialog(
+          reference: Map<String, dynamic>.from(data),
+        ),
+      );
+      ref.invalidate(parentInvoicesProvider);
+      ref.invalidate(_parentPaymentRefsProvider);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível gerar a referência: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final monthLabel =
         DateFormat('MMMM yyyy', 'pt_PT').format(invoice.referenceMonth);
-    final canPay = invoice.status != 'paid' &&
-        invoice.status != 'cancelled';
+    final canPay = invoice.status != 'paid' && invoice.status != 'cancelled';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -989,6 +1023,17 @@ class _InvoiceCard extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (canPay && invoice.payDocumentId != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _payByReference(context, ref),
+                    icon: const Icon(Icons.qr_code_2, size: 18),
+                    label: const Text('Pagar com referência'),
+                  ),
+                ),
+              ],
             ],
 
             // Proof status indicator
@@ -1484,6 +1529,114 @@ class _StatusBadge extends StatelessWidget {
         style:
             TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
+    );
+  }
+}
+
+/// The reference the parent pays with. The rail's entity/reference pair is
+/// the only thing the parent needs; the fiscal document itself is settled
+/// server-side and shows up in Recibos once the rail confirms.
+class _ParentReferenceDialog extends StatelessWidget {
+  const _ParentReferenceDialog({required this.reference});
+
+  final Map<String, dynamic> reference;
+
+  Future<void> _copy(BuildContext context, String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copiado.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final entity = reference['entity']?.toString() ?? '—';
+    final number = reference['reference']?.toString() ?? '—';
+    final amount = (reference['amount'] as num?)?.toDouble() ?? 0;
+    final checkout = reference['checkout_url']?.toString();
+    return AlertDialog(
+      title: const Text('Referência de pagamento'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Pague ${NumberFormat('#,##0.00', 'pt_PT').format(amount)} Kz em '
+            'qualquer canal Multicaixa/Appy Pay ou abra o pagamento online.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          _ReferenceValueRow(
+            label: 'Entidade',
+            value: entity,
+            onCopy: () => _copy(context, entity),
+          ),
+          const SizedBox(height: 6),
+          _ReferenceValueRow(
+            label: 'Referência',
+            value: number,
+            onCopy: () => _copy(context, number),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'A referência fica ligada a esta factura. Assim que o pagamento '
+            'for confirmado, a factura é liquidada automaticamente.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+      actions: [
+        if (checkout != null && checkout.isNotEmpty)
+          TextButton.icon(
+            onPressed: () async {
+              final uri = Uri.tryParse(checkout);
+              if (uri == null) return;
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('Abrir pagamento'),
+          ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fechar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReferenceValueRow extends StatelessWidget {
+  const _ReferenceValueRow({
+    required this.label,
+    required this.value,
+    required this.onCopy,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(width: 92, child: Text(label)),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 15),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.copy, size: 18),
+          onPressed: onCopy,
+        ),
+      ],
     );
   }
 }

@@ -85,6 +85,7 @@ ENROLLMENT_FEE_COMMAND = "enrollment_fee"
 MODALITY_INSCRIPTION_COMMAND = "modality_inscription_fee"
 BILLING_RUN_COMMAND = "billing_run"
 BILLING_PLAN_UPSERT_COMMAND = "billing_plan_upsert"
+LATE_FEE_COMMAND = "late_fee"
 
 
 async def enqueue_modality_inscription_instruction(
@@ -320,6 +321,34 @@ async def _dispatch_billing(
     return result
 
 
+async def _dispatch_late_fee(adapter, instruction: FinregBillingInstruction) -> dict:
+    """Issue a late-fee debit note against the source receivable in FinReg.
+
+    The route is idempotent on the assessment id (``external_id``), so the
+    outbox may resend after an unknown outcome without issuing twice.
+    """
+    payload = instruction.payload
+    actor = payload.get("actor_reference", "cellen-system")
+    correlation = str(instruction.correlation_id)
+    operation = f"receivables/{payload['document_id']}/debit-note"
+    if isinstance(adapter, FakeFinregAdapter):
+        return await adapter.execute(
+            operation,
+            payload["debit_note"],
+            idempotency_key=instruction.idempotency_key,
+            correlation_id=correlation,
+            actor_reference=actor,
+        )
+    return await adapter.request(
+        "POST",
+        operation,
+        payload["debit_note"],
+        idempotency_key=f"{instruction.idempotency_key}:debit-note",
+        correlation_id=correlation,
+        actor_reference=actor,
+    )
+
+
 async def enqueue_enrollment_fee_instruction(
     db: AsyncSession, *, school_id, enrollment_id, child_id, child_name,
     school_year_id, school_year_label, enrollment_date, guardian, billing_item,
@@ -406,6 +435,8 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
                 if instruction.command_type == BILLING_RUN_COMMAND and document_id
                 else None
             )
+        elif instruction.command_type == LATE_FEE_COMMAND:
+            document = await _dispatch_late_fee(adapter, instruction)
         elif isinstance(adapter, FakeFinregAdapter):
             document = await adapter.execute("drafts", payload["draft"],
                 idempotency_key=instruction.idempotency_key, correlation_id=str(instruction.correlation_id), actor_reference=actor)
