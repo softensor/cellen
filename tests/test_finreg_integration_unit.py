@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from fastapi import HTTPException
 
 from app.models.finreg_integration import FinregSchoolConnection
@@ -549,7 +550,25 @@ def test_all_ci_jobs_share_the_reviewed_finreg_package_pin():
     assert backend.count("ref: ${{ steps.finreg-ref.outputs.ref }}") == 1
     assert backend.count("ref: ${{ steps.kit-ref.outputs.ref }}") == 1
     assert 'pip install "$GITHUB_WORKSPACE/finreg-kit"' in backend
-    assert "continue-on-error: true" not in flutter
+
+    # No build or test step may swallow a failure: a red build has to stay
+    # red. The artifact uploads are the one exception — GitHub's artifact
+    # quota is account-wide, and a full bucket is a billing condition, not a
+    # broken build, so those two steps tolerate it (one per Android and iOS).
+    def steps(workflow: str) -> list[dict]:
+        return [
+            step
+            for job in yaml.safe_load(workflow)["jobs"].values()
+            for step in job.get("steps", [])
+        ]
+
+    tolerant = [step for step in steps(flutter) if step.get("continue-on-error")]
+    assert len(tolerant) == 2
+    assert all(
+        step.get("uses", "").startswith("actions/upload-artifact@")
+        for step in tolerant
+    )
+    assert not any(step.get("continue-on-error") for step in steps(backend))
 
 
 def test_billing_key_is_stable_and_period_scoped():
