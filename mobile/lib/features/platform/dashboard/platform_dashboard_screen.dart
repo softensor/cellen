@@ -91,6 +91,15 @@ class _PlatformDashboardScreenState
                           minimumSize: const Size.fromHeight(48),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      FilledButton.tonalIcon(
+                        onPressed: () => context.go('/platform/payments'),
+                        icon: const Icon(Icons.payments_outlined),
+                        label: const Text('Pagamentos e referências'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
                     ],
                   ),
       ),

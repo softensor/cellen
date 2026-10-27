@@ -57,6 +57,7 @@ import app.models.immunization  # noqa: F401
 import app.models.modern  # noqa: F401
 import app.models.person  # noqa: F401
 import app.models.pickup_auth  # noqa: F401
+import app.models.platform_settings  # noqa: F401
 import app.models.principia_pay  # noqa: F401
 import app.models.school  # noqa: F401
 import app.models.trip_authorization  # noqa: F401

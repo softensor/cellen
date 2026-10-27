@@ -6,11 +6,13 @@ shares a git root with it. If this ever drifts out of sync across products,
 that's the signal to move to a real git dependency instead of re-deriving
 this file from memory.
 
-Covers exactly the four operations a calling product's backend needs:
-create a reference, poll one, list them by caller_reference, and verify the
-signature on principia-pay's own outbound webhook (see principia-pay's
+Covers exactly the operations a calling product's backend needs: create a
+reference, poll one, list them by caller_reference, verify the signature on
+principia-pay's own outbound webhook (see principia-pay's
 app/services/notify.py -- this file's `verify_webhook_signature` must stay
-byte-for-byte compatible with that function's `_sign`).
+byte-for-byte compatible with that function's `_sign`), self-register an
+end-tenant, and the two product-tier reads that let an owner console verify
+its activation before trusting it.
 """
 
 from __future__ import annotations
@@ -256,6 +258,69 @@ async def register_client(
         raise PrincipiaPayError(response.status_code, _detail(response))
     body = response.json()
     return RegisteredClient(id=body["id"], api_key=body["api_key"], callback_secret=body.get("callback_secret"))
+
+
+async def verify_product_token(
+    base_url: str,
+    product_token: str,
+    source_system: str,
+    timeout_seconds: float = 10.0,
+) -> dict:
+    """Who this product token is, from the rail's own answer.
+
+    ``GET /v1/products/{source_system}`` is the product tier's read-only
+    identity call: it returns ``source_system``, the non-secret
+    ``token_prefix`` and ``is_active``. The owner console calls it before
+    trusting a pasted token, so a typo, a revoked token, or one minted for a
+    different product cannot silently become the rail's credentials.
+    """
+    body = await _product_get(
+        base_url,
+        product_token,
+        f"/v1/products/{source_system}",
+        timeout_seconds=timeout_seconds,
+    )
+    return body if isinstance(body, dict) else {}
+
+
+async def list_product_clients(
+    base_url: str,
+    product_token: str,
+    source_system: str,
+    timeout_seconds: float = 10.0,
+) -> list[dict]:
+    """Every end-tenant the rail holds for this product.
+
+    Strictly read-only and secretless: each row carries the client's
+    non-secret identifying prefix and the onboarding state the rail derived
+    (credentials / verification / activation), never an API key or callback
+    secret. This is what lets the owner console answer "is this school ready
+    to take payments?" with the rail's truth rather than a local guess.
+    """
+    body = await _product_get(
+        base_url,
+        product_token,
+        f"/v1/products/{source_system}/clients",
+        timeout_seconds=timeout_seconds,
+    )
+    return list(body) if isinstance(body, list) else []
+
+
+async def _product_get(
+    base_url: str,
+    product_token: str,
+    path: str,
+    *,
+    timeout_seconds: float = 10.0,
+) -> dict | list:
+    url = f"{base_url.rstrip('/')}{path}"
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        response = await client.get(
+            url, headers={"Authorization": f"Bearer {product_token}"}
+        )
+    if response.status_code != 200:
+        raise PrincipiaPayError(response.status_code, _detail(response))
+    return response.json()
 
 
 def _detail(response: httpx.Response) -> str:
