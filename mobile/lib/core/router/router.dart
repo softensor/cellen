@@ -33,6 +33,7 @@ import '../../features/parent/authorizations_hub/parent_auth_hub.dart';
 import '../../features/platform/dashboard/platform_dashboard_screen.dart';
 import '../../features/platform/schools/schools_screen.dart';
 import '../../features/platform/schools/school_config_screen.dart';
+import '../../features/platform/payments/platform_payments_screen.dart';
 import '../../features/platform/website/website_dashboard_screen.dart';
 import '../../features/platform/website/website_page_editor_screen.dart';
 import '../../features/platform/website/website_section_editor_screen.dart';
@@ -242,6 +243,11 @@ const _platformItems = [
       label: 'Escolas',
       icon: Icons.school_outlined,
       selectedIcon: Icons.school),
+  SidebarItem(
+      path: '/platform/payments',
+      label: 'Pagamentos',
+      icon: Icons.payments_outlined,
+      selectedIcon: Icons.payments),
   SidebarItem(
       path: '/platform/website',
       label: 'Website',
@@ -1052,6 +1058,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               schoolName: state.extra as String? ?? 'Escola',
             ),
           ),
+          GoRoute(
+              path: '/platform/payments',
+              builder: (_, __) => const PlatformPaymentsScreen()),
 
           // ── Platform: Website CMS ────────────────────────────────────────────
           GoRoute(

@@ -163,7 +163,11 @@ IFS='|' read -r plan_id frequency interval due_days next_run generation_mode act
 [[ ${frequency:-} =~ ^(weekly|monthly|quarterly|annual)$ && ${interval:-0} -ge 1 && ${due_days:-x} =~ ^[0-9]+$ && -n ${next_run:-} ]] && pass 'Billing plan schedule is complete' "$frequency/$interval due=$due_days next=$next_run" || fail 'Billing plan schedule is complete'
 expected_generation=draft
 [[ $EXPECTED_MODE == shadow ]] || expected_generation=finalize
-[[ ${generation_mode:-} == "$expected_generation" && ${active:-} == true ]] && pass 'Billing plan generation mode' "$generation_mode" || fail 'Billing plan generation mode' "expected=$expected_generation actual=${generation_mode:-missing} active=${active:-missing}"
+# Cellen owns the billing calendar: every run and rebuild upserts the plan,
+# generates the period, then pauses it so FinReg's nightly sweep can never
+# bill a period Cellen did not compose. At rest the plan must therefore be
+# paused; an active plan here would be a double-billing hazard, not a pass.
+[[ ${generation_mode:-} == "$expected_generation" && ${active:-} == false ]] && pass 'Billing plan is paused under Cellen control' "$generation_mode paused" || fail 'Billing plan is paused under Cellen control' "expected=$expected_generation paused actual=${generation_mode:-missing} active=${active:-missing}"
 if [[ $RUN_SCHEDULER -eq 1 && -n ${plan_id:-} ]]; then
   before=$(sql finreg "SELECT count(*) FROM documents WHERE recurring_template_id='$plan_id';" 2>/dev/null || echo -1)
   task=$(cd "$FINREG_DIR/backend" && set -a && source /etc/finreg.env && set +a && export PYTHONPATH="$FINREG_DIR/backend" && "$FINREG_DIR/.venv/bin/celery" -A app.tasks.celery_app call app.tasks.invoice_batch.generate_recurring_invoices 2>/dev/null || true)
@@ -172,7 +176,9 @@ if [[ $RUN_SCHEDULER -eq 1 && -n ${plan_id:-} ]]; then
   task_error=$(journalctl -u finreg-worker --since "$STARTED_AT" --no-pager 2>/dev/null | grep -F "$task" | grep -E 'raised unexpected|FAILURE' || true)
   [[ -z $task_error ]] && pass 'Scheduler task has no failure' || fail 'Scheduler task has no failure' "${task_error//$'\n'/; }"
   after=$(sql finreg "SELECT count(*) FROM documents WHERE recurring_template_id='$plan_id';" 2>/dev/null || echo -1)
-  [[ $after -ge $before && $after -ge 1 ]] && pass 'Plan has generated a document' "before=$before after=$after" || fail 'Plan has generated a document' "before=$before after=$after"
+  # The plan is paused, so the sweep must not touch it: the document count
+  # has to stay exactly what Cellen's own run issued (at least one).
+  [[ $after -eq $before && $after -ge 1 ]] && pass 'Paused plan keeps its Cellen-issued document' "before=$before after=$after" || fail 'Paused plan keeps its Cellen-issued document' "before=$before after=$after"
   duplicates=$(sql finreg "SELECT count(*) FROM (SELECT recurring_run_date FROM documents WHERE recurring_template_id='$plan_id' GROUP BY recurring_run_date HAVING count(*)>1) x;" 2>/dev/null || echo query_failed)
   [[ $duplicates == 0 ]] && pass 'Recurring generation is idempotent' || fail 'Recurring generation is idempotent' "$duplicates"
   if [[ $EXPECTED_MODE == shadow ]]; then

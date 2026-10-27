@@ -199,6 +199,22 @@ calculation on the fiscal side.
 
 ## 5. Implementation log
 
+- **2026-10-27 — principia-pay owner activation.** Migration
+  `0036_platform_payments` adds the singleton `platform_settings` row behind
+  the platform console's new **Pagamentos** screen. The product token is
+  saved before it is trusted, encrypted with `secret_box`, live-verified
+  against `GET /v1/products/{source_system}` and armed only on a verified
+  `connected`; a refused token is kept for retry but never used, and the
+  console's off switch beats a leftover environment token. The same screen
+  lists every school with the rail's own per-client onboarding state
+  (`GET /v1/products/{source_system}/clients`) and can register a school as
+  its own rail client, so money never pools between schools. New routes:
+  `GET /platform/payments/status`, `POST /platform/payments/activate`,
+  `POST /platform/payments/deactivate`, `GET /platform/payments/schools`,
+  `POST /platform/payments/schools/{id}/register`, all platform-admin only.
+  Tests: `tests/test_platform_payments.py` (5) and the mobile widget test
+  `platform_payments_screen_test.dart` (4).
+
 - **2026-10-27 — Phases 2–5 (3e, 3f, 2.4, 3c, 3d dunning, principia-pay),
   pending release.** Migration head is now `0035_late_fees_dunning_pay`
   (`down_revision = "0034"`).

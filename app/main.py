@@ -39,6 +39,7 @@ from app.routers import (
     lesson_attendance,
     finreg,
     billing,
+    platform_payments,
 )
 
 app = FastAPI(
@@ -70,6 +71,7 @@ app.add_middleware(
 # Include all routers under /api/v1 prefix
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(platform.router, prefix="/api/v1")
+app.include_router(platform_payments.router, prefix="/api/v1")
 app.include_router(schools.router, prefix="/api/v1")
 app.include_router(children.router, prefix="/api/v1")
 app.include_router(guardians.router, prefix="/api/v1")

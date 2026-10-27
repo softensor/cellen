@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.finance import PaymentReference
+from app.models.platform_settings import PlatformSettings
 from app.models.principia_pay import PrincipiaPayConnection
 from app.models.school import School
 from app.services.billing_run import BillingError, FINREG_MODES
@@ -47,7 +48,9 @@ from app.services.principia_pay_client import (
     PrincipiaPayClient,
     PrincipiaPayError,
     Reference,
+    list_product_clients,
     register_client,
+    verify_product_token,
     verify_webhook_signature,
 )
 from app.services.secret_box import decrypt_secret, encrypt_secret
@@ -79,7 +82,7 @@ def _base_url() -> str:
     return (settings.PRINCIPIA_PAY_BASE_URL or "").strip().rstrip("/")
 
 
-def _product_token() -> str:
+def _env_product_token() -> str:
     return (settings.PRINCIPIA_PAY_PRODUCT_TOKEN or "").strip()
 
 
@@ -88,18 +91,72 @@ def _callback_url() -> Optional[str]:
     return value or None
 
 
-def is_configured() -> bool:
-    return bool(_base_url() and _product_token())
+async def get_platform_settings(db: AsyncSession) -> Optional[PlatformSettings]:
+    """The owner console's singleton row, read-only (no implicit insert)."""
+    return await db.get(PlatformSettings, 1)
 
 
-def _require_configuration() -> tuple[str, str]:
-    if not is_configured():
+async def ensure_platform_settings(db: AsyncSession) -> PlatformSettings:
+    """Get-or-create the singleton without racing a concurrent first write."""
+    row = await get_platform_settings(db)
+    if row is not None:
+        return row
+    env_token = _env_product_token()
+    row = PlatformSettings(
+        id=1,
+        principia_pay_enabled=bool(env_token),
+        principia_pay_token_prefix=env_token[:12] or None,
+        principia_pay_status="unchecked" if env_token else "not_configured",
+    )
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        row = await get_platform_settings(db)
+        if row is None:
+            raise
+    return row
+
+
+async def resolve_product_token(db: AsyncSession) -> str:
+    """The product token in force right now.
+
+    The owner console's row is authoritative once it exists: its switch can
+    turn the rail off even while the environment still carries a token.
+    Before the first activation there is no row, and the environment token
+    keeps its old role as the startup fallback.
+
+    A token the last probe rejected (``attention``) stays stored -- the
+    operator's paste is never lost -- but it is not armed. That mirrors the
+    proven Mwenenzo swap, which only happens on a verified ``connected``;
+    pressing Activar again is the retry.
+    """
+    row = await get_platform_settings(db)
+    if row is None:
+        return _env_product_token()
+    if not row.principia_pay_enabled:
+        return ""
+    if row.principia_pay_status == "attention":
+        return ""
+    if row.principia_pay_token_ciphertext:
+        return decrypt_secret(row.principia_pay_token_ciphertext)
+    return _env_product_token()
+
+
+async def is_configured(db: AsyncSession) -> bool:
+    return bool(_base_url() and await resolve_product_token(db))
+
+
+async def _require_configuration(db: AsyncSession) -> tuple[str, str]:
+    token = await resolve_product_token(db)
+    if not _base_url() or not token:
         raise BillingError(
             "principia_pay_not_configured",
             "O serviço de pagamentos por referência não está configurado nesta instalação.",
             503,
         )
-    return _base_url(), _product_token()
+    return _base_url(), token
 
 
 async def get_connection(
@@ -131,7 +188,7 @@ async def ensure_connection(
     ):
         return existing
 
-    base_url, product_token = _require_configuration()
+    base_url, product_token = await _require_configuration(db)
     school = await db.get(School, school_id)
     if school is None:
         raise BillingError("school_not_found", "Escola não encontrada.", 404)
@@ -201,13 +258,240 @@ def _client(connection: PrincipiaPayConnection) -> PrincipiaPayClient:
 async def connection_status(db: AsyncSession, *, school_id: uuid.UUID) -> dict:
     connection = await get_connection(db, school_id=school_id)
     return {
-        "configured": is_configured(),
+        "configured": await is_configured(db),
         "registered": bool(connection and connection.status == "active"),
         "status": connection.status if connection else "unregistered",
         "client_id": connection.client_id if connection else None,
         "last_error": connection.last_error if connection else None,
         "provider": settings.PRINCIPIA_PAY_PROVIDER,
     }
+
+
+# ── Owner-console activation ─────────────────────────────────────────────
+
+
+def _platform_status_dict(
+    row: Optional[PlatformSettings], *, configured: bool
+) -> dict:
+    env_token = _env_product_token()
+    if row is None:
+        enabled = bool(env_token)
+        status = "unchecked" if env_token else "not_configured"
+        prefix = env_token[:12] or None
+        last_error = None
+        last_checked = None
+        source = "environment" if env_token else None
+    else:
+        enabled = row.principia_pay_enabled
+        status = row.principia_pay_status
+        prefix = row.principia_pay_token_prefix
+        last_error = row.principia_pay_last_error
+        last_checked = row.principia_pay_last_checked_at
+        source = None
+        if enabled and row.principia_pay_token_ciphertext:
+            source = "admin"
+        elif enabled and env_token:
+            source = "environment"
+    return {
+        "configured": configured,
+        "enabled": enabled,
+        "status": status,
+        "token_prefix": prefix,
+        "token_source": source,
+        "provider": settings.PRINCIPIA_PAY_PROVIDER,
+        "source_system": settings.PRINCIPIA_PAY_SOURCE_SYSTEM,
+        "base_url": _base_url(),
+        "last_error": last_error,
+        "last_checked_at": last_checked,
+    }
+
+
+async def platform_status(db: AsyncSession) -> dict:
+    row = await get_platform_settings(db)
+    return _platform_status_dict(row, configured=await is_configured(db))
+
+
+async def activate_platform_token(db: AsyncSession, product_token: str) -> dict:
+    """Save the pasted product token, then ask the rail who it is.
+
+    Save-then-probe, the proven Mwenenzo shape: the paste is committed
+    before the network call, so an unreachable rail -- or one that refuses
+    the token -- costs the operator nothing but pressing the button again.
+    A token is armed only after a verified ``connected``; a refused token
+    stays stored with ``attention`` and the reason beside it.
+    """
+    row = await ensure_platform_settings(db)
+    token = product_token.strip()
+    row.principia_pay_enabled = True
+    row.principia_pay_token_ciphertext = encrypt_secret(token)
+    row.principia_pay_token_prefix = token[:12]
+    row.principia_pay_status = "unchecked"
+    row.principia_pay_last_error = None
+    await db.commit()
+    await db.refresh(row)
+
+    base_url = _base_url()
+    try:
+        identity = await verify_product_token(
+            base_url, token, settings.PRINCIPIA_PAY_SOURCE_SYSTEM
+        )
+    except PrincipiaPayError as exc:
+        row.principia_pay_status = "attention"
+        row.principia_pay_last_error = f"{exc.status_code}: {exc.detail}"[:1000]
+    except httpx.HTTPError as exc:
+        row.principia_pay_status = "attention"
+        row.principia_pay_last_error = str(exc)[:1000]
+    else:
+        if identity.get("is_active") is False:
+            row.principia_pay_status = "attention"
+            row.principia_pay_last_error = (
+                "O token existe no principia-pay mas está inactivo."
+            )
+        else:
+            row.principia_pay_status = "connected"
+            row.principia_pay_last_error = None
+            row.principia_pay_last_checked_at = datetime.now(timezone.utc)
+            # The rail's answer is authoritative for the prefix: it is the
+            # first twelve characters of the token the rail actually matched.
+            row.principia_pay_token_prefix = (
+                identity.get("token_prefix") or row.principia_pay_token_prefix
+            )
+    await db.commit()
+    await db.refresh(row)
+    return _platform_status_dict(row, configured=await is_configured(db))
+
+
+async def deactivate_platform_token(db: AsyncSession) -> dict:
+    """Turn the rail off in this installation, clearing the stored token.
+
+    The row's switch wins over the environment fallback, so this is a real
+    off switch even when ``PRINCIPIA_PAY_PRODUCT_TOKEN`` is still set in
+    ``.env``. Activating again is all it takes to come back.
+    """
+    row = await ensure_platform_settings(db)
+    row.principia_pay_enabled = False
+    row.principia_pay_token_ciphertext = None
+    row.principia_pay_token_prefix = None
+    row.principia_pay_status = "not_configured"
+    row.principia_pay_last_error = None
+    row.principia_pay_last_checked_at = None
+    await db.commit()
+    await db.refresh(row)
+    return _platform_status_dict(row, configured=False)
+
+
+async def platform_schools(db: AsyncSession) -> dict:
+    """Every school, with the rail's own onboarding answer where available.
+
+    A local connection row alone cannot say whether a payment will work: the
+    rail may still be waiting for the school's provider credentials or its
+    verification. One product-tier read maps the rail's per-client state onto
+    each school; a rail that cannot answer degrades every row to
+    ``unreachable`` rather than guessing.
+    """
+    schools = (
+        await db.execute(select(School).order_by(School.name, School.id))
+    ).scalars().all()
+    connections = {
+        row.school_id: row
+        for row in (
+            await db.execute(select(PrincipiaPayConnection))
+        ).scalars().all()
+    }
+    configured = await is_configured(db)
+    rail_by_external: dict[str, dict] = {}
+    rail_error: Optional[str] = None
+    if configured:
+        try:
+            rail_by_external = {
+                str(row.get("external_client_id")): row
+                for row in await list_product_clients(
+                    _base_url(),
+                    await resolve_product_token(db),
+                    settings.PRINCIPIA_PAY_SOURCE_SYSTEM,
+                )
+            }
+        except PrincipiaPayError as exc:
+            rail_error = f"{exc.status_code}: {exc.detail}"[:500]
+        except httpx.HTTPError as exc:
+            rail_error = str(exc)[:500]
+
+    rows = []
+    for school in schools:
+        connection = connections.get(school.id)
+        rail_row = rail_by_external.get(str(school.id))
+        if not configured:
+            state = "platform_off"
+        elif rail_error is not None:
+            state = "unreachable"
+        elif connection is not None and rail_row is not None:
+            state = str(rail_row.get("onboarding_state") or "unknown")
+        elif connection is not None:
+            state = "missing_on_rail"
+        elif rail_row is not None:
+            state = "unlinked"
+        else:
+            state = "unregistered"
+        rows.append(
+            {
+                "id": school.id,
+                "name": school.name,
+                "slug": school.slug,
+                "is_active": bool(school.is_active),
+                "registered": bool(connection and connection.status == "active"),
+                "client_id": connection.client_id if connection else None,
+                "last_error": connection.last_error if connection else None,
+                "rail_state": state,
+                "providers": (
+                    dict(rail_row.get("providers") or {}) if rail_row else {}
+                ),
+            }
+        )
+    return {"configured": configured, "rail_error": rail_error, "schools": rows}
+
+
+async def register_school(db: AsyncSession, *, school_id: uuid.UUID) -> dict:
+    """Ensure this school exists on the rail with a key this system holds.
+
+    The rail is asked first, so the button cannot create two clients: an
+    existing pair is a no-op, a local key whose rail client vanished is
+    replaced, and a rail client this system has no key for is refused rather
+    than shadowed -- its key was shown once and cannot be recovered.
+    """
+    school = await db.get(School, school_id)
+    if school is None:
+        raise BillingError("school_not_found", "Escola não encontrada.", 404)
+    base_url, product_token = await _require_configuration(db)
+    try:
+        rail_ids = {
+            str(row.get("external_client_id"))
+            for row in await list_product_clients(
+                base_url, product_token, settings.PRINCIPIA_PAY_SOURCE_SYSTEM
+            )
+        }
+    except PrincipiaPayError as exc:
+        raise RailRefused(f"principia-pay {exc.status_code}: {exc.detail}") from exc
+    except httpx.HTTPError as exc:
+        raise RailUnavailable(f"principia-pay unreachable: {exc}") from exc
+
+    connection = await get_connection(db, school_id=school_id)
+    external_id = str(school_id)
+    if connection is not None and external_id in rail_ids:
+        return await connection_status(db, school_id=school_id)
+    if connection is not None:
+        # The rail no longer has this client, so the stored key is dead.
+        await db.delete(connection)
+        await db.commit()
+    elif external_id in rail_ids:
+        raise BillingError(
+            "principia_pay_key_missing",
+            "Esta escola já existe no principia-pay, mas a chave do cliente "
+            "não está neste sistema. É preciso repor a chave no principia-pay "
+            "antes de voltar a ligar a escola.",
+            409,
+        )
+    await ensure_connection(db, school_id=school_id)
+    return await connection_status(db, school_id=school_id)
 
 
 # ── Reference creation ────────────────────────────────────────────────────
