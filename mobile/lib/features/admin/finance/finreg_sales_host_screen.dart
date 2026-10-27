@@ -733,6 +733,30 @@ class _SchoolBillingOperations extends StatelessWidget {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
     final operations = <({IconData icon, String pt, String en, String route})>[
       (
+        icon: Icons.bolt_outlined,
+        pt: 'Gerar dívidas',
+        en: 'Generate debts',
+        route: '/admin/finance/billing-run'
+      ),
+      (
+        icon: Icons.tune_outlined,
+        pt: 'Política de propinas',
+        en: 'Fee policy',
+        route: '/admin/finance/fee-policy'
+      ),
+      (
+        icon: Icons.sports_soccer_outlined,
+        pt: 'Modalidades',
+        en: 'Extracurricular activities',
+        route: '/admin/finance/modalities'
+      ),
+      (
+        icon: Icons.directions_bus_outlined,
+        pt: 'Transporte escolar',
+        en: 'School transport',
+        route: '/admin/finance/transport'
+      ),
+      (
         icon: Icons.school_outlined,
         pt: 'Planos dos alunos',
         en: 'Student plans',
@@ -792,8 +816,8 @@ class _SchoolBillingOperations extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(portuguese
-              ? 'Use estas áreas para os dados escolares. A faturação fiscal, pagamentos e relatórios permanecem no Finreg.'
-              : 'Use these areas for school data. Fiscal billing, payments and reports remain in Finreg.'),
+              ? 'Cálculos, cobranças, descontos e dados dos alunos são geridos aqui. Os documentos fiscais são emitidos pelo Finreg.'
+              : 'Calculations, charges, discounts and student data are managed here. Fiscal documents are issued by Finreg.'),
           const SizedBox(height: 20),
           GridView.count(
             crossAxisCount: columns,

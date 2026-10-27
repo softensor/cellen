@@ -46,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models.base import Base  # noqa: F401
 import app.models.absence  # noqa: F401
 import app.models.academic  # noqa: F401
+import app.models.billing  # noqa: F401
 import app.models.billing_item  # noqa: F401
 import app.models.caderneta  # noqa: F401
 import app.models.employee  # noqa: F401

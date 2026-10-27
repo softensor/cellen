@@ -147,6 +147,22 @@ async def _daily_breach_payment_plans():
             logger.exception("Error breaching payment plans")
 
 
+async def _daily_auto_generate_billing():
+    """Run opted-in schools' monthly fee composition after their billing day."""
+    from app.services.billing_run import auto_generate_due
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await auto_generate_due(db)
+            if result["generated"] or result["failed"]:
+                logger.info(
+                    "Fee automation: generated=%d skipped=%d failed=%d",
+                    result["generated"], result["skipped"], result["failed"],
+                )
+        except Exception:
+            logger.exception("Error in automatic fee generation")
+
+
 async def run_scheduled_tasks():
     """Main loop: wait until midnight Luanda, then run daily tasks."""
     while True:
@@ -158,6 +174,7 @@ async def run_scheduled_tasks():
         await _daily_overdue_sweep()
         await _daily_expire_payment_references()
         await _daily_breach_payment_plans()
+        await _daily_auto_generate_billing()
 
 
 async def run_finreg_dispatcher():
@@ -166,6 +183,7 @@ async def run_finreg_dispatcher():
         dispatch_pending,
         reconcile_enrollment_fee_settlements,
     )
+    from app.services.billing_run import apply_confirmed_plan_results, refresh_open_runs
     from app.services.finreg_events import synchronize_enabled_connections
 
     while True:
@@ -174,12 +192,16 @@ async def run_finreg_dispatcher():
                 confirmed, failed = await dispatch_pending(db)
                 events, sync_failed = await synchronize_enabled_connections(db)
                 activated = await reconcile_enrollment_fee_settlements(db)
+                plans = await apply_confirmed_plan_results(db)
+                runs = await refresh_open_runs(db)
                 if confirmed or failed:
                     logger.info("Finreg outbox: confirmed=%d failed=%d", confirmed, failed)
                 if events or sync_failed:
                     logger.info("Finreg events: processed=%d failed=%d", events, sync_failed)
                 if activated:
                     logger.info("Finreg enrollment fees: activated=%d enrollments", activated)
+                if plans or runs:
+                    logger.info("Fee automation: plans synced=%d runs refreshed=%d", plans, runs)
             except Exception:
                 logger.exception("Finreg outbox dispatch failed")
         await asyncio.sleep(30)

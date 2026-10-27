@@ -82,6 +82,242 @@ async def enqueue_contract_instruction(
 
 
 ENROLLMENT_FEE_COMMAND = "enrollment_fee"
+MODALITY_INSCRIPTION_COMMAND = "modality_inscription_fee"
+BILLING_RUN_COMMAND = "billing_run"
+BILLING_PLAN_UPSERT_COMMAND = "billing_plan_upsert"
+
+
+async def enqueue_modality_inscription_instruction(
+    db: AsyncSession,
+    *,
+    school_id,
+    student_modality_id,
+    child_id,
+    child_name,
+    school_year_id,
+    school_year_label,
+    start_date,
+    guardian,
+    billing_item,
+    unit_price,
+    actor_reference: str,
+) -> FinregBillingInstruction:
+    """Stage the one-off inscription fee for an extracurricular activity."""
+    key = f"cellen-modality-fee-{student_modality_id}"
+    existing = (await db.execute(select(FinregBillingInstruction).where(
+        FinregBillingInstruction.school_id == school_id,
+        FinregBillingInstruction.idempotency_key == key,
+    ))).scalar_one_or_none()
+    if existing:
+        return existing
+    instruction = FinregBillingInstruction(
+        school_id=school_id,
+        idempotency_key=key,
+        command_type=MODALITY_INSCRIPTION_COMMAND,
+        payload={},
+    )
+    db.add(instruction)
+    await db.flush()
+    period = start_date.strftime("%Y-%m")
+    instruction.payload = {
+        "actor_reference": actor_reference,
+        "guardian": {"external_id": str(guardian.id), "data": {
+            "tax_id": guardian.nif, "name": f"{guardian.first_name} {guardian.last_name}",
+            "email": guardian.email, "phone": guardian.mobile_first,
+            "address": guardian.street, "city": guardian.city,
+            "country": "AO", "is_company": False,
+        }},
+        "products": [{"external_id": str(billing_item.id), "data": {
+            "sku": billing_item.code, "name": billing_item.name,
+            "description": billing_item.description, "unit_price": str(unit_price),
+            "tax_rate": str(billing_item.iva_rate),
+            "tax_option_code": billing_item.finreg_tax_option_code,
+            "tax_exemption_reason": billing_item.iva_exemption_reason,
+            "is_service": True,
+        }}],
+        "draft": {"document": {
+            "client_request_id": str(instruction.id), "document_type": "invoice",
+            "document_date": start_date.isoformat(), "due_date": None,
+            "lines": [{
+                "product_external_id": str(billing_item.id),
+                "description": billing_item.name,
+                "quantity": "1", "unit_price": str(unit_price), "discount_pct": "0",
+                "tax_rate": str(billing_item.iva_rate),
+                "tax_option_code": billing_item.finreg_tax_option_code,
+                "tax_exemption_reason": billing_item.iva_exemption_reason,
+            }],
+        }, "context": school_context(
+            instruction_id=instruction.id, school_id=school_id, pupil_id=child_id,
+            pupil_name=child_name, enrolment_id=None,
+            academic_year_id=school_year_id, academic_year_label=school_year_label,
+            billing_period=period,
+        )},
+    }
+    return instruction
+
+
+async def enqueue_billing_instruction(
+    db: AsyncSession,
+    *,
+    school_id,
+    idempotency_key: str,
+    command_type: str,
+    payload: dict,
+) -> tuple[FinregBillingInstruction, bool]:
+    """Stage a fee-automation instruction in the outbox.
+
+    A rejected instruction is reusable: the school fixed the underlying data
+    and pressed the same button again, and the unique key is the period. An
+    unknown or pending instruction keeps its payload because FinReg may have
+    acted on it already; only the dispatcher may resolve that ambiguity.
+    """
+    existing = (await db.execute(select(FinregBillingInstruction).where(
+        FinregBillingInstruction.school_id == school_id,
+        FinregBillingInstruction.idempotency_key == idempotency_key,
+    ))).scalar_one_or_none()
+    if existing is not None:
+        if existing.status == "rejected":
+            existing.payload = payload
+            existing.status = "pending"
+            existing.error_code = None
+            existing.error_detail = None
+            existing.next_attempt_at = None
+            await db.flush()
+        return existing, False
+    instruction = FinregBillingInstruction(
+        school_id=school_id,
+        idempotency_key=idempotency_key,
+        command_type=command_type,
+        payload=payload,
+    )
+    db.add(instruction)
+    await db.flush()
+    return instruction, True
+
+
+async def _dispatch_billing(
+    adapter,
+    instruction: FinregBillingInstruction,
+) -> dict:
+    """Upsert the student plan, optionally run its period, then pause it.
+
+    Pausing is deliberate. FinReg's recurring scheduler must never issue a
+    monthly document without Cellen's composition (proration, sibling
+    discount, transport, activities) having run first. Cellen re-activates
+    the plan on the next composed run.
+    """
+    payload = instruction.payload
+    key = instruction.idempotency_key
+    actor = payload.get("actor_reference", "cellen-system")
+    correlation = str(instruction.correlation_id)
+    plan = payload["plan"]
+    external_id = str(plan["external_id"])
+
+    if isinstance(adapter, FakeFinregAdapter):
+        await adapter.execute(
+            "billing-plans/upsert",
+            {"plan": plan},
+            idempotency_key=f"{key}:upsert",
+            correlation_id=correlation,
+            actor_reference=actor,
+        )
+        if instruction.command_type == BILLING_PLAN_UPSERT_COMMAND:
+            return {
+                "status": "confirmed",
+                "external_id": external_id,
+                "next_run_date": payload.get("next_run_date"),
+            }
+        return await adapter.execute(
+            "billing-plans/run",
+            {"external_id": external_id, "run_date": payload["run_date"]},
+            idempotency_key=key,
+            correlation_id=correlation,
+            actor_reference=actor,
+        )
+
+    guardian = payload["guardian"]
+    customer = await adapter.request(
+        "PUT",
+        f"customers/{guardian['external_id']}",
+        {"customer": guardian["data"]},
+        idempotency_key=f"{key}:customer",
+        correlation_id=correlation,
+        actor_reference=actor,
+    )
+    product_ids: dict[str, str] = {}
+    for product in payload.get("products") or []:
+        response = await adapter.request(
+            "PUT",
+            f"products/{product['external_id']}",
+            {"product": product["data"]},
+            idempotency_key=f"{key}:product:{product['external_id']}",
+            correlation_id=correlation,
+            actor_reference=actor,
+        )
+        product_ids[product["external_id"]] = response["id"]
+
+    lines = []
+    for line in plan["template"]["lines"]:
+        resolved = dict(line)
+        external_product = resolved.pop("product_external_id")
+        resolved["product_id"] = product_ids[external_product]
+        lines.append(resolved)
+    body = {
+        **plan,
+        "template": {
+            **plan["template"],
+            "customer_id": customer["id"],
+            "lines": lines,
+        },
+    }
+    await adapter.request(
+        "PUT",
+        f"billing-plans/{external_id}",
+        body,
+        idempotency_key=f"{key}:upsert",
+        correlation_id=correlation,
+        actor_reference=actor,
+    )
+
+    if instruction.command_type == BILLING_RUN_COMMAND:
+        result = await adapter.request(
+            "POST",
+            f"billing-plans/{external_id}/run",
+            {"run_date": payload["run_date"]},
+            idempotency_key=f"{key}:run",
+            correlation_id=correlation,
+            actor_reference=actor,
+        )
+        status = str((result or {}).get("status") or "").lower()
+        if status in {"failed", "skipped"}:
+            raise FinregError(
+                f"finreg_run_{status}",
+                (result or {}).get("error") or "O FinReg não gerou este período.",
+                retryable=False,
+            )
+    else:
+        result = {
+            "status": "confirmed",
+            "external_id": external_id,
+            "next_run_date": payload.get("next_run_date"),
+        }
+
+    if payload.get("pause_after_run"):
+        try:
+            await adapter.request(
+                "POST",
+                f"billing-plans/{external_id}/pause",
+                {"reason": "Cellen controla a geração mensal"},
+                idempotency_key=f"{key}:pause",
+                correlation_id=correlation,
+                actor_reference=actor,
+            )
+        except FinregError:
+            # The document is already issued; a pause failure must not turn a
+            # confirmed billing run into a retry that could look like a
+            # duplicate. The next run re-upserts and pauses again.
+            pass
+    return result
 
 
 async def enqueue_enrollment_fee_instruction(
@@ -160,7 +396,17 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
     payload = instruction.payload
     actor = payload.get("actor_reference", "cellen-system")
     try:
-        if isinstance(adapter, FakeFinregAdapter):
+        if instruction.command_type in {BILLING_RUN_COMMAND, BILLING_PLAN_UPSERT_COMMAND}:
+            # A plan upsert has no fiscal document; only a run does. Reading
+            # the id unconditionally used to crash every plan rebuild.
+            document = await _dispatch_billing(adapter, instruction)
+            document_id = (document or {}).get("document_id") or (document or {}).get("id")
+            instruction.finreg_document_id = (
+                uuid.UUID(str(document_id))
+                if instruction.command_type == BILLING_RUN_COMMAND and document_id
+                else None
+            )
+        elif isinstance(adapter, FakeFinregAdapter):
             document = await adapter.execute("drafts", payload["draft"],
                 idempotency_key=instruction.idempotency_key, correlation_id=str(instruction.correlation_id), actor_reference=actor)
         else:
@@ -189,7 +435,10 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
                 document = await adapter.request("POST", f"documents/{instruction.id}/finalize", {},
                     idempotency_key=f"{instruction.idempotency_key}:finalize",
                     correlation_id=str(instruction.correlation_id), actor_reference=actor)
-        instruction.finreg_document_id = uuid.UUID(document["id"])
+        if instruction.command_type not in {
+            BILLING_RUN_COMMAND, BILLING_PLAN_UPSERT_COMMAND
+        }:
+            instruction.finreg_document_id = uuid.UUID(document["id"])
         instruction.result_snapshot = document
         instruction.status = "confirmed"
         instruction.error_code = instruction.error_detail = None

@@ -54,6 +54,10 @@ import '../../features/incidents/incidents_screen.dart';
 import '../../features/events/events_screen.dart';
 import '../../features/admin/finance/student_billing_plans_screen.dart';
 import '../../features/admin/finance/billing_items_screen.dart';
+import '../../features/admin/finance/billing_run_screen.dart';
+import '../../features/admin/finance/fee_policy_screen.dart';
+import '../../features/admin/finance/modalities_screen.dart';
+import '../../features/admin/finance/transport_screen.dart';
 import '../../features/admin/finance/credit_balances_screen.dart';
 import '../../features/admin/finance/parent_payment_review_screen.dart';
 import '../../features/admin/finance/payment_plans_screen.dart';
@@ -1155,6 +1159,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/admin/finance/contracts',
               builder: (_, __) => const StudentBillingPlansScreen()),
+          GoRoute(
+              path: '/admin/finance/billing-run',
+              builder: (_, __) => const BillingRunScreen()),
+          GoRoute(
+              path: '/admin/finance/fee-policy',
+              builder: (_, __) => const FeePolicyScreen()),
+          GoRoute(
+              path: '/admin/finance/modalities',
+              builder: (_, __) => const ModalitiesScreen()),
+          GoRoute(
+              path: '/admin/finance/transport',
+              builder: (_, __) => const TransportScreen()),
           GoRoute(
               path: '/admin/finance/receipts',
               builder: (_, __) => const FinregSalesHostScreen(
