@@ -681,6 +681,13 @@ async def create_enrollment(
         )
 
     enrollment_fee = body.enrollment_fee
+    if enrollment_fee is None:
+        # The year's fee policy supplies the matrícula value when the
+        # enrollment form leaves it empty; an explicit value always wins.
+        from app.services.billing_profiles import get_fee_policy
+        policy = await get_fee_policy(db, school_id, body.school_year_id)
+        if policy is not None and policy.default_enrollment_fee is not None:
+            enrollment_fee = policy.default_enrollment_fee
     charges_fee = bool(enrollment_fee and enrollment_fee > 0)
     finreg_active = await finreg_is_active(db, school_id)
 
@@ -745,6 +752,7 @@ async def create_enrollment(
     # The server owns the payment path. The legacy client flag cannot enable
     # the internal controller for a Finreg school or vice versa.
     enrollment_data = body.model_dump(exclude={'generate_invoice'})
+    enrollment_data["enrollment_fee"] = enrollment_fee
     enrollment = Enrollment(school_id=school_id, **enrollment_data)
     if charges_fee:
         # A charged enrollment is only active once its fee is settled.

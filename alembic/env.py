@@ -52,6 +52,10 @@ from app.models.finreg_integration import (  # noqa: F401
     FinregBillingInstruction, FinregEntityMapping, FinregEventReceipt,
     FinregSchoolConnection,
 )
+from app.models.billing import (  # noqa: F401
+    BillingRun, ExtracurricularModality, SchoolFeePolicy, StudentFinanceProfile,
+    StudentModalityEnrollment, StudentTransportAssignment, TransportRoute,
+)
 
 target_metadata = Base.metadata
 

@@ -782,3 +782,73 @@ async def test_event_sync_records_receipt_mapping_and_monotonic_cursor():
         "FinregEntityMapping", "FinregEventReceipt"
     }
     assert await synchronize_connection(db, connection, adapter=EventAdapter()) == 0
+
+
+# ─── fee automation boundary pins ────────────────────────────────────────────
+
+def _source_block(source: str, start: str, end: str) -> str:
+    begin = source.index(start)
+    stop = source.index(end, begin + len(start))
+    return source[begin:stop]
+
+
+def test_fee_automation_runs_are_registered_for_finance_users():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/billing/runs/preview" in paths
+    assert "/api/v1/billing/runs" in paths
+    assert "/api/v1/billing/runs/{run_id}" in paths
+    assert "/api/v1/billing/rebuild-plans" in paths
+
+    root = Path(__file__).resolve().parents[1]
+    router = (root / "app/routers/billing.py").read_text()
+    preview = _source_block(
+        router, '@router.post("/runs/preview")', '@router.post("/runs",'
+    )
+    assert "require_finance_access" in preview
+    assert "preview_billing" in preview
+    assert "dispatch_instruction" not in preview
+
+
+def test_preview_computes_without_touching_the_fiscal_engine():
+    root = Path(__file__).resolve().parents[1]
+    service = (root / "app/services/billing_run.py").read_text()
+    preview = _source_block(
+        service, "async def preview_billing", "def _add_days"
+    )
+    # The preview is the "compute before generating" step: it may read the
+    # integration mode, but it must never dispatch, enqueue or issue.
+    assert "compose_students" in preview
+    assert "dispatch_instruction" not in preview
+    assert "enqueue_billing_instruction" not in preview
+    assert "FakeFinregAdapter" not in preview
+
+
+def test_only_the_internal_path_emits_local_fiscal_documents():
+    root = Path(__file__).resolve().parents[1]
+    service = (root / "app/services/billing_run.py").read_text()
+    finreg_path = _source_block(
+        service, "async def _run_finreg", "def _failure"
+    )
+    internal_path = _source_block(
+        service, "async def _run_internal", "async def refresh_run_status"
+    )
+    assert "DocumentEmissionService" not in finreg_path
+    assert "emit_invoice" not in finreg_path
+    assert "enqueue_billing_instruction" in finreg_path
+    assert "DocumentEmissionService" in internal_path
+    assert "emit_invoice" in internal_path
+    assert "issued_by=issued_by" in internal_path
+
+
+def test_fee_automation_is_drained_by_the_scheduler_not_a_second_worker():
+    root = Path(__file__).resolve().parents[1]
+    scheduled = (root / "app/services/scheduled_tasks.py").read_text()
+    assert "auto_generate_due" in scheduled
+    assert "refresh_open_runs" in scheduled
+    assert "apply_confirmed_plan_results" in scheduled
+
+    router = (root / "app/routers/billing.py").read_text()
+    assert "issued_by=_employee_id(user)" in router
+    assert "issued_by=actor_id" not in router

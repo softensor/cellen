@@ -67,6 +67,7 @@ _PATH_PERMISSIONS = (
     ("/api/v1/schools", "school_settings"),
     ("/api/v1/finance", "finance"),
     ("/api/v1/finreg", "finance"),
+    ("/api/v1/billing", "finance"),
 )
 
 
