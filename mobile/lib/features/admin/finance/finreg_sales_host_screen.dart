@@ -12,7 +12,9 @@ import '../../../core/models/role_definitions.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../employees/employees_list_screen.dart';
 import '../guardians/guardians_list_screen.dart';
+import 'finance_home_screen.dart';
 import 'internal_payments_screen.dart';
+import 'school_finance_hubs.dart';
 
 /// Open a delegated launch address.
 ///
@@ -592,6 +594,12 @@ class _FinregEntryCardState extends State<_FinregEntryCard> {
 
 /// Cellen's own school-finance areas. Manifest-independent by design: an
 /// unreachable or misconfigured FinReg must never take these away.
+///
+/// The tabs follow the school year, not the database: the month's state and
+/// totals first (Painel), then everything about debts (generate, chase,
+/// fine, agree, remind, credit), then where money comes in and where it is
+/// kept (Pagamentos), and last the jargon (Configuração) — so a director who
+/// never opens the settings still has every daily action one tab away.
 class _NativeSchoolFinanceTabs extends StatelessWidget {
   const _NativeSchoolFinanceTabs();
 
@@ -599,7 +607,7 @@ class _NativeSchoolFinanceTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
     return DefaultTabController(
-      length: 3,
+      length: 6,
       child: Column(
         children: [
           Material(
@@ -608,10 +616,13 @@ class _NativeSchoolFinanceTabs extends StatelessWidget {
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               tabs: [
+                Tab(text: portuguese ? 'Painel' : 'Overview'),
                 Tab(
                     text: portuguese
-                        ? 'Operações da escola'
-                        : 'School operations'),
+                        ? 'Dívidas e cobrança'
+                        : 'Debts & collection'),
+                Tab(text: portuguese ? 'Pagamentos' : 'Payments'),
+                Tab(text: portuguese ? 'Configuração' : 'Settings'),
                 Tab(text: portuguese ? 'Encarregados' : 'Guardians'),
                 Tab(text: portuguese ? 'Funcionários' : 'Employees'),
               ],
@@ -620,7 +631,10 @@ class _NativeSchoolFinanceTabs extends StatelessWidget {
           const Expanded(
             child: TabBarView(
               children: [
-                _SchoolBillingOperations(),
+                FinanceHomeScreen(),
+                DebtsHub(),
+                PaymentsHub(),
+                FinanceConfigHub(),
                 GuardiansListScreen(),
                 EmployeesListScreen(),
               ],
@@ -836,152 +850,6 @@ class _FinregAccessPolicyDialogState extends State<_FinregAccessPolicyDialog> {
       .map((part) =>
           part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
       .join(' ');
-}
-
-class _SchoolBillingOperations extends StatelessWidget {
-  const _SchoolBillingOperations();
-
-  @override
-  Widget build(BuildContext context) {
-    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
-    final operations = <({IconData icon, String pt, String en, String route})>[
-      (
-        icon: Icons.dashboard_outlined,
-        pt: 'Painel financeiro',
-        en: 'Finance home',
-        route: '/admin/finance/home'
-      ),
-      (
-        icon: Icons.bolt_outlined,
-        pt: 'Gerar dívidas',
-        en: 'Generate debts',
-        route: '/admin/finance/billing-run'
-      ),
-      (
-        icon: Icons.warning_amber_outlined,
-        pt: 'Controlo de dívidas',
-        en: 'Debt control',
-        route: '/admin/finance/debt-control'
-      ),
-      (
-        icon: Icons.bar_chart_outlined,
-        pt: 'Relatório por serviço',
-        en: 'Service report',
-        route: '/admin/finance/service-report'
-      ),
-      (
-        icon: Icons.qr_code_2_outlined,
-        pt: 'Pagamentos por referência',
-        en: 'Reference payments',
-        route: '/admin/finance/principia-pay'
-      ),
-      (
-        icon: Icons.tune_outlined,
-        pt: 'Política de propinas',
-        en: 'Fee policy',
-        route: '/admin/finance/fee-policy'
-      ),
-      (
-        icon: Icons.sports_soccer_outlined,
-        pt: 'Modalidades',
-        en: 'Extracurricular activities',
-        route: '/admin/finance/modalities'
-      ),
-      (
-        icon: Icons.directions_bus_outlined,
-        pt: 'Transporte escolar',
-        en: 'School transport',
-        route: '/admin/finance/transport'
-      ),
-      (
-        icon: Icons.school_outlined,
-        pt: 'Planos dos alunos',
-        en: 'Student plans',
-        route: '/admin/finance/contracts'
-      ),
-      (
-        icon: Icons.sell_outlined,
-        pt: 'Serviços e mensalidades',
-        en: 'Services and fees',
-        route: '/admin/finance/billing-items'
-      ),
-      (
-        icon: Icons.receipt_long_outlined,
-        pt: 'Comprovativos de pagamento',
-        en: 'Payment proofs',
-        route: '/admin/finance/payment-proofs'
-      ),
-      (
-        icon: Icons.calendar_month_outlined,
-        pt: 'Acordos de pagamento',
-        en: 'Payment arrangements',
-        route: '/admin/finance/payment-plans'
-      ),
-      (
-        icon: Icons.account_balance_wallet_outlined,
-        pt: 'Créditos dos encarregados',
-        en: 'Guardian credits',
-        route: '/admin/finance/credits'
-      ),
-      (
-        icon: Icons.notifications_active_outlined,
-        pt: 'Lembretes de cobrança',
-        en: 'Collection reminders',
-        route: '/admin/finance/reminders'
-      ),
-    ];
-    return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 1000
-          ? 3
-          : constraints.maxWidth >= 620
-              ? 2
-              : 1;
-      return ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text(
-            portuguese
-                ? 'Operações financeiras da escola'
-                : 'School financial operations',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 6),
-          Text(portuguese
-              ? 'Cálculos, cobranças, descontos e dados dos alunos são geridos aqui. Os documentos fiscais são emitidos pelo Finreg.'
-              : 'Calculations, charges, discounts and student data are managed here. Fiscal documents are issued by Finreg.'),
-          const SizedBox(height: 20),
-          GridView.count(
-            crossAxisCount: columns,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: columns == 1 ? 4.3 : 2.6,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            children: [
-              for (final operation in operations)
-                Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => context.push(operation.route),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(children: [
-                        Icon(operation.icon, size: 30),
-                        const SizedBox(width: 14),
-                        Expanded(
-                            child:
-                                Text(portuguese ? operation.pt : operation.en)),
-                        const Icon(Icons.chevron_right),
-                      ]),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      );
-    });
-  }
 }
 
 class _CompositionReadiness extends StatelessWidget {

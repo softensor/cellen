@@ -13,7 +13,7 @@ import '../../../core/models/invoice.dart';
 import '../../../core/models/school_terms.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../finance/credit_notes_screen.dart';
+import 'void_invoice_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
@@ -468,7 +468,7 @@ class _OverviewTab extends ConsumerWidget {
                         value: currency.format(s.creditBalance),
                         icon: Icons.savings_outlined,
                         color: AppTheme.primary,
-                        onTap: () => context.go('/admin/finance/credits'),
+                        onTap: () => context.push('/admin/finance/credits'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -566,47 +566,47 @@ class _OverviewTab extends ConsumerWidget {
               _QuickChip(
                   icon: Icons.point_of_sale_outlined,
                   label: 'Recibos',
-                  onTap: () => context.go('/admin/finance/receipts')),
+                  onTap: () => context.push('/admin/finance/receipts')),
               _QuickChip(
                   icon: Icons.credit_score_outlined,
                   label: 'Notas de Crédito',
-                  onTap: () => context.go('/admin/finance/credit-notes')),
+                  onTap: () => context.push('/admin/finance/credit-notes')),
               _QuickChip(
                   icon: Icons.warning_amber_outlined,
                   label: 'Devedores',
-                  onTap: () => context.go('/admin/finance/delinquent')),
+                  onTap: () => context.push('/admin/finance/delinquent')),
               _QuickChip(
                   icon: Icons.download_outlined,
                   label: 'SAF-T AO',
-                  onTap: () => context.go('/admin/finance/saft')),
+                  onTap: () => context.push('/admin/finance/saft')),
               _QuickChip(
                   icon: Icons.savings_outlined,
                   label: 'Créditos',
-                  onTap: () => context.go('/admin/finance/credits')),
+                  onTap: () => context.push('/admin/finance/credits')),
               _QuickChip(
                   icon: Icons.event_repeat_outlined,
                   label: 'Planos de Pagamento',
-                  onTap: () => context.go('/admin/finance/payment-plans')),
+                  onTap: () => context.push('/admin/finance/payment-plans')),
               _QuickChip(
                   icon: Icons.notifications_outlined,
                   label: 'Lembretes',
-                  onTap: () => context.go('/admin/finance/reminders')),
+                  onTap: () => context.push('/admin/finance/reminders')),
               _QuickChip(
                   icon: Icons.receipt_long_outlined,
                   label: 'Extrato de Conta',
-                  onTap: () => context.go('/admin/finance/statement')),
+                  onTap: () => context.push('/admin/finance/statement')),
               _QuickChip(
                   icon: Icons.inventory_outlined,
                   label: 'Itens Faturáveis',
-                  onTap: () => context.go('/admin/finance/billing-items')),
+                  onTap: () => context.push('/admin/finance/billing-items')),
               _QuickChip(
                   icon: Icons.manage_search_outlined,
                   label: 'Auditoria',
-                  onTap: () => context.go('/admin/finance/audit-log')),
+                  onTap: () => context.push('/admin/finance/audit-log')),
               _QuickChip(
                   icon: Icons.point_of_sale,
                   label: 'Sessões de Caixa',
-                  onTap: () => context.go('/admin/finance/cash-sessions')),
+                  onTap: () => context.push('/admin/finance/cash-sessions')),
             ],
           ),
 
@@ -1119,7 +1119,7 @@ class _ContractsTabState extends ConsumerState<_ContractsTab> {
             action: SnackBarAction(
               label: 'Ver Facturas',
               textColor: Colors.white,
-              onPressed: () => context.go('/admin/finance/invoices'),
+              onPressed: () => context.push('/admin/finance/invoices'),
             ),
           ),
         );

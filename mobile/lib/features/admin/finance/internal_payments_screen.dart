@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,6 +28,11 @@ class InternalPaymentsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Controlo de pagamentos'),
         actions: [
+          IconButton(
+            tooltip: 'Área financeira',
+            onPressed: () => context.push('/admin/finance/home'),
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+          ),
           IconButton(
             tooltip: 'Actualizar',
             onPressed: () => ref.invalidate(internalPaymentsProvider),

@@ -80,6 +80,16 @@ Map<String, dynamic> _dashboard() => {
       'mode': 'fake',
       'as_of': '2026-10-27',
       'period': {'from': '2026-10-01', 'to': '2026-10-27'},
+      'month': {
+        'billing_month': '2026-10',
+        'generated': false,
+        'status': null,
+        'students': null,
+        'failed': null,
+        'total': null,
+        'due_date': '2026-11-05',
+        'auto_generate': false,
+      },
       'debts': {
         'count': 3,
         'total_outstanding': 440000.0,
@@ -182,6 +192,7 @@ class _OpsApi extends ApiClient {
 
   Map<String, dynamic>? lastReferenceBody;
   Map<String, dynamic>? probeResult;
+  Map<String, dynamic>? dashboardOverride;
   final List<Map<String, dynamic>> dunningBodies = [];
   final List<Map<String, dynamic>> putBodies = [];
   int refreshCalls = 0;
@@ -193,7 +204,7 @@ class _OpsApi extends ApiClient {
       case '/billing/debts':
         return _debts();
       case '/billing/dashboard':
-        return _dashboard();
+        return dashboardOverride ?? _dashboard();
       case '/billing/principia-pay':
         return {
           'configured': true,
@@ -399,10 +410,39 @@ void main() {
     await _pump(tester, const FinanceHomeScreen());
 
     expect(find.text('Painel Financeiro'), findsOneWidget);
+    expect(find.text('Outubro 2026 · dívidas por gerar'), findsOneWidget);
+    expect(find.text('vence a 05/11/2026'), findsOneWidget);
     expect(find.text('Em dívida'), findsOneWidget);
     expect(find.text('Em atraso'), findsOneWidget);
     expect(find.text('Cobrado no período'), findsOneWidget);
+    expect(find.text('Ações rápidas'), findsOneWidget);
     expect(find.text('Gerar dívidas do mês'), findsOneWidget);
+  });
+
+  testWidgets('finance home reports a generated month and its failures',
+      (tester) async {
+    final api = _OpsApi()
+      ..dashboardOverride = {
+        ..._dashboard(),
+        'month': {
+          'billing_month': '2026-10',
+          'generated': true,
+          'status': 'partial_failed',
+          'students': 22,
+          'failed': 2,
+          'total': 5610000.0,
+          'due_date': '2026-11-10',
+          'auto_generate': true,
+        },
+      };
+    await _pump(tester, const FinanceHomeScreen(), api: api);
+
+    expect(find.text('Outubro 2026 · dívidas geradas'), findsOneWidget);
+    expect(find.textContaining('22 alunos'), findsOneWidget);
+    expect(find.text('2 falhadas — ver execução'), findsOneWidget);
+    expect(find.text('geração automática ligada'), findsOneWidget);
+    expect(find.text('Ver dívidas'), findsOneWidget);
+    expect(find.text('Ver execução'), findsOneWidget);
   });
 
   testWidgets('dunning previews today and sends only the latest rung',

@@ -12,6 +12,8 @@ from datetime import date, timedelta
 import pytest
 
 from app.core.config import settings
+from app.models.billing import BillingRun
+from app.services.billing_run import current_billing_month
 from app.services.debt_control import dashboard, list_debts, service_report
 from app.services.finreg import FakeFinregAdapter
 from app.utils.agt import today_luanda
@@ -278,3 +280,58 @@ async def test_the_dashboard_combines_debts_sales_and_collections(
     assert result["sales"]["total_gross"] == 800000.0
     assert result["collections"]["payment_count"] == 4
     assert result["collections"]["total_collected"] == 300000.0
+    # No run and no policy row: the month reads as "not generated" with the
+    # virtual defaults (billing day 1, five due days).
+    month = result["month"]
+    assert month["billing_month"] == current_billing_month()
+    assert month["generated"] is False
+    assert month["status"] is None
+    assert month["students"] is None
+    assert month["failed"] is None
+    assert month["total"] is None
+    assert month["auto_generate"] is False
+    expected_due = today_luanda().replace(day=1) + timedelta(days=5)
+    assert month["due_date"] == expected_due.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_the_dashboard_month_reflects_the_generation_run(
+    client, make_school, db, monkeypatch,
+):
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    ctx = await _scaffold(client, make_school, "dash-month")
+    await _activate_finreg(client, ctx, "fake")
+    due = (today_luanda() + timedelta(days=12)).isoformat()
+    db.add(
+        BillingRun(
+            school_id=ctx["school_id"],
+            school_year_id=uuid.UUID(ctx["year"]["id"]),
+            billing_month=current_billing_month(),
+            status="completed",
+            mode="fake",
+            stats={
+                "students": 22,
+                "generated": 22,
+                "failed": 0,
+                "totals": {"total": 5610000.0},
+                "due_date": due,
+                "policy": {"auto_generate": True},
+            },
+        )
+    )
+    await db.commit()
+
+    result = await dashboard(
+        db, school_id=ctx["school_id"], adapter=FakeFinregAdapter()
+    )
+
+    month = result["month"]
+    assert month["billing_month"] == current_billing_month()
+    assert month["generated"] is True
+    assert month["status"] == "completed"
+    assert month["students"] == 22
+    assert month["failed"] == 0
+    assert month["total"] == 5610000.0
+    assert month["due_date"] == due
+    # No policy row exists; the run's snapshot is the only record of the flag.
+    assert month["auto_generate"] is True
