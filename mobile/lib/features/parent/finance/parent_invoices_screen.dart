@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 
@@ -855,7 +856,7 @@ class _ReceiptsTab extends ConsumerWidget {
 // Invoice Card
 // ---------------------------------------------------------------------------
 
-class _InvoiceCard extends ConsumerWidget {
+class _InvoiceCard extends ConsumerStatefulWidget {
   final ParentInvoice invoice;
   final NumberFormat currency;
   final VoidCallback onPaymentSubmitted;
@@ -866,31 +867,53 @@ class _InvoiceCard extends ConsumerWidget {
     required this.onPaymentSubmitted,
   });
 
-  Future<void> _payByReference(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<_InvoiceCard> createState() => _InvoiceCardState();
+}
+
+class _InvoiceCardState extends ConsumerState<_InvoiceCard> {
+  bool _paying = false;
+
+  ParentInvoice get invoice => widget.invoice;
+  NumberFormat get currency => widget.currency;
+
+  Future<void> _payByReference() async {
+    if (_paying) return;
+    setState(() => _paying = true);
     try {
+      // The rail call can take longer than the default list timeout; a
+      // timeout here looked like "sem ligação ao servidor" even when the
+      // only problem was a slow provider.
       final data = await ref.read(apiClientProvider).post(
-        '/finance/parent/payment-references/principia-pay',
-        data: {'document_id': invoice.payDocumentId},
-      ) as Map;
-      if (!context.mounted) return;
+            '/finance/parent/payment-references/principia-pay',
+            data: {'document_id': invoice.payDocumentId},
+            receiveTimeout: const Duration(seconds: 45),
+          ) as Map;
+      // Stop the button spinner before the dialog opens; a spinner running
+      // under a modal keeps the whole route animating.
+      if (mounted) setState(() => _paying = false);
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (_) => _ParentReferenceDialog(
           reference: Map<String, dynamic>.from(data),
+          invoiceId: invoice.id,
         ),
       );
       ref.invalidate(parentInvoicesProvider);
       ref.invalidate(_parentPaymentRefsProvider);
     } catch (error) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível gerar a referência: $error')),
+        SnackBar(content: Text(apiErrorMessage(error))),
       );
+    } finally {
+      if (mounted) setState(() => _paying = false);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final monthLabel =
         DateFormat('MMMM yyyy', 'pt_PT').format(invoice.referenceMonth);
@@ -1028,9 +1051,17 @@ class _InvoiceCard extends ConsumerWidget {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FilledButton.tonalIcon(
-                    onPressed: () => _payByReference(context, ref),
-                    icon: const Icon(Icons.qr_code_2, size: 18),
-                    label: const Text('Pagar com referência'),
+                    onPressed: _paying ? null : _payByReference,
+                    icon: _paying
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.qr_code_2, size: 18),
+                    label: Text(
+                      _paying ? 'A gerar referência…' : 'Pagar com referência',
+                    ),
                   ),
                 ),
               ],
@@ -1086,7 +1117,7 @@ class _InvoiceCard extends ConsumerWidget {
       builder: (_) => _SubmitPaymentDialog(
         invoice: invoice,
         currency: currency,
-        onSubmitted: onPaymentSubmitted,
+        onSubmitted: widget.onPaymentSubmitted,
       ),
     );
   }
@@ -1536,49 +1567,124 @@ class _StatusBadge extends StatelessWidget {
 /// The reference the parent pays with. The rail's entity/reference pair is
 /// the only thing the parent needs; the fiscal document itself is settled
 /// server-side and shows up in Recibos once the rail confirms.
-class _ParentReferenceDialog extends StatelessWidget {
-  const _ParentReferenceDialog({required this.reference});
+class _ParentReferenceDialog extends ConsumerStatefulWidget {
+  const _ParentReferenceDialog({required this.reference, this.invoiceId});
 
   final Map<String, dynamic> reference;
+  final String? invoiceId;
 
-  Future<void> _copy(BuildContext context, String value) async {
+  @override
+  ConsumerState<_ParentReferenceDialog> createState() =>
+      _ParentReferenceDialogState();
+}
+
+class _ParentReferenceDialogState
+    extends ConsumerState<_ParentReferenceDialog> {
+  late Map<String, dynamic> _reference;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reference = Map<String, dynamic>.from(widget.reference);
+  }
+
+  Future<void> _copy(String value) async {
     await Clipboard.setData(ClipboardData(text: value));
-    if (!context.mounted) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Copiado.')),
     );
   }
 
+  /// While the rail has not answered, the reference has no entity/number
+  /// yet. The parent can ask again instead of being stuck with a blank
+  /// dialog and no way forward.
+  Future<void> _refresh() async {
+    final id = _reference['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    setState(() => _refreshing = true);
+    try {
+      final data = await ref.read(apiClientProvider).post(
+            '/finance/parent/payment-references/$id/refresh',
+            receiveTimeout: const Duration(seconds: 45),
+          ) as Map;
+      if (!mounted) return;
+      setState(() => _reference = Map<String, dynamic>.from(data));
+      ref.invalidate(parentInvoicesProvider);
+      ref.invalidate(_parentPaymentRefsProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final entity = reference['entity']?.toString() ?? '—';
-    final number = reference['reference']?.toString() ?? '—';
-    final amount = (reference['amount'] as num?)?.toDouble() ?? 0;
-    final checkout = reference['checkout_url']?.toString();
+    final entity = _reference['entity']?.toString() ?? '';
+    final number = _reference['reference']?.toString() ?? '';
+    final amount = (_reference['amount'] as num?)?.toDouble() ?? 0;
+    final checkout = _reference['checkout_url']?.toString();
+    final status = _reference['status']?.toString() ?? 'creating';
+    final pending = entity.isEmpty || number.isEmpty;
     return AlertDialog(
-      title: const Text('Referência de pagamento'),
+      title: Text(
+        status == 'paid'
+            ? 'Pagamento confirmado'
+            : pending
+                ? 'Referência em confirmação'
+                : 'Referência de pagamento',
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Pague ${NumberFormat('#,##0.00', 'pt_PT').format(amount)} Kz em '
-            'qualquer canal Multicaixa/Appy Pay ou abra o pagamento online.',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          _ReferenceValueRow(
-            label: 'Entidade',
-            value: entity,
-            onCopy: () => _copy(context, entity),
-          ),
-          const SizedBox(height: 6),
-          _ReferenceValueRow(
-            label: 'Referência',
-            value: number,
-            onCopy: () => _copy(context, number),
-          ),
+          if (status == 'paid') ...[
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'A factura foi liquidada. O recibo fica disponível em '
+                    'Recibos.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ] else if (pending) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 10),
+            Text(
+              'O serviço de pagamentos ainda está a preparar a referência. '
+              'Consulte o estado dentro de instantes.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ] else ...[
+            Text(
+              'Pague ${NumberFormat('#,##0.00', 'pt_PT').format(amount)} Kz em '
+              'qualquer canal Multicaixa/Appy Pay ou abra o pagamento online.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            _ReferenceValueRow(
+              label: 'Entidade',
+              value: entity,
+              onCopy: () => _copy(entity),
+            ),
+            const SizedBox(height: 6),
+            _ReferenceValueRow(
+              label: 'Referência',
+              value: number,
+              onCopy: () => _copy(number),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             'A referência fica ligada a esta factura. Assim que o pagamento '
@@ -1589,6 +1695,18 @@ class _ParentReferenceDialog extends StatelessWidget {
         ],
       ),
       actions: [
+        if (status == 'creating' || pending)
+          TextButton.icon(
+            onPressed: _refreshing ? null : _refresh,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync, size: 18),
+            label: const Text('Consultar estado'),
+          ),
         if (checkout != null && checkout.isNotEmpty)
           TextButton.icon(
             onPressed: () async {

@@ -1165,7 +1165,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const FinanceHomeScreen()),
           GoRoute(
               path: '/admin/finance/debt-control',
-              builder: (_, __) => const DebtControlScreen()),
+              builder: (_, state) => DebtControlScreen(
+                    initialOverdue:
+                        state.uri.queryParameters['overdue'] == '1' ||
+                            state.uri.queryParameters['overdue'] == 'true',
+                    initialService: state.uri.queryParameters['service'],
+                    initialBucket: state.uri.queryParameters['bucket'],
+                  )),
           GoRoute(
               path: '/admin/finance/service-report',
               builder: (_, __) => const ServiceReportScreen()),
@@ -1212,7 +1218,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                   )),
           GoRoute(
               path: '/admin/finance/delinquent',
-              builder: (_, __) => const DebtControlScreen()),
+              builder: (_, state) => DebtControlScreen(
+                    initialOverdue: true,
+                    initialService: state.uri.queryParameters['service'],
+                    initialBucket: state.uri.queryParameters['bucket'],
+                  )),
           GoRoute(
               path: '/admin/finance/billing-items',
               builder: (_, __) => const BillingItemsScreen()),

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import 'fee_automation_common.dart';
@@ -46,6 +47,8 @@ class PrincipiaPayScreen extends ConsumerStatefulWidget {
 class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
   String _status = '';
   bool _registering = false;
+  bool _probing = false;
+  Map<String, dynamic>? _probe;
 
   Future<void> _register() async {
     setState(() => _registering = true);
@@ -59,10 +62,39 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registo falhou: $error')),
+        SnackBar(content: Text('Registo falhou: ${apiErrorMessage(error)}')),
       );
     } finally {
       if (mounted) setState(() => _registering = false);
+    }
+  }
+
+  /// A green card that only reads the database can stay green while the
+  /// rail rejects every call. The probe asks principia-pay right now and
+  /// reports what it answered — the same call a reference creation makes
+  /// first.
+  Future<void> _testConnection() async {
+    setState(() => _probing = true);
+    try {
+      final data = await ref.read(apiClientProvider).get(
+            '/billing/principia-pay/check',
+            receiveTimeout: const Duration(seconds: 20),
+          ) as Map;
+      if (!mounted) return;
+      setState(() => _probe = Map<String, dynamic>.from(data));
+      // A rejected key flips the stored status to error; refresh the card
+      // so a revoked key stops wearing a green tick.
+      ref.invalidate(_connectionProvider);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _probe = {
+          'reachable': false,
+          'probe_error': apiErrorMessage(error),
+        };
+      });
+    } finally {
+      if (mounted) setState(() => _probing = false);
     }
   }
 
@@ -70,6 +102,7 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
     try {
       await ref.read(apiClientProvider).post(
             '/billing/principia-pay/references/${reference['id']}/refresh',
+            receiveTimeout: const Duration(seconds: 45),
           );
       ref.invalidate(_referencesProvider(_status));
       if (!mounted) return;
@@ -79,7 +112,7 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Consulta falhou: $error')),
+        SnackBar(content: Text('Consulta falhou: ${apiErrorMessage(error)}')),
       );
     }
   }
@@ -104,6 +137,7 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
+              setState(() => _probe = null);
               ref.invalidate(_connectionProvider);
               ref.invalidate(_referencesProvider(_status));
             },
@@ -112,6 +146,7 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
+          setState(() => _probe = null);
           ref.invalidate(_connectionProvider);
           ref.invalidate(_referencesProvider(_status));
         },
@@ -131,6 +166,9 @@ class _PrincipiaPayScreenState extends ConsumerState<PrincipiaPayScreen> {
                 status: status,
                 registering: _registering,
                 onRegister: _register,
+                probe: _probe,
+                probing: _probing,
+                onTest: _testConnection,
               ),
             ),
             const SizedBox(height: 16),
@@ -199,11 +237,27 @@ class _ConnectionCard extends StatelessWidget {
     required this.status,
     required this.registering,
     required this.onRegister,
+    required this.probe,
+    required this.probing,
+    required this.onTest,
   });
 
   final Map<String, dynamic> status;
   final bool registering;
   final VoidCallback onRegister;
+  final Map<String, dynamic>? probe;
+  final bool probing;
+  final Future<void> Function() onTest;
+
+  String _probeTime(BuildContext context) {
+    final checked = DateTime.tryParse(
+      probe?['checked_at']?.toString() ?? '',
+    )?.toLocal();
+    if (checked == null) return '';
+    final hh = checked.hour.toString().padLeft(2, '0');
+    final mm = checked.minute.toString().padLeft(2, '0');
+    return ' às $hh:$mm';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,6 +265,12 @@ class _ConnectionCard extends StatelessWidget {
     final registered = status['registered'] == true;
     final configured = status['configured'] == true;
     final lastError = status['last_error']?.toString();
+    final reachable = probe?['reachable'] == true;
+    // With a probe result, the tick tells the truth: the rail answered us
+    // moments ago, not merely that a key was once stored.
+    final healthy = probe == null ? registered : reachable;
+    final probeError = probe?['probe_error']?.toString();
+    final latency = (probe?['latency_ms'] as num?)?.toInt();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -220,17 +280,21 @@ class _ConnectionCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  registered ? Icons.check_circle : Icons.link_off,
-                  color: registered
+                  healthy ? Icons.check_circle : Icons.error_outline,
+                  color: healthy
                       ? Colors.green
-                      : theme.colorScheme.onSurfaceVariant,
+                      : (probe != null
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    registered
-                        ? 'Escola ligada à principia-pay'
-                        : 'Escola ainda não registada',
+                    !healthy && probe != null
+                        ? 'Sem ligação à principia-pay'
+                        : registered
+                            ? 'Escola ligada à principia-pay'
+                            : 'Escola ainda não registada',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -238,13 +302,32 @@ class _ConnectionCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              registered
-                  ? 'As referências emitidas aqui são pagáveis em qualquer '
-                      'canal Multicaixa/Appy Pay e conciliadas automaticamente.'
-                  : 'Registe a escola para emitir referências de pagamento '
-                      'aos encarregados.',
+              !healthy && probe != null
+                  ? 'A configuração está guardada, mas o serviço de pagamentos '
+                      'não aceitou a ligação agora. Gerar referências falha '
+                      'até isto ficar resolvido.'
+                  : registered
+                      ? 'As referências emitidas aqui são pagáveis em qualquer '
+                          'canal Multicaixa/Appy Pay e conciliadas automaticamente.'
+                      : 'Registe a escola para emitir referências de pagamento '
+                          'aos encarregados.',
               style: theme.textTheme.bodySmall,
             ),
+            if (probe != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                reachable
+                    ? 'Ligação confirmada${_probeTime(context)}'
+                        '${latency == null ? '' : ' · ${latency} ms'}'
+                    : 'Falha: ${probeError ?? 'o serviço de pagamentos não respondeu.'}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: reachable
+                      ? Colors.green.shade700
+                      : theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (!configured) ...[
               const SizedBox(height: 8),
               Text(
@@ -263,13 +346,27 @@ class _ConnectionCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Chip(
                   label: Text('Fornecedor: ${status['provider'] ?? '—'}'),
                   visualDensity: VisualDensity.compact,
                 ),
-                const Spacer(),
+                if (registered)
+                  OutlinedButton.icon(
+                    onPressed: probing ? null : onTest,
+                    icon: probing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.network_check, size: 18),
+                    label: Text(probing ? 'A testar…' : 'Testar ligação'),
+                  ),
                 if (!registered)
                   FilledButton.icon(
                     onPressed: registering || !configured ? null : onRegister,

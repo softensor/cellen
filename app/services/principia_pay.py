@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Optional
 
 import httpx
@@ -247,11 +248,13 @@ async def ensure_connection(
     return connection
 
 
-def _client(connection: PrincipiaPayConnection) -> PrincipiaPayClient:
+def _client(
+    connection: PrincipiaPayConnection, *, timeout_seconds: Optional[float] = None
+) -> PrincipiaPayClient:
     return PrincipiaPayClient(
         _base_url(),
         decrypt_secret(connection.api_key_ciphertext),
-        timeout_seconds=settings.FINREG_TIMEOUT_SECONDS,
+        timeout_seconds=timeout_seconds or settings.FINREG_TIMEOUT_SECONDS,
     )
 
 
@@ -265,6 +268,93 @@ async def connection_status(db: AsyncSession, *, school_id: uuid.UUID) -> dict:
         "last_error": connection.last_error if connection else None,
         "provider": settings.PRINCIPIA_PAY_PROVIDER,
     }
+
+
+async def probe_connection(db: AsyncSession, *, school_id: uuid.UUID) -> dict:
+    """Ask the rail, right now, whether this school can create a reference.
+
+    ``connection_status`` is a database read: it says the keys were stored,
+    not that they still work. The card that shows a green tick must be able
+    to earn it, or a revoked key or a rail outage keeps looking healthy while
+    every reference fails. The probe is a cheap empty listing keyed by a
+    one-off caller reference, so it validates auth and reachability without
+    touching any money.
+    """
+    status = await connection_status(db, school_id=school_id)
+    result = {
+        **status,
+        "reachable": False,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "latency_ms": None,
+        "probe_error": None,
+    }
+    if not status["configured"]:
+        result["probe_error"] = (
+            "O serviço de pagamentos não está configurado nesta instalação."
+        )
+        return result
+    connection = await get_connection(db, school_id=school_id)
+    if (
+        connection is None
+        or connection.status != "active"
+        or not connection.api_key_ciphertext
+    ):
+        result["probe_error"] = (
+            "A escola ainda não está registada no serviço de pagamentos."
+        )
+        return result
+
+    client = _client(
+        connection,
+        # Stay inside the app's own receive timeout so a slow rail is
+        # reported as a failed probe, not as a frozen screen.
+        timeout_seconds=min(settings.FINREG_TIMEOUT_SECONDS, 6.0),
+    )
+    started = time.monotonic()
+    try:
+        await client.list_references(
+            caller_reference=f"cellen-probe-{uuid.uuid4().hex}"
+        )
+    except PrincipiaPayError as exc:
+        _record_error(connection, exc)
+        if exc.status_code in (401, 403):
+            # The stored key is no longer accepted. Keep the row (its keys
+            # are still the only copy) but stop advertising it as active.
+            connection.status = "error"
+        await db.commit()
+        result.update(
+            status=connection.status,
+            registered=connection.status == "active",
+            last_error=connection.last_error,
+            probe_error=f"principia-pay {exc.status_code}: {exc.detail}",
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        return result
+    except (
+        httpx.HTTPError,
+        KeyError,
+        TypeError,
+        ValueError,
+        InvalidOperation,
+    ) as exc:
+        _record_error(connection, exc)
+        await db.commit()
+        result.update(
+            last_error=connection.last_error,
+            probe_error=str(exc) or exc.__class__.__name__,
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
+        return result
+
+    if connection.last_error:
+        connection.last_error = None
+    await db.commit()
+    result.update(
+        reachable=True,
+        last_error=None,
+        latency_ms=round((time.monotonic() - started) * 1000),
+    )
+    return result
 
 
 # ── Owner-console activation ─────────────────────────────────────────────
@@ -571,7 +661,50 @@ async def create_reference(
     requested_by: Optional[uuid.UUID] = None,
     adapter=None,
 ) -> PaymentReference:
-    """Open (or return) a rail reference against one open debt."""
+    """Open (or return) a rail reference against one open debt.
+
+    A browser cannot tell an unhandled 500 from a dead network: both surface
+    as a generic "sem ligação ao servidor". This boundary turns any
+    unexpected failure into a logged, CORS-bearing 502 so the school sees
+    what actually happened and the server keeps the traceback.
+    """
+    try:
+        return await _create_reference(
+            db,
+            school_id=school_id,
+            document_id=document_id,
+            amount=amount,
+            guardian_id=guardian_id,
+            return_url=return_url,
+            requested_by=requested_by,
+            adapter=adapter,
+        )
+    except BillingError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "principia-pay reference create failed (school=%s document=%s)",
+            school_id,
+            document_id,
+        )
+        raise RailUnavailable(
+            "Não foi possível preparar a referência de pagamento. "
+            "Tente novamente; se persistir, verifique a ligação da escola "
+            "ao serviço de pagamentos."
+        ) from exc
+
+
+async def _create_reference(
+    db: AsyncSession,
+    *,
+    school_id: uuid.UUID,
+    document_id: str,
+    amount: Optional[Decimal] = None,
+    guardian_id: Optional[uuid.UUID] = None,
+    return_url: Optional[str] = None,
+    requested_by: Optional[uuid.UUID] = None,
+    adapter=None,
+) -> PaymentReference:
     row = await _open_debt_row(
         db,
         school_id=school_id,
@@ -633,13 +766,27 @@ async def create_reference(
             "A dívida não tem encarregado de cobrança associado.",
             409,
         )
+    try:
+        billing_guardian_id = uuid.UUID(str(owner))
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            "debt %s carries a non-UUID guardian id %r; refusing a rail reference",
+            document_id,
+            owner,
+        )
+        raise BillingError(
+            "debt_missing_guardian",
+            "A dívida tem um encarregado de cobrança inválido. "
+            "Corrija a ligação do aluno ao encarregado na ficha do aluno.",
+            409,
+        ) from exc
 
     ref_id = uuid.uuid4()
     reference = PaymentReference(
         id=ref_id,
         school_id=school_id,
         invoice_id=doc_uuid if source == "internal" else None,
-        billing_guardian_id=uuid.UUID(str(owner)),
+        billing_guardian_id=billing_guardian_id,
         entity="",
         reference="",
         amount=payable,
@@ -656,7 +803,16 @@ async def create_reference(
     # key a crashed or timed-out create is reconciled by.
     await db.commit()
 
-    connection = await ensure_connection(db, school_id=school_id)
+    try:
+        connection = await ensure_connection(db, school_id=school_id)
+    except BillingError:
+        # The create never reached the rail, so the local placeholder must
+        # not shadow the next attempt: cancel it before surfacing the real
+        # error (not configured, registration refused, rail down).
+        reference.status = "cancelled"
+        reference.rail_status = "not_sent"
+        await db.commit()
+        raise
     client = _client(connection)
     try:
         rail = await client.create_reference(
@@ -692,6 +848,20 @@ async def create_reference(
                 "O serviço de pagamentos não confirmou a referência; "
                 "será reconciliada automaticamente."
             ) from exc
+    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+        # The rail answered 201, but in a shape this client cannot read.
+        # The create may well have landed: keep it recoverable and let the
+        # school retry without opening a second reference.
+        reference.rail_status = "create_unknown"
+        await db.commit()
+        logger.exception(
+            "principia-pay returned an unreadable reference for %s",
+            reference.caller_reference,
+        )
+        raise RailUnavailable(
+            "O serviço de pagamentos respondeu num formato inesperado; "
+            "a referência será reconciliada automaticamente."
+        ) from exc
 
     _apply_rail(reference, rail)
     await db.commit()
@@ -706,7 +876,14 @@ async def _recover_create(
         matches = await client.list_references(
             caller_reference=reference.caller_reference
         )
-    except (PrincipiaPayError, httpx.HTTPError):
+    except (
+        PrincipiaPayError,
+        httpx.HTTPError,
+        KeyError,
+        TypeError,
+        ValueError,
+        InvalidOperation,
+    ):
         return None
     return matches[0] if matches else None
 
@@ -817,6 +994,17 @@ async def refresh_reference(
         await db.commit()
         raise RailUnavailable(
             "O serviço de pagamentos não respondeu; tente novamente."
+        ) from exc
+    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+        _record_error(connection, exc)
+        await db.commit()
+        logger.exception(
+            "principia-pay returned an unreadable reference while refreshing %s",
+            reference.id,
+        )
+        raise RailUnavailable(
+            "O serviço de pagamentos respondeu num formato inesperado; "
+            "tente novamente."
         ) from exc
 
     reference.last_checked_at = now_luanda()

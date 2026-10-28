@@ -32,7 +32,7 @@ class _ParentApi extends ApiClient {
 
   @override
   Future<dynamic> get(String path,
-      {Map<String, dynamic>? queryParameters}) async {
+      {Map<String, dynamic>? queryParameters, Duration? receiveTimeout}) async {
     switch (path) {
       case '/finance/parent/invoices':
         return <dynamic>[];
@@ -50,7 +50,8 @@ class _ParentApi extends ApiClient {
   }
 
   @override
-  Future<dynamic> post(String path, {dynamic data}) async {
+  Future<dynamic> post(String path,
+      {dynamic data, Duration? receiveTimeout}) async {
     if (path == '/finance/parent/payment-references/principia-pay') {
       lastReferenceBody = Map<String, dynamic>.from(data as Map);
       return {

@@ -132,7 +132,7 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<dynamic> get(String path,
-      {Map<String, dynamic>? queryParameters}) async {
+      {Map<String, dynamic>? queryParameters, Duration? receiveTimeout}) async {
     if (path == '/billing/runs') return <Map<String, dynamic>>[];
     if (path == '/billing/fee-policy') {
       return {
@@ -163,7 +163,8 @@ class _FakeApi extends ApiClient {
   }
 
   @override
-  Future<dynamic> post(String path, {dynamic data}) async {
+  Future<dynamic> post(String path,
+      {dynamic data, Duration? receiveTimeout}) async {
     if (path == '/billing/runs/preview') {
       previewCalls += 1;
       if (previewError != null) throw previewError!;

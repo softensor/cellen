@@ -1628,6 +1628,7 @@ async def debts_endpoint(
     student_id: Optional[uuid.UUID] = None,
     guardian_id: Optional[uuid.UUID] = None,
     service: Optional[str] = None,
+    bucket: Optional[str] = None,
     school_id: uuid.UUID = Depends(get_school_id),
     db: AsyncSession = Depends(get_db),
     _=Depends(require_finance_access),
@@ -1642,6 +1643,7 @@ async def debts_endpoint(
             student_id=student_id,
             guardian_id=guardian_id,
             service=service,
+            bucket=bucket,
         )
     except BillingError as exc:
         _raise_billing(exc)
@@ -1818,6 +1820,20 @@ async def principia_pay_connection_status(
     _=Depends(require_finance_access),
 ):
     return await principia_pay.connection_status(db, school_id=school_id)
+
+
+@router.get("/principia-pay/check")
+async def principia_pay_check_connection(
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_finance_access),
+):
+    """Live probe: is the stored key still accepted by the rail?
+
+    The plain status route is a database read and can look green long after
+    a key stopped working. This one earns the tick.
+    """
+    return await principia_pay.probe_connection(db, school_id=school_id)
 
 
 @router.post("/principia-pay/register")

@@ -837,6 +837,18 @@ async def refresh_run_status(db: AsyncSession, run: BillingRun) -> BillingRun:
             run.stats = stats
             run.completed_at = datetime.now(timezone.utc)
             await db.commit()
+        elif "preflight_failed" in stats:
+            # _run_finreg records preflight_failed once its pass finishes, so
+            # its presence with no instruction rows means every student was
+            # skipped before enqueueing (e.g. no billable lines). Without this
+            # branch the run would stay "running" forever; the key is absent
+            # during composition, which keeps a concurrent refresh from
+            # settling a run whose instructions are not committed yet.
+            stats.update({"generated": 0, "queued": 0, "failed": 0})
+            run.status = "completed"
+            run.stats = stats
+            run.completed_at = datetime.now(timezone.utc)
+            await db.commit()
         return run
     confirmed = [row for row in rows if row.status == "confirmed"]
     rejected = [row for row in rows if row.status == "rejected"]

@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import 'fee_automation_common.dart';
+
+/// The service rows open the matching open debts, so a figure in the report
+/// is a door, not a dead end.
+void _openDebtsForService(BuildContext context, String? service) {
+  if (service == null || service.isEmpty) return;
+  final query = Uri(queryParameters: {'service': service}).query;
+  context.push('/admin/finance/debt-control?$query');
+}
 
 final _serviceReportProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, key) async {
@@ -217,45 +226,65 @@ class _ReportBody extends StatelessWidget {
           ),
         for (final service in services)
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          service['service_label']?.toString() ??
-                              service['description']?.toString() ??
-                              'Serviço',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                final key = service['service']?.toString() ??
+                    service['service_label']?.toString();
+                _openDebtsForService(context, key);
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            service['service_label']?.toString() ??
+                                service['description']?.toString() ??
+                                'Serviço',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
+                        Text(
+                          currency.format(_money(service['gross_total'])),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right,
+                            size: 18,
+                            color: theme.colorScheme.onSurfaceVariant),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      value: maxGross <= 0
+                          ? 0
+                          : (_money(service['gross_total']) / maxGross)
+                              .clamp(0.0, 1.0),
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${service['quantity'] ?? 0} un. · '
+                      'base ${currency.format(_money(service['net_total']))} · '
+                      'IVA ${currency.format(_money(service['tax_total']))}',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ver dívidas deste serviço',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
                       ),
-                      Text(
-                        currency.format(_money(service['gross_total'])),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    value: maxGross <= 0
-                        ? 0
-                        : (_money(service['gross_total']) / maxGross)
-                            .clamp(0.0, 1.0),
-                    minHeight: 6,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${service['quantity'] ?? 0} un. · '
-                    'base ${currency.format(_money(service['net_total']))} · '
-                    'IVA ${currency.format(_money(service['tax_total']))}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
