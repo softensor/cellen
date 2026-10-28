@@ -23,6 +23,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.billing import BillingRun
 from app.models.finance import (
     BillingItem,
     CreditNote,
@@ -32,7 +33,18 @@ from app.models.finance import (
     PaymentAllocation,
 )
 from app.models.person import Child
-from app.services.billing_run import BillingError, FINREG_MODES
+from app.services.billing_profiles import (
+    get_fee_policy,
+    get_school_year,
+    policy_values,
+)
+from app.services.billing_run import (
+    BillingError,
+    FINREG_MODES,
+    _add_days,
+    _planned_dates,
+    current_billing_month,
+)
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import integration_mode
 from app.utils.agt import today_luanda
@@ -555,11 +567,72 @@ async def service_report(
     }
 
 
+async def _month_status(
+    db: AsyncSession, *, school_id: UUID, today: date
+) -> dict:
+    """What the current billing month looks like to a director.
+
+    Answers the home card: has this month's debt generation run, for how many
+    students, and when is it due. A BillingRun row only ever exists because
+    the generate path created it, so its presence is the "generated" signal.
+    """
+    month = current_billing_month()
+    run = (
+        await db.execute(
+            select(BillingRun)
+            .where(
+                BillingRun.school_id == school_id,
+                BillingRun.billing_month == month,
+            )
+            .order_by(BillingRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    school_year = await get_school_year(db, school_id)
+    policy = (
+        await get_fee_policy(db, school_id, school_year.id)
+        if school_year is not None
+        else None
+    )
+    values = policy_values(policy)
+    run_date, _ = _planned_dates(month, values["billing_day"], today)
+    due_date = _add_days(run_date, values["due_days"]).isoformat()
+    if run is None:
+        return {
+            "billing_month": month,
+            "generated": False,
+            "status": None,
+            "students": None,
+            "failed": None,
+            "total": None,
+            "due_date": due_date,
+            "auto_generate": bool(values["auto_generate"]),
+        }
+    stats = run.stats or {}
+    totals = stats.get("totals") or {}
+    snapshot = stats.get("policy") or {}
+    auto_generate = bool(values["auto_generate"])
+    if policy is None:
+        # No policy row to read: the run's snapshot is the only record left.
+        auto_generate = bool(snapshot.get("auto_generate"))
+    return {
+        "billing_month": month,
+        "generated": True,
+        "status": run.status,
+        "students": stats.get("students"),
+        "failed": stats.get("failed"),
+        "total": totals.get("total"),
+        "due_date": stats.get("due_date") or due_date,
+        "auto_generate": auto_generate,
+    }
+
+
 async def dashboard(db: AsyncSession, *, school_id: UUID, adapter=None) -> dict:
     """The finance home: debts, billing and collections in one answer."""
     today = today_luanda()
     month_start = today.replace(day=1)
     mode = await integration_mode(db, school_id)
+    month = await _month_status(db, school_id=school_id, today=today)
     debts = await list_debts(
         db, school_id=school_id, overdue_only=False, adapter=adapter
     )
@@ -635,6 +708,7 @@ async def dashboard(db: AsyncSession, *, school_id: UUID, adapter=None) -> dict:
         "mode": mode,
         "as_of": today.isoformat(),
         "period": period,
+        "month": month,
         "debts": {
             "count": debts["count"],
             "total_outstanding": debts["total_outstanding"],

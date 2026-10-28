@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cellen/core/api/api_client.dart';
+import 'package:cellen/features/admin/finance/finance_home_screen.dart';
 import 'package:cellen/features/admin/finance/finreg_sales_host_screen.dart';
 import 'package:cellen/features/admin/finance/internal_payments_screen.dart';
 import 'package:cellen/features/admin/guardians/guardians_list_screen.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// The manifest Cellen consumes. FinReg owns it in production; this is the
@@ -102,6 +104,32 @@ class _FakeApi extends ApiClient {
     if (path.startsWith('/finreg/composition-readiness/')) {
       return {'source_total': 0, 'ready_total': 0, 'mapped_total': 0};
     }
+    if (path == '/billing/dashboard') {
+      return {
+        'mode': mode == 'internal' ? 'internal' : 'fake',
+        'as_of': '2026-10-28',
+        'period': {'from': '2026-10-01', 'to': '2026-10-28'},
+        'month': {
+          'billing_month': '2026-10',
+          'generated': false,
+          'status': null,
+          'students': null,
+          'failed': null,
+          'total': null,
+          'due_date': '2026-11-05',
+          'auto_generate': false,
+        },
+        'debts': {
+          'count': 0,
+          'total_outstanding': 0.0,
+          'total_overdue': 0.0,
+          'by_bucket': <String, dynamic>{},
+          'by_service': <dynamic>[],
+        },
+        'sales': {'invoice_count': 0, 'total_gross': 0.0},
+        'collections': {'payment_count': 0, 'total_collected': 0.0},
+      };
+    }
     return <dynamic>[];
   }
 
@@ -130,32 +158,73 @@ Future<void> _expandFinregCard(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Six tabs are wider than a test surface, so the outer tab can be scrolled
+/// out of reach; bring it into view before tapping it.
+Future<void> _tapTab(WidgetTester tester, String label) async {
+  final target = find.text(label);
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
 Future<_FakeApi> _pumpHost(
   WidgetTester tester, {
   String mode = 'finreg',
   String initialCapabilityId = 'billing',
   Map<String, dynamic>? manifest,
   bool failManifest = false,
+  bool withRouter = false,
 }) async {
   final api = _FakeApi(
     mode: mode,
     manifest: manifest,
     failManifest: failManifest,
   );
-  await tester.pumpWidget(ProviderScope(
-    overrides: [apiClientProvider.overrideWithValue(api)],
-    child: MaterialApp(
+  const delegates = [
+    GlobalMaterialLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+  ];
+  final Widget app;
+  if (withRouter) {
+    app = MaterialApp.router(
       locale: const Locale('pt'),
       supportedLocales: const [Locale('pt'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: delegates,
+      routerConfig: GoRouter(
+        initialLocation: '/admin/finance',
+        routes: [
+          GoRoute(
+            path: '/admin/finance',
+            builder: (_, __) => Scaffold(
+              body: FinregSalesHostScreen(
+                initialCapabilityId: initialCapabilityId,
+              ),
+            ),
+          ),
+          // Every other route in this test resolves to an empty page; the
+          // assertions care that navigation happened, not where it landed.
+          GoRoute(
+            path: '/admin/finance/home',
+            builder: (_, __) => const FinanceHomeScreen(),
+          ),
+        ],
+      ),
+    );
+  } else {
+    app = MaterialApp(
+      locale: const Locale('pt'),
+      supportedLocales: const [Locale('pt'), Locale('en')],
+      localizationsDelegates: delegates,
       home: Scaffold(
         body: FinregSalesHostScreen(initialCapabilityId: initialCapabilityId),
       ),
-    ),
+    );
+  }
+  await tester.pumpWidget(ProviderScope(
+    overrides: [apiClientProvider.overrideWithValue(api)],
+    child: app,
   ));
   await tester.pumpAndSettle();
   return api;
@@ -180,12 +249,18 @@ void main() {
     finregUrlLauncher = launchUrl;
   });
 
-  testWidgets('a school without FinReg keeps the native payments controller',
-      (tester) async {
-    await _pumpHost(tester, mode: 'internal');
+  testWidgets(
+      'a school without FinReg keeps the native payments controller and '
+      'reaches the finance area', (tester) async {
+    await _pumpHost(tester, mode: 'internal', withRouter: true);
 
     expect(find.byType(InternalPaymentsScreen), findsOneWidget);
     expect(find.text('Abrir no FinReg'), findsNothing);
+
+    await tester.tap(find.byTooltip('Área financeira'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FinanceHomeScreen), findsOneWidget);
+    expect(find.text('Painel Financeiro'), findsOneWidget);
   });
 
   testWidgets('FinReg has one entry card, not a mirrored workspace menu',
@@ -203,10 +278,15 @@ void main() {
     expect(find.widgetWithText(Tab, 'Vendas e facturação'), findsNothing);
     expect(find.widgetWithText(Tab, 'Pessoas e entidades'), findsNothing);
     expect(find.widgetWithText(Tab, 'Sessões de caixa'), findsNothing);
-    // The school's own areas are the tabs.
-    expect(find.widgetWithText(Tab, 'Operações da escola'), findsOneWidget);
+    // The school's own areas are the tabs, ordered by the school year:
+    // month state, debts, money in and out, settings, the two directories.
+    expect(find.widgetWithText(Tab, 'Painel'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Dívidas e cobrança'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Pagamentos'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Configuração'), findsOneWidget);
     expect(find.widgetWithText(Tab, 'Encarregados'), findsOneWidget);
     expect(find.widgetWithText(Tab, 'Funcionários'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Operações da escola'), findsNothing);
   });
 
   testWidgets('a tap mints one code and opens FinReg in an external tab',
@@ -280,14 +360,13 @@ void main() {
 
     expect(find.textContaining('Indisponível'), findsOneWidget);
     expect(find.text('Abrir no FinReg'), findsNothing);
-    expect(find.text('Operações financeiras da escola'), findsOneWidget);
+    // The native areas stay, led by the month card.
+    expect(find.text('Outubro 2026 · dívidas por gerar'), findsOneWidget);
 
-    await tester.tap(find.text('Encarregados'));
-    await tester.pumpAndSettle();
+    await _tapTab(tester, 'Encarregados');
     expect(find.byType(GuardiansListScreen), findsOneWidget);
 
-    await tester.tap(find.text('Funcionários'));
-    await tester.pumpAndSettle();
+    await _tapTab(tester, 'Funcionários');
     expect(find.byType(EmployeesListScreen), findsOneWidget);
 
     api.failManifest = false;
@@ -355,18 +434,35 @@ void main() {
     expect(find.textContaining('plano completo'), findsOneWidget);
   });
 
-  testWidgets('the school operations tab keeps the native finance grid',
+  testWidgets('the debts tab keeps every debt workflow in one hub',
       (tester) async {
     await _pumpHost(tester);
 
-    expect(find.text('Operações financeiras da escola'), findsOneWidget);
+    await _tapTab(tester, 'Dívidas e cobrança');
+    expect(find.text('Gerar dívidas do mês'), findsOneWidget);
+    expect(find.text('Controlo de dívidas'), findsOneWidget);
+    expect(find.text('Multas por atraso'), findsOneWidget);
+    expect(find.text('Acordos de pagamento'), findsOneWidget);
+    expect(find.text('Lembretes de cobrança'), findsOneWidget);
+    expect(find.text('Créditos dos encarregados'), findsOneWidget);
 
-    await tester.tap(find.text('Encarregados'));
-    await tester.pumpAndSettle();
+    await _tapTab(tester, 'Pagamentos');
+    expect(find.text('Pagamentos por referência'), findsOneWidget);
+    expect(find.text('Referências Multicaixa'), findsOneWidget);
+    expect(find.text('Comprovativos de pagamento'), findsOneWidget);
+    expect(find.text('Fecho de caixa'), findsOneWidget);
+    expect(find.text('Despesas'), findsOneWidget);
+    expect(find.text('Extrato de contas'), findsOneWidget);
+
+    await _tapTab(tester, 'Configuração');
+    expect(find.text('Política de propinas'), findsOneWidget);
+    expect(find.text('Serviços e mensalidades'), findsOneWidget);
+    expect(find.text('Relatório por serviço'), findsOneWidget);
+
+    await _tapTab(tester, 'Encarregados');
     expect(find.byType(GuardiansListScreen), findsOneWidget);
 
-    await tester.tap(find.text('Funcionários'));
-    await tester.pumpAndSettle();
+    await _tapTab(tester, 'Funcionários');
     expect(find.byType(EmployeesListScreen), findsOneWidget);
   });
 }

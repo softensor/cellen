@@ -36,6 +36,9 @@ void main() {
       'lib/features/admin/finance/finance_dashboard_screen.dart',
     ).readAsStringSync();
 
-    expect(source, contains("context.go('/admin/finance/invoices')"));
+    // A hand-off is a drill-down: the person must be able to come back to the
+    // legacy invoice they generated, so it pushes and never resets the stack.
+    expect(source, contains("context.push('/admin/finance/invoices')"));
+    expect(source, isNot(contains('context.go(')));
   });
 }

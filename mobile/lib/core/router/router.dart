@@ -59,6 +59,8 @@ import '../../features/admin/finance/debt_control_screen.dart';
 import '../../features/admin/finance/dunning_screen.dart';
 import '../../features/admin/finance/fee_policy_screen.dart';
 import '../../features/admin/finance/finance_home_screen.dart';
+import '../../features/admin/finance/guardian_statement_screen.dart';
+import '../../features/admin/finance/late_fees_screen.dart';
 import '../../features/admin/finance/modalities_screen.dart';
 import '../../features/admin/finance/principia_pay_screen.dart';
 import '../../features/admin/finance/service_report_screen.dart';
@@ -1195,6 +1197,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/admin/finance/fee-policy',
               builder: (_, __) => const FeePolicyScreen()),
+          GoRoute(
+              path: '/admin/finance/late-fees',
+              builder: (_, __) => const LateFeesScreen()),
+          GoRoute(
+              path: '/admin/finance/statements',
+              builder: (_, __) => const GuardianStatementScreen()),
           GoRoute(
               path: '/admin/finance/modalities',
               builder: (_, __) => const ModalitiesScreen()),

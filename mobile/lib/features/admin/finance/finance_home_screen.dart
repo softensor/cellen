@@ -183,6 +183,9 @@ class _DashboardBody extends StatelessWidget {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
+    final month =
+        Map<String, dynamic>.from((data['month'] as Map?) ?? const {});
+    final internal = data['mode'] == 'internal';
     final periodLabel = _period.isEmpty
         ? 'Este mês'
         : '${formatIsoDate(_period['from'] as String?)} – '
@@ -191,6 +194,10 @@ class _DashboardBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (month.isNotEmpty) ...[
+          _MonthStatusCard(month: month, currency: currency),
+          const SizedBox(height: 16),
+        ],
         Row(
           children: [
             Expanded(
@@ -269,34 +276,38 @@ class _DashboardBody extends StatelessWidget {
             ],
           ),
         const SizedBox(height: 20),
-        Text('Ações',
+        Text('Ações rápidas',
             style: theme.textTheme.titleMedium
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        const _ActionTile(
-          icon: Icons.bolt_outlined,
-          title: 'Gerar dívidas do mês',
-          subtitle: 'Calcula propinas, modalidades, transporte e descontos.',
-          route: '/admin/finance/billing-run',
-        ),
-        const _ActionTile(
-          icon: Icons.warning_amber_outlined,
-          title: 'Controlo de dívidas',
-          subtitle: 'Por aluno, por serviço e com antiguidade.',
-          route: '/admin/finance/debt-control',
-        ),
-        const _ActionTile(
-          icon: Icons.bar_chart_outlined,
-          title: 'Relatório por serviço',
-          subtitle: 'Quanto cada serviço facturou no período.',
-          route: '/admin/finance/service-report',
-        ),
-        const _ActionTile(
-          icon: Icons.qr_code_2_outlined,
-          title: 'Pagamentos por referência',
-          subtitle: 'Ligações com a principia-pay e referências emitidas.',
-          route: '/admin/finance/principia-pay',
-        ),
+        _QuickActions(actions: const [
+          (
+            icon: Icons.warning_amber_outlined,
+            title: 'Controlo de dívidas',
+            route: '/admin/finance/debt-control',
+          ),
+          (
+            icon: Icons.receipt_long_outlined,
+            title: 'Comprovativos de pagamento',
+            route: '/admin/finance/payment-proofs',
+          ),
+          (
+            icon: Icons.notifications_active_outlined,
+            title: 'Lembretes de cobrança',
+            route: '/admin/finance/reminders',
+          ),
+          (
+            icon: Icons.qr_code_2_outlined,
+            title: 'Pagamentos por referência',
+            route: '/admin/finance/principia-pay',
+          ),
+        ]),
+        if (internal) ...[
+          const SizedBox(height: 20),
+          _InternalShortcuts(onOpenLegacy: () {
+            context.push('/admin/finance/legacy');
+          }),
+        ],
         if (services.isNotEmpty) ...[
           const SizedBox(height: 20),
           Text('Dívida por serviço',
@@ -459,29 +470,319 @@ class _BucketChip extends StatelessWidget {
   }
 }
 
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.route,
-  });
+/// The month's own state, first thing on the home.
+///
+/// A director opens finance to answer one question — "did this month's
+/// debts get generated?" — so the answer sits above every figure: the month
+/// by name, whether it ran, what it produced, when it is due, and the one
+/// button that starts it. Everything else on the page is analysis of a
+/// decision already taken here.
+class _MonthStatusCard extends StatelessWidget {
+  const _MonthStatusCard({required this.month, required this.currency});
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String route;
+  final Map<String, dynamic> month;
+  final NumberFormat currency;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = billingMonthLabel(
+        month['billing_month'] as String? ?? billingMonthKey());
+    final generated = month['generated'] == true;
+    final status = month['status']?.toString();
+    final failedRun = status == 'partial_failed' || status == 'failed';
+    final due = month['due_date'] as String?;
+    final autoGenerate = month['auto_generate'] == true;
+    final students = month['students'];
+    final total = (month['total'] as num?)?.toDouble();
+    final failedCount = (month['failed'] as num?)?.toInt() ?? 0;
+    final accent =
+        failedRun ? theme.colorScheme.error : theme.colorScheme.primary;
+    final details = <String>[
+      if (students != null) '$students ${students == 1 ? 'aluno' : 'alunos'}',
+      if (total != null) currency.format(total),
+      if (due != null) 'vence a ${formatIsoDate(due)}',
+    ];
     return Card(
-      child: ListTile(
-        leading: CircleAvatar(child: Icon(icon, size: 20)),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.push(route),
+      elevation: 0,
+      color: (failedRun
+              ? theme.colorScheme.errorContainer
+              : theme.colorScheme.primaryContainer)
+          .withOpacity(0.4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: accent.withAlpha(70)),
       ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  generated
+                      ? (failedRun
+                          ? Icons.error_outline
+                          : Icons.event_available_outlined)
+                      : Icons.event_busy_outlined,
+                  color: accent,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    generated
+                        ? '$label · dívidas geradas'
+                        : '$label · dívidas por gerar',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              generated
+                  ? (details.isEmpty
+                      ? 'Sem detalhes da execução.'
+                      : details.join(' · '))
+                  : (due != null
+                      ? 'vence a ${formatIsoDate(due)}'
+                      : 'Defina a política de propinas para saber a data de vencimento.'),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (failedRun && failedCount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '$failedCount falhadas — ver execução',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.error),
+              ),
+            ],
+            if (autoGenerate) ...[
+              const SizedBox(height: 6),
+              Chip(
+                avatar: const Icon(Icons.autorenew, size: 14),
+                label: const Text('geração automática ligada'),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+            const SizedBox(height: 10),
+            if (!generated)
+              FilledButton.icon(
+                onPressed: () => context.push('/admin/finance/billing-run'),
+                icon: const Icon(Icons.bolt_outlined),
+                label: const Text('Gerar dívidas do mês'),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        context.push('/admin/finance/debt-control'),
+                    icon: const Icon(Icons.warning_amber_outlined),
+                    label: const Text('Ver dívidas'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => context.push('/admin/finance/billing-run'),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('Ver execução'),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+typedef _QuickAction = ({IconData icon, String title, String route});
+
+/// The four daily doors, after the month card and the numbers have said
+/// what they have to say.
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.actions});
+
+  final List<_QuickAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 720 ? 4 : 2;
+      final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final action in actions)
+            SizedBox(
+              width: width,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => context.push(action.route),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Icon(action.icon,
+                            size: 20, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            action.title,
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+typedef _Shortcut = ({IconData icon, String label, String route});
+
+/// Internal-mode schools have no tabs: this home is their whole finance
+/// area, so every workflow is one shortcut away, grouped by intent.
+class _InternalShortcuts extends StatelessWidget {
+  const _InternalShortcuts({required this.onOpenLegacy});
+
+  final VoidCallback onOpenLegacy;
+
+  static const _debts = <_Shortcut>[
+    (
+      icon: Icons.bolt_outlined,
+      label: 'Gerar dívidas do mês',
+      route: '/admin/finance/billing-run',
+    ),
+    (
+      icon: Icons.warning_amber_outlined,
+      label: 'Controlo de dívidas',
+      route: '/admin/finance/debt-control',
+    ),
+    (
+      icon: Icons.gavel_outlined,
+      label: 'Multas por atraso',
+      route: '/admin/finance/late-fees',
+    ),
+    (
+      icon: Icons.calendar_month_outlined,
+      label: 'Acordos de pagamento',
+      route: '/admin/finance/payment-plans',
+    ),
+    (
+      icon: Icons.notifications_active_outlined,
+      label: 'Lembretes de cobrança',
+      route: '/admin/finance/reminders',
+    ),
+    (
+      icon: Icons.account_balance_wallet_outlined,
+      label: 'Créditos dos encarregados',
+      route: '/admin/finance/credits',
+    ),
+  ];
+
+  static const _payments = <_Shortcut>[
+    (
+      icon: Icons.qr_code_2_outlined,
+      label: 'Pagamentos por referência',
+      route: '/admin/finance/principia-pay',
+    ),
+    (
+      icon: Icons.point_of_sale_outlined,
+      label: 'Referências Multicaixa',
+      route: '/admin/finance/payment-references',
+    ),
+    (
+      icon: Icons.receipt_long_outlined,
+      label: 'Comprovativos de pagamento',
+      route: '/admin/finance/payment-proofs',
+    ),
+    (
+      icon: Icons.savings_outlined,
+      label: 'Fecho de caixa',
+      route: '/admin/finance/cash-sessions',
+    ),
+    (
+      icon: Icons.shopping_cart_outlined,
+      label: 'Despesas',
+      route: '/admin/finance/expenses',
+    ),
+    (
+      icon: Icons.description_outlined,
+      label: 'Extrato de contas',
+      route: '/admin/finance/statements',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Atalhos',
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        _shortcutGroup(context, 'Dívidas', _debts),
+        const SizedBox(height: 12),
+        _shortcutGroup(context, 'Pagamentos e contas', _payments),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Facturação interna'),
+            subtitle: const Text(
+                'Facturas, notas de crédito, recibos e SAF-T do motor interno.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onOpenLegacy,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _shortcutGroup(
+      BuildContext context, String title, List<_Shortcut> shortcuts) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final shortcut in shortcuts)
+              ActionChip(
+                avatar: Icon(shortcut.icon, size: 18),
+                label: Text(shortcut.label),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => context.push(shortcut.route),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

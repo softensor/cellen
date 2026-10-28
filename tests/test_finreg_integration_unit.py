@@ -53,14 +53,16 @@ def test_finreg_parent_payment_cross_system_references_are_persisted():
 def test_school_extensions_and_parent_finreg_payments_are_wired():
     root = Path(__file__).resolve().parents[1]
     host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+    hubs = (root / "mobile/lib/features/admin/finance/school_finance_hubs.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
     assert "FinregEmbeddedModuleHost(" not in host
     assert "finregEmbeddedModules" not in host
     assert "onOpenWorkspace: _openWorkspace" not in host
     assert "package:url_launcher/url_launcher.dart" in host
     assert "/finreg/workspace-launch/$capabilityId" in host
-    assert "_SchoolBillingOperations" in host
-    assert "'/admin/finance/payment-proofs'" in host
+    assert "_SchoolBillingOperations" not in host
+    # The native finance shortcuts live in the workflow hubs now.
+    assert "'/admin/finance/payment-proofs'" in hubs
     assert "FinregAccountingOverviewScreen" not in host
     assert "FinregCashSessionsScreen" not in host
     assert "final canPay = invoice.status != 'paid'" in parent
@@ -364,11 +366,11 @@ def test_finreg_has_one_entry_card_and_the_native_tabs_never_depend_on_it():
     assert "FinReg — facturação e conformidade" in host
     assert "_NativeSchoolFinanceTabs" in host
     # The workspace menu is gone: FinReg owns its own navigation. The only
-    # tabs left are the school's own three areas.
+    # tabs left are the school's own six areas.
     assert "widget.workspaces.length" not in host
     assert "_FinregWorkspaceMenu" not in host
     assert "DefaultTabController(" in host
-    assert "length: 3" in host
+    assert "length: 6" in host
     assert "FinregSchoolBillingModule(" not in host
     assert "IndexedStack" not in host
     assert "initialRoute:" not in host
@@ -482,9 +484,19 @@ def test_school_composition_uses_native_tabs_without_duplicate_modules():
     assert "finregEmbeddedModules" not in host
     assert "GuardiansListScreen()" in host
     assert "EmployeesListScreen()" in host
-    # FinReg's workspace list is not mirrored as host panes.
+    # FinReg's workspace list is not mirrored as host panes: the school tabs
+    # group their own workflows into hubs instead of a flat card grid.
     assert "_NativeSchoolFinanceTabs" in host
-    assert "_SchoolBillingOperations()" in host
+    assert "_SchoolBillingOperations" not in host
+    hubs = Path(
+        "mobile/lib/features/admin/finance/school_finance_hubs.dart"
+    ).read_text()
+    assert "DebtsHub()" in host
+    assert "PaymentsHub()" in host
+    assert "FinanceConfigHub()" in host
+    assert "class DebtsHub" in hubs
+    assert "context.push(item.route)" in hubs
+    assert "context.go(" not in hubs
     assert "_SchoolContextualModule" not in host
     assert "_CompositionReadiness" in host
     assert "'/finreg/composition-readiness/$capabilityId'" in host
