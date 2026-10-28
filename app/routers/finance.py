@@ -2484,6 +2484,49 @@ async def parent_create_rail_reference(
     return PaymentReferenceResponse.model_validate(reference)
 
 
+@router.post(
+    "/parent/payment-references/{reference_id}/refresh",
+    response_model=PaymentReferenceResponse,
+)
+async def parent_refresh_rail_reference(
+    reference_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_parent),
+):
+    """Parent polls one of their own rail references.
+
+    A create whose response was lost leaves the row in ``creating``; this is
+    the retry that turns it into a usable entity/reference without opening a
+    duplicate.
+    """
+    guardian_id = getattr(current_user, "guardian_id", None)
+    if guardian_id is None:
+        raise HTTPException(status_code=403, detail="No guardian linked")
+    school_id = getattr(current_user, "_school_id", None)
+    if not school_id:
+        raise HTTPException(status_code=403, detail="School context required")
+    reference = (
+        await db.execute(
+            select(PaymentReference).where(
+                PaymentReference.id == reference_id,
+                PaymentReference.school_id == school_id,
+                PaymentReference.billing_guardian_id == guardian_id,
+                PaymentReference.provider == principia_pay.PROVIDER,
+            )
+        )
+    ).scalar_one_or_none()
+    if reference is None:
+        raise HTTPException(status_code=404, detail="Referência não encontrada")
+    try:
+        await principia_pay.refresh_reference(db, reference=reference)
+    except BillingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    return PaymentReferenceResponse.model_validate(reference)
+
+
 @router.get("/parent/receipts", response_model=list[ReceiptResponse])
 async def parent_receipts(
     db: AsyncSession = Depends(get_db),

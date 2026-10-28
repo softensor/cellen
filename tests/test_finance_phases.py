@@ -14,13 +14,14 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+import httpx
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.models.billing import DunningDelivery, LateFeeAssessment
-from app.models.finance import Invoice, Receipt
+from app.models.finance import Invoice, PaymentReference, Receipt
 from app.models.finreg_integration import FinregBillingInstruction
 from app.services.finreg import FakeFinregAdapter
 from app.services.late_fees import (
@@ -800,6 +801,160 @@ async def test_callback_rejects_a_bad_signature(monkeypatch, client, make_school
     result = await principia_pay.handle_callback(db, body=body, signature=good)
     assert result["status"] == "ok"
     assert result["reference_status"] == "paid"
+
+
+# ─── debt filters and rail resilience ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_debts_bucket_filter_narrows_and_rejects_unknown_bucket(
+    client: AsyncClient, make_school, db,
+):
+    ctx = await _scaffold(client, make_school, "buckets")
+    family = await _family(client, ctx)
+    await _invoice(
+        client, ctx, family, today_luanda() - timedelta(days=10), 10000
+    )
+    await _invoice(
+        client, ctx, family, today_luanda() - timedelta(days=70), 20000
+    )
+
+    response = await client.get(
+        "/billing/debts", params={"bucket": "bucket_0_30"}, headers=ctx["headers"]
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["bucket"] == "bucket_0_30"
+    assert body["count"] == 1
+    assert body["rows"][0]["bucket"] == "bucket_0_30"
+
+    refused = await client.get(
+        "/billing/debts", params={"bucket": "not-a-bucket"}, headers=ctx["headers"]
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "invalid_bucket"
+
+
+@pytest.mark.asyncio
+async def test_a_non_uuid_guardian_id_is_a_clean_409(
+    client: AsyncClient, make_school, db, monkeypatch,
+):
+    """A legacy guardian id must not reach uuid.UUID() as an unhandled 500."""
+    ctx = await _scaffold(client, make_school, "rail-legacy-owner")
+    family = await _family(client, ctx)
+    invoice = await _invoice(client, ctx, family, ctx["first"], 10000)
+
+    from app.services import principia_pay
+
+    async def fake_open_debt(*args, **kwargs):
+        return {
+            "source": "internal",
+            "document_id": invoice["id"],
+            "document_number": "FT LEGACY/2026",
+            "outstanding": 10000.0,
+            "guardian_id": "legacy-guardian-7",
+            "currency_code": "AOA",
+        }
+
+    monkeypatch.setattr(principia_pay, "_open_debt_row", fake_open_debt)
+
+    with pytest.raises(BillingError) as refused:
+        await principia_pay.create_reference(
+            db, school_id=ctx["school_id"], document_id=invoice["id"]
+        )
+    assert refused.value.code == "debt_missing_guardian"
+    assert refused.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_rail_response_is_a_logged_502_and_stays_recoverable(
+    client: AsyncClient, make_school, db, monkeypatch,
+):
+    monkeypatch.setattr(settings, "PRINCIPIA_PAY_PRODUCT_TOKEN", "ppt_test")
+    monkeypatch.setattr(settings, "PRINCIPIA_PAY_BASE_URL", "https://rail.test")
+    ctx = await _scaffold(client, make_school, "rail-parse")
+    family = await _family(client, ctx)
+    invoice = await _invoice(client, ctx, family, ctx["first"], 10000)
+
+    from app.services import principia_pay
+    from app.services.principia_pay_client import RegisteredClient
+
+    async def fake_register(base_url, product_token, source_system, **kwargs):
+        return RegisteredClient(
+            id="cli-parse", api_key="pp_key", callback_secret="cb_secret"
+        )
+
+    async def broken_create(self, **kwargs):
+        # What Reference.from_json raises when the rail omits a required key.
+        raise KeyError("id")
+
+    monkeypatch.setattr(principia_pay, "register_client", fake_register)
+    monkeypatch.setattr(
+        principia_pay.PrincipiaPayClient, "create_reference", broken_create
+    )
+
+    with pytest.raises(BillingError) as refused:
+        await principia_pay.create_reference(
+            db, school_id=ctx["school_id"], document_id=invoice["id"]
+        )
+    assert refused.value.code == "principia_pay_unavailable"
+    assert refused.value.status_code == 502
+
+    row = (
+        await db.execute(
+            select(PaymentReference).where(
+                PaymentReference.school_id == ctx["school_id"]
+            )
+        )
+    ).scalars().one()
+    assert row.status == "creating"
+    assert row.rail_status == "create_unknown"
+
+
+@pytest.mark.asyncio
+async def test_live_probe_earns_the_green_tick_and_records_a_dead_rail(
+    client: AsyncClient, make_school, db, monkeypatch,
+):
+    monkeypatch.setattr(settings, "PRINCIPIA_PAY_PRODUCT_TOKEN", "ppt_test")
+    monkeypatch.setattr(settings, "PRINCIPIA_PAY_BASE_URL", "https://rail.test")
+    ctx = await _scaffold(client, make_school, "rail-probe")
+
+    from app.services import principia_pay
+    from app.services.principia_pay_client import RegisteredClient
+
+    async def fake_register(base_url, product_token, source_system, **kwargs):
+        return RegisteredClient(
+            id="cli-probe", api_key="pp_key", callback_secret="cb_secret"
+        )
+
+    monkeypatch.setattr(principia_pay, "register_client", fake_register)
+    await principia_pay.ensure_connection(db, school_id=ctx["school_id"])
+
+    async def reachable(self, *, caller_reference=None):
+        assert caller_reference and caller_reference.startswith("cellen-probe-")
+        return []
+
+    monkeypatch.setattr(
+        principia_pay.PrincipiaPayClient, "list_references", reachable
+    )
+    result = await principia_pay.probe_connection(db, school_id=ctx["school_id"])
+    assert result["reachable"] is True
+    assert result["registered"] is True
+    assert isinstance(result["latency_ms"], int)
+
+    async def dead(self, *, caller_reference=None):
+        raise httpx.ConnectError("rail down")
+
+    monkeypatch.setattr(principia_pay.PrincipiaPayClient, "list_references", dead)
+    result = await principia_pay.probe_connection(db, school_id=ctx["school_id"])
+    assert result["reachable"] is False
+    assert "rail down" in result["probe_error"]
+
+    endpoint = await client.get(
+        "/billing/principia-pay/check", headers=ctx["headers"]
+    )
+    assert endpoint.status_code == 200, endpoint.text
+    assert endpoint.json()["reachable"] is False
 
 
 async def _paid_rail(reference_id: str):

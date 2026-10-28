@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import 'fee_automation_common.dart';
@@ -169,8 +171,8 @@ class _BillingRunScreenState extends ConsumerState<BillingRunScreen> {
       ));
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Não foi possível gerar: $error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(apiErrorMessage(error))));
       }
     } finally {
       if (mounted) setState(() => _generating = false);
@@ -199,7 +201,8 @@ class _BillingRunScreenState extends ConsumerState<BillingRunScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Não foi possível reconstruir os planos: $error')),
+              content: Text('Não foi possível reconstruir os planos: '
+                  '${apiErrorMessage(error)}')),
         );
       }
     } finally {
@@ -429,6 +432,14 @@ class _PreviewContent extends StatelessWidget {
         if (lastRun != null) ...[
           const SizedBox(height: 16),
           _RunResultCard(run: lastRun!, currency: currency),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => context.push('/admin/finance/debt-control'),
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('Ver dívidas geradas'),
+            ),
+          ),
         ],
       ],
     );

@@ -15,9 +15,31 @@ final _dashboardProvider =
   return Map<String, dynamic>.from(data);
 });
 
+const _bucketLabels = <String, String>{
+  'current': 'Em dia',
+  'bucket_0_30': '0–30 dias',
+  'bucket_31_60': '31–60 dias',
+  'bucket_61_90': '61–90 dias',
+  'bucket_90_plus': '+90 dias',
+};
+
+String _debtRoute({bool overdue = false, String? bucket, String? service}) {
+  final params = <String, String>{
+    if (overdue) 'overdue': '1',
+    if (bucket != null) 'bucket': bucket,
+    if (service != null) 'service': service,
+  };
+  final query = Uri(queryParameters: params).query;
+  return '/admin/finance/debt-control${query.isEmpty ? '' : '?$query'}';
+}
+
 /// The finance home: one answer for debts, billing and collections, from
 /// whichever engine owns the school. The FinReg is invisible here; its
 /// documents drive the numbers without ever being exposed as a destination.
+///
+/// Every number is a door: the KPIs, the aging chips and the service rows
+/// open the filtered documents behind them, so nobody has to leave a figure
+/// "frozen" and hunt for the matching list somewhere else.
 class FinanceHomeScreen extends ConsumerWidget {
   const FinanceHomeScreen({super.key});
 
@@ -75,11 +97,88 @@ class _DashboardBody extends StatelessWidget {
 
   String get _modeLabel => data['mode'] == 'internal' ? 'Interno' : 'FinReg';
 
+  void _openCollections(BuildContext context) {
+    final methods = ((_collections['by_method'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cobrado no período',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                currency.format(_money(_collections, 'total_collected')),
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              if (methods.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('Sem pagamentos registados no período.'),
+                )
+              else
+                for (final method in methods)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.payments_outlined),
+                    title: Text(
+                      _methodLabel(method['payment_method']?.toString()),
+                    ),
+                    trailing: Text(
+                      currency
+                          .format((method['total'] as num?)?.toDouble() ?? 0),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.verified_outlined),
+                title: const Text('Abrir comprovativos de pagamento'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/admin/finance/payment-proofs');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final buckets =
         Map<String, dynamic>.from((_debts['by_bucket'] as Map?) ?? const {});
+    // Zero-amount buckets are noise: keep the aging strip to what exists,
+    // oldest first.
+    final visibleBuckets = [
+      for (final key in _bucketLabels.keys)
+        if ((buckets[key] as num?)?.toDouble() != null &&
+            (buckets[key] as num?)!.toDouble() > 0)
+          (key, (buckets[key] as num).toDouble()),
+    ];
     final services = ((_debts['by_service'] as List?) ?? const [])
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
@@ -114,6 +213,8 @@ class _DashboardBody extends StatelessWidget {
             label: 'Em dívida',
             value: currency.format(_money(_debts, 'total_outstanding')),
             detail: '${_debts['count'] ?? 0} documento(s)',
+            semanticsLabel: 'Em dívida. Abrir todos os documentos em aberto.',
+            onTap: () => context.push(_debtRoute()),
           ),
           _Kpi(
             icon: Icons.warning_amber_outlined,
@@ -121,18 +222,26 @@ class _DashboardBody extends StatelessWidget {
             value: currency.format(_money(_debts, 'total_overdue')),
             detail: 'Vencidos até hoje',
             highlight: true,
+            semanticsLabel: 'Em atraso. Abrir os documentos vencidos.',
+            onTap: () => context.push(_debtRoute(overdue: true)),
           ),
           _Kpi(
             icon: Icons.receipt_long_outlined,
             label: 'Facturado no período',
             value: currency.format(_money(_sales, 'total_gross')),
             detail: '${_sales['invoice_count'] ?? 0} documento(s)',
+            semanticsLabel:
+                'Facturado no período. Abrir o relatório por serviço.',
+            onTap: () => context.push('/admin/finance/service-report'),
           ),
           _Kpi(
             icon: Icons.savings_outlined,
             label: 'Cobrado no período',
             value: currency.format(_money(_collections, 'total_collected')),
             detail: '${_collections['payment_count'] ?? 0} pagamento(s)',
+            semanticsLabel:
+                'Cobrado no período. Ver a repartição por método de pagamento.',
+            onTap: () => _openCollections(context),
           ),
         ]),
         const SizedBox(height: 20),
@@ -140,17 +249,25 @@ class _DashboardBody extends StatelessWidget {
             style: theme.textTheme.titleMedium
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final entry in buckets.entries)
-              _BucketChip(
-                label: entry.key,
-                amount: currency.format((entry.value as num?)?.toDouble() ?? 0),
-              ),
-          ],
-        ),
+        if (visibleBuckets.isEmpty)
+          Text(
+            'Sem dívida em aberto.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in visibleBuckets)
+                _BucketChip(
+                  label: _bucketLabels[entry.$1] ?? entry.$1,
+                  amount: currency.format(entry.$2),
+                  onTap: () => context.push(_debtRoute(bucket: entry.$1)),
+                ),
+            ],
+          ),
         const SizedBox(height: 20),
         Text('Ações',
             style: theme.textTheme.titleMedium
@@ -194,15 +311,42 @@ class _DashboardBody extends StatelessWidget {
               title: Text(service['service_label']?.toString() ??
                   service['service']?.toString() ??
                   'Outros'),
-              trailing: Text(
-                currency
-                    .format((service['outstanding'] as num?)?.toDouble() ?? 0),
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              subtitle: Text('${service['documents'] ?? 0} documento(s)'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    currency.format(
+                        (service['outstanding'] as num?)?.toDouble() ?? 0),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 18),
+                ],
               ),
+              onTap: () {
+                final key = service['service']?.toString() ??
+                    service['service_label']?.toString();
+                if (key == null || key.isEmpty) return;
+                context.push(_debtRoute(service: key));
+              },
             ),
         ],
       ],
     );
+  }
+
+  String _methodLabel(String? method) {
+    return switch (method) {
+      'cash' => 'Numerário',
+      'mobile' => 'Pagamento móvel',
+      'transfer' => 'Transferência',
+      'multicaixa' => 'Multicaixa',
+      'card' => 'Cartão',
+      'cheque' => 'Cheque',
+      null || '' => 'Outros',
+      _ => method,
+    };
   }
 }
 
@@ -234,6 +378,8 @@ class _Kpi extends StatelessWidget {
     required this.value,
     required this.detail,
     this.highlight = false,
+    this.onTap,
+    this.semanticsLabel,
   });
 
   final IconData icon;
@@ -241,6 +387,8 @@ class _Kpi extends StatelessWidget {
   final String value;
   final String detail;
   final bool highlight;
+  final VoidCallback? onTap;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -248,25 +396,41 @@ class _Kpi extends StatelessWidget {
     final accent =
         highlight ? theme.colorScheme.error : theme.colorScheme.primary;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: accent, size: 20),
-            const SizedBox(height: 8),
-            Text(label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: highlight ? accent : null)),
-            Text(detail,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Semantics(
+          button: onTap != null,
+          label: semanticsLabel,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, color: accent, size: 20),
+                    const Spacer(),
+                    if (onTap != null)
+                      Icon(Icons.chevron_right,
+                          size: 18, color: theme.colorScheme.onSurfaceVariant),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(label,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: highlight ? accent : null)),
+                Text(detail,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -274,16 +438,23 @@ class _Kpi extends StatelessWidget {
 }
 
 class _BucketChip extends StatelessWidget {
-  const _BucketChip({required this.label, required this.amount});
+  const _BucketChip({
+    required this.label,
+    required this.amount,
+    required this.onTap,
+  });
 
   final String label;
   final String amount;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
+    return ActionChip(
       label: Text('$label · $amount'),
       visualDensity: VisualDensity.compact,
+      tooltip: 'Ver documentos em $label',
+      onPressed: onTap,
     );
   }
 }

@@ -159,11 +159,15 @@ class ApiClient {
   Future<dynamic> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Duration? receiveTimeout,
   }) async {
     try {
       final response = await _dio.get(
         path,
         queryParameters: queryParameters,
+        options: receiveTimeout == null
+            ? null
+            : Options(receiveTimeout: receiveTimeout),
       );
       return response.data;
     } on DioException catch (e) {
@@ -183,9 +187,19 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> post(String path, {dynamic data}) async {
+  Future<dynamic> post(
+    String path, {
+    dynamic data,
+    Duration? receiveTimeout,
+  }) async {
     try {
-      final response = await _dio.post(path, data: data);
+      final response = await _dio.post(
+        path,
+        data: data,
+        options: receiveTimeout == null
+            ? null
+            : Options(receiveTimeout: receiveTimeout),
+      );
       return response.data;
     } on DioException catch (e) {
       throw _mapException(e);

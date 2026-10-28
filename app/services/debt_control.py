@@ -324,12 +324,14 @@ async def _internal_rows(
 
 
 def _matches_service(row: dict, service: str) -> bool:
+    """Exact key or label match; substring matching would let "Propina"
+    sweep up every tuition variant a school configures."""
     wanted = service.strip().casefold()
     if not wanted:
         return True
     return any(
-        wanted in (str(line.get("service") or "").casefold())
-        or wanted in (str(line.get("service_label") or "").casefold())
+        wanted == str(line.get("service") or "").strip().casefold()
+        or wanted == str(line.get("service_label") or "").strip().casefold()
         for line in row.get("lines") or []
     )
 
@@ -389,6 +391,7 @@ async def list_debts(
     student_id: Optional[UUID] = None,
     guardian_id: Optional[UUID] = None,
     service: Optional[str] = None,
+    bucket: Optional[str] = None,
     adapter=None,
 ) -> dict:
     """Open debts in one shape, from whichever engine owns the school."""
@@ -416,12 +419,20 @@ async def list_debts(
             db, school_id=school_id, as_of=reference, overdue_only=overdue_only
         )
 
+    if bucket is not None and bucket not in BUCKETS:
+        raise BillingError(
+            "invalid_bucket",
+            f"Antiguidade inválida. Use uma de: {', '.join(BUCKETS)}.",
+            422,
+        )
     if student_id is not None:
         rows = [row for row in rows if row.get("student_id") == str(student_id)]
     if guardian_id is not None:
         rows = [row for row in rows if row.get("guardian_id") == str(guardian_id)]
     if service:
         rows = [row for row in rows if _matches_service(row, service)]
+    if bucket is not None:
+        rows = [row for row in rows if row.get("bucket") == bucket]
 
     summary = _summary(rows)
     return {
@@ -429,6 +440,7 @@ async def list_debts(
         "as_of": reference.isoformat(),
         "count": len(rows),
         "overdue_only": overdue_only,
+        "bucket": bucket,
         **summary,
         "rows": rows,
     }

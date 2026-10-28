@@ -26,7 +26,7 @@ from app.models.finance import InternalPaymentControl, Invoice
 from app.models.finreg_integration import FinregBillingInstruction
 from app.models.person import ChildGuardian
 from app.services.billing_composer import advance_month
-from app.services.billing_run import RUN_NOTE_PREFIX
+from app.services.billing_run import RUN_NOTE_PREFIX, refresh_run_status
 from app.services.finreg import FakeFinregAdapter
 from app.utils.agt import today_luanda
 from tests.conftest import auth, uid
@@ -543,6 +543,68 @@ async def test_generate_in_fake_mode_confirms_one_instruction_per_student(
         FinregBillingInstruction,
         FinregBillingInstruction.school_id == school_id,
     ) == 2
+
+
+@pytest.mark.asyncio
+async def test_all_skipped_run_settles_completed_instead_of_running(
+    client: AsyncClient, make_school, db, monkeypatch,
+):
+    """A run whose students all lack billable lines has no instructions.
+
+    Production case: the policy had no tuition item, all students were
+    skipped, and the run stayed "running" forever because the refresh only
+    knew how to settle runs that had outbox rows.
+    """
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    ctx = await _scaffold(client, make_school, "fee-skip")
+    await _policy(client, ctx)  # no tuition item: nothing to bill
+    await _family(client, ctx)
+    await _activate_finreg(client, ctx, "fake")
+
+    response = await client.post(
+        "/billing/runs",
+        json={
+            "billing_month": ctx["month"],
+            "school_year_id": ctx["year"]["id"],
+        },
+        headers=ctx["headers"],
+    )
+    assert response.status_code == 201, response.text
+    run = response.json()["run"]
+    assert run["status"] == "completed"
+    assert run["stats"]["generated"] == 0
+    assert run["stats"]["queued"] == 0
+    assert run["stats"]["failed"] == 0
+    assert run["stats"]["skipped"] == 2
+    assert run["instructions"] == []
+
+    school_id = ctx["school_id"]
+    assert await _count(
+        db,
+        FinregBillingInstruction,
+        FinregBillingInstruction.school_id == school_id,
+    ) == 0
+
+    # The read route refreshes again; the terminal state must be stable.
+    fetched = await client.get(f"/billing/runs/{run['id']}", headers=ctx["headers"])
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["status"] == "completed"
+
+    # A run still composing has no preflight_failed marker yet and must not
+    # be settled by a concurrent refresh.
+    composing = BillingRun(
+        school_id=school_id,
+        school_year_id=uuid.UUID(ctx["year"]["id"]),
+        billing_month=ctx["next_month"],
+        status="running",
+        mode="fake",
+        stats={"generated": 0, "queued": 0, "failed": 0, "skipped": 0},
+    )
+    db.add(composing)
+    await db.commit()
+    await refresh_run_status(db, composing)
+    await db.refresh(composing)
+    assert composing.status == "running"
 
 
 @pytest.mark.asyncio

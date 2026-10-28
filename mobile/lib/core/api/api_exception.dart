@@ -12,3 +12,7 @@ class ApiException implements Exception {
   bool get isServerError => statusCode != null && statusCode! >= 500;
   bool get isForbidden => statusCode == 403;
 }
+
+/// The message a person should read, never the exception's debug wrapper.
+String apiErrorMessage(Object error) =>
+    error is ApiException ? error.message : error.toString();

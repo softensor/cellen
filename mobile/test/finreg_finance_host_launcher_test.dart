@@ -83,7 +83,7 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<dynamic> get(String path,
-      {Map<String, dynamic>? queryParameters}) async {
+      {Map<String, dynamic>? queryParameters, Duration? receiveTimeout}) async {
     getPaths.add(path);
     if (path == '/finance/internal-payments/mode') return {'mode': mode};
     if (path == '/finreg/capabilities') {
@@ -106,7 +106,8 @@ class _FakeApi extends ApiClient {
   }
 
   @override
-  Future<dynamic> post(String path, {dynamic data}) async {
+  Future<dynamic> post(String path,
+      {dynamic data, Duration? receiveTimeout}) async {
     postPaths.add(path);
     if (pendingLaunch != null) return pendingLaunch!.future;
     if (postError != null) throw postError!;
@@ -120,6 +121,13 @@ class _Launched {
   final Uri url;
   final LaunchMode mode;
   final String? window;
+}
+
+/// The FinReg card is collapsed by default; its details and the mint-on-tap
+/// button only exist once the person opens it.
+Future<void> _expandFinregCard(WidgetTester tester) async {
+  await tester.tap(find.text('FinReg — facturação e conformidade'));
+  await tester.pumpAndSettle();
 }
 
 Future<_FakeApi> _pumpHost(
@@ -185,6 +193,11 @@ void main() {
     final api = await _pumpHost(tester);
 
     expect(api.getPaths, contains('/finreg/capabilities'));
+    // The card starts collapsed: status only, details on demand.
+    expect(find.text('FinReg — facturação e conformidade'), findsOneWidget);
+    expect(find.textContaining('Ligado · plano base'), findsOneWidget);
+    expect(find.text('Abrir no FinReg'), findsNothing);
+    await _expandFinregCard(tester);
     expect(find.text('Abrir no FinReg'), findsOneWidget);
     // FinReg's own workspace list is not reproduced as host tabs.
     expect(find.widgetWithText(Tab, 'Vendas e facturação'), findsNothing);
@@ -199,6 +212,7 @@ void main() {
   testWidgets('a tap mints one code and opens FinReg in an external tab',
       (tester) async {
     final api = await _pumpHost(tester);
+    await _expandFinregCard(tester);
 
     await tester.tap(find.text('Abrir no FinReg'));
     await tester.pumpAndSettle();
@@ -214,6 +228,7 @@ void main() {
   testWidgets('a contextual route opens its own FinReg capability',
       (tester) async {
     final api = await _pumpHost(tester, initialCapabilityId: 'payments');
+    await _expandFinregCard(tester);
 
     await tester.tap(find.text('Abrir no FinReg'));
     await tester.pumpAndSettle();
@@ -226,6 +241,7 @@ void main() {
     final api = await _pumpHost(tester);
     final pending = Completer<dynamic>();
     api.pendingLaunch = pending;
+    await _expandFinregCard(tester);
 
     await tester.tap(find.text('Abrir no FinReg'));
     await tester.tap(find.text('Abrir no FinReg'));
@@ -242,6 +258,7 @@ void main() {
       (tester) async {
     final api = await _pumpHost(tester);
     api.postError = Exception('FinReg indisponível');
+    await _expandFinregCard(tester);
 
     await tester.tap(find.text('Abrir no FinReg'));
     await tester.pumpAndSettle();
@@ -261,7 +278,7 @@ void main() {
       (tester) async {
     final api = await _pumpHost(tester, failManifest: true);
 
-    expect(find.textContaining('O FinReg está indisponível'), findsOneWidget);
+    expect(find.textContaining('Indisponível'), findsOneWidget);
     expect(find.text('Abrir no FinReg'), findsNothing);
     expect(find.text('Operações financeiras da escola'), findsOneWidget);
 
@@ -274,18 +291,20 @@ void main() {
     expect(find.byType(EmployeesListScreen), findsOneWidget);
 
     api.failManifest = false;
+    await _expandFinregCard(tester);
     await tester.tap(find.text('Tentar novamente'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('O FinReg está indisponível'), findsNothing);
+    expect(find.textContaining('Indisponível'), findsNothing);
+    expect(find.textContaining('Ligado · plano base'), findsOneWidget);
     expect(find.text('Abrir no FinReg'), findsOneWidget);
   });
 
   testWidgets('the plan line follows FinReg, not a local toggle',
       (tester) async {
     await _pumpHost(tester);
-    expect(find.textContaining('Plano base'), findsOneWidget);
-    expect(find.textContaining('Plano completo'), findsNothing);
+    expect(find.textContaining('plano base'), findsOneWidget);
+    expect(find.textContaining('plano completo'), findsNothing);
   });
 
   testWidgets('an entitled ERP add-on is stated on the card', (tester) async {
@@ -311,8 +330,8 @@ void main() {
       }),
     );
 
-    expect(find.textContaining('Plano completo'), findsOneWidget);
-    expect(find.textContaining('Plano base'), findsNothing);
+    expect(find.textContaining('plano completo'), findsOneWidget);
+    expect(find.textContaining('plano base'), findsNothing);
   });
 
   testWidgets('an older FinReg plan payload still states the plan',
@@ -333,7 +352,7 @@ void main() {
       }),
     );
 
-    expect(find.textContaining('Plano completo'), findsOneWidget);
+    expect(find.textContaining('plano completo'), findsOneWidget);
   });
 
   testWidgets('the school operations tab keeps the native finance grid',

@@ -181,13 +181,14 @@ class _OpsApi extends ApiClient {
   _OpsApi() : super(const FlutterSecureStorage());
 
   Map<String, dynamic>? lastReferenceBody;
+  Map<String, dynamic>? probeResult;
   final List<Map<String, dynamic>> dunningBodies = [];
   final List<Map<String, dynamic>> putBodies = [];
   int refreshCalls = 0;
 
   @override
   Future<dynamic> get(String path,
-      {Map<String, dynamic>? queryParameters}) async {
+      {Map<String, dynamic>? queryParameters, Duration? receiveTimeout}) async {
     switch (path) {
       case '/billing/debts':
         return _debts();
@@ -204,6 +205,14 @@ class _OpsApi extends ApiClient {
         };
       case '/billing/principia-pay/references':
         return [_reference()];
+      case '/billing/principia-pay/check':
+        return probeResult ??
+            {
+              'status': 'active',
+              'reachable': true,
+              'checked_at': '2026-10-28T09:15:00Z',
+              'latency_ms': 42,
+            };
       case '/billing/dunning/deliveries':
         return [
           {
@@ -235,7 +244,8 @@ class _OpsApi extends ApiClient {
   }
 
   @override
-  Future<dynamic> post(String path, {dynamic data}) async {
+  Future<dynamic> post(String path,
+      {dynamic data, Duration? receiveTimeout}) async {
     if (path == '/billing/principia-pay/references') {
       lastReferenceBody = Map<String, dynamic>.from(data as Map);
       return _reference();
@@ -347,6 +357,42 @@ void main() {
     await tester.tap(find.text('Consultar estado'));
     await tester.pumpAndSettle();
     expect(api.refreshCalls, 1);
+  });
+
+  testWidgets('a refused probe revokes the green tick on principia-pay',
+      (tester) async {
+    final api = _OpsApi()
+      ..probeResult = {
+        'status': 'error',
+        'reachable': false,
+        'checked_at': '2026-10-28T09:15:00Z',
+        'latency_ms': 12,
+        'probe_error': 'Chave rejeitada pelo rail.',
+      };
+    await _pump(tester, const PrincipiaPayScreen(), api: api);
+
+    expect(find.text('Escola ligada à principia-pay'), findsOneWidget);
+
+    await tester.tap(find.text('Testar ligação'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sem ligação à principia-pay'), findsOneWidget);
+    expect(
+      find.textContaining('Falha: Chave rejeitada pelo rail.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a healthy probe confirms the rail and its latency',
+      (tester) async {
+    await _pump(tester, const PrincipiaPayScreen());
+
+    await tester.tap(find.text('Testar ligação'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Escola ligada à principia-pay'), findsOneWidget);
+    expect(find.textContaining('Ligação confirmada'), findsOneWidget);
+    expect(find.textContaining('42 ms'), findsOneWidget);
   });
 
   testWidgets('finance home shows the cross-engine KPIs', (tester) async {

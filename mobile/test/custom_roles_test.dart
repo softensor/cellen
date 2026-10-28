@@ -14,7 +14,8 @@ class _SchoolApi extends ApiClient {
   };
   @override
   Future<dynamic> get(String path,
-          {Map<String, dynamic>? queryParameters}) async =>
+          {Map<String, dynamic>? queryParameters,
+          Duration? receiveTimeout}) async =>
       {
         'id': 'school',
         'name': 'School',

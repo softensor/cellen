@@ -285,10 +285,11 @@ class _FinregSalesHostScreenState extends ConsumerState<FinregSalesHostScreen> {
 
 /// The single way into FinReg, with its commercial state and its one action.
 ///
-/// This card is the whole FinReg surface in Cellen: plan, connection state,
-/// readiness and the mint-on-tap button. The workspace list is deliberately
-/// not mirrored — FinReg owns its own navigation.
-class _FinregEntryCard extends StatelessWidget {
+/// Collapsed by default: the school's day-to-day finance lives in the
+/// operations below, and FinReg is a destination, not a daily stop. The
+/// header keeps the connection state visible; the plan details, readiness
+/// and the mint-on-tap button only render when someone opens it.
+class _FinregEntryCard extends StatefulWidget {
   const _FinregEntryCard({
     required this.manifest,
     required this.loading,
@@ -314,164 +315,276 @@ class _FinregEntryCard extends StatelessWidget {
   final VoidCallback? onManageAccess;
 
   @override
+  State<_FinregEntryCard> createState() => _FinregEntryCardState();
+}
+
+class _FinregEntryCardState extends State<_FinregEntryCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final languageCode = Localizations.localeOf(context).languageCode;
     final portuguese = languageCode == 'pt';
-    final verticalMismatch = manifest != null && manifest!.vertical != 'school';
+    final manifest = widget.manifest;
+    final verticalMismatch = manifest != null && manifest.vertical != 'school';
     final erp = manifest?.erpEntitled ?? false;
+
+    final (Color dotColor, String summary) = widget.failed
+        ? (
+            theme.colorScheme.error,
+            portuguese
+                ? 'Indisponível — as operações da escola continuam'
+                : 'Unavailable — school operations keep working',
+          )
+        : widget.loading
+            ? (
+                theme.colorScheme.onSurfaceVariant,
+                portuguese
+                    ? 'A validar a ligação…'
+                    : 'Checking the connection…',
+              )
+            : verticalMismatch
+                ? (
+                    theme.colorScheme.error,
+                    portuguese
+                        ? 'Perfil financeiro não escolar'
+                        : 'Non-school financial profile',
+                  )
+                : manifest == null
+                    ? (
+                        theme.colorScheme.onSurfaceVariant,
+                        portuguese ? 'Desligado' : 'Disconnected',
+                      )
+                    : (
+                        Colors.green,
+                        portuguese
+                            ? (erp
+                                ? 'Ligado · plano completo (ERP ativo)'
+                                : 'Ligado · plano base de facturação')
+                            : (erp
+                                ? 'Connected · full plan (ERP active)'
+                                : 'Connected · billing base plan'),
+                      );
+
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  child: Icon(Icons.receipt_long_outlined,
-                      color: theme.colorScheme.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        portuguese
-                            ? 'FinReg — facturação e conformidade'
-                            : 'FinReg — billing and compliance',
-                        style: theme.textTheme.titleMedium,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            button: true,
+            expanded: _expanded,
+            label: portuguese
+                ? 'FinReg, facturação e conformidade. $summary'
+                : 'FinReg, billing and compliance. $summary',
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(Icons.receipt_long_outlined,
+                          size: 20, color: theme.colorScheme.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            portuguese
+                                ? 'FinReg — facturação e conformidade'
+                                : 'FinReg — billing and compliance',
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: dotColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  summary,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      if (manifest != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          erp
-                              ? (portuguese
-                                  ? 'Plano completo: facturação e ERP ativo '
-                                      '(contabilidade, tesouraria, compras e RH).'
-                                  : 'Full plan: billing and ERP active '
-                                      '(accounting, treasury, purchasing and payroll).')
-                              : (portuguese
-                                  ? 'Plano base: facturação e conformidade. '
-                                      'Contabilidade, tesouraria, compras e RH '
-                                      'são um complemento opcional.'
-                                  : 'Base plan: billing and compliance. '
-                                      'Accounting, treasury, purchasing and payroll '
-                                      'are an optional add-on.'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    if (widget.onManageAccess != null)
+                      IconButton(
+                        onPressed: widget.onManageAccess,
+                        tooltip: portuguese
+                            ? 'Acesso local aos módulos'
+                            : 'Local module access',
+                        icon: const Icon(Icons.admin_panel_settings_outlined,
+                            size: 20),
+                      ),
+                    Tooltip(
+                      message: _expanded
+                          ? (portuguese ? 'Recolher' : 'Collapse')
+                          : (portuguese ? 'Expandir' : 'Expand'),
+                      child: Icon(
+                        _expanded ? Icons.expand_less : Icons.expand_more,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Divider(height: 8),
+                  if (manifest != null &&
+                      !widget.failed &&
+                      !widget.loading) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      erp
+                          ? (portuguese
+                              ? 'Plano completo: facturação e ERP ativo '
+                                  '(contabilidade, tesouraria, compras e RH).'
+                              : 'Full plan: billing and ERP active '
+                                  '(accounting, treasury, purchasing and payroll).')
+                          : (portuguese
+                              ? 'Plano base: facturação e conformidade. '
+                                  'Contabilidade, tesouraria, compras e RH '
+                                  'são um complemento opcional.'
+                              : 'Base plan: billing and compliance. '
+                                  'Accounting, treasury, purchasing and payroll '
+                                  'are an optional add-on.'),
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                  if (widget.failed) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(Icons.cloud_off, color: theme.colorScheme.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            portuguese
+                                ? 'O FinReg está indisponível. As operações da '
+                                    'escola abaixo continuam a funcionar.'
+                                : 'FinReg is unavailable. The school operations '
+                                    'below keep working.',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: widget.onRetry,
+                          icon: const Icon(Icons.refresh),
+                          label:
+                              Text(portuguese ? 'Tentar novamente' : 'Retry'),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-                if (onManageAccess != null)
-                  IconButton(
-                    onPressed: onManageAccess,
-                    tooltip: portuguese
-                        ? 'Acesso local aos módulos'
-                        : 'Local module access',
-                    icon: const Icon(Icons.admin_panel_settings_outlined),
-                  ),
-              ],
-            ),
-            if (failed) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.cloud_off, color: theme.colorScheme.error),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
+                    ),
+                  ] else if (widget.loading) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                    const SizedBox(height: 8),
+                    Text(
                       portuguese
-                          ? 'O FinReg está indisponível. As operações da '
-                              'escola abaixo continuam a funcionar.'
-                          : 'FinReg is unavailable. The school operations '
-                              'below keep working.',
+                          ? 'A validar a ligação ao FinReg…'
+                          : 'Checking the FinReg connection…',
                       style: theme.textTheme.bodySmall,
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(portuguese ? 'Tentar novamente' : 'Retry'),
-                  ),
+                  ] else if (verticalMismatch) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      portuguese
+                          ? 'O perfil financeiro desta organização não é escolar.'
+                          : 'This organisation’s financial profile is not a school.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.error),
+                    ),
+                  ] else if (manifest != null) ...[
+                    if (widget.readiness != null)
+                      _CompositionReadiness(
+                        capabilityId: 'parties',
+                        readiness: widget.readiness!,
+                        languageCode: languageCode,
+                        onRetry: widget.onRetryReadiness,
+                      ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: widget.opening || widget.onOpen == null
+                          ? null
+                          : widget.onOpen,
+                      icon: widget.opening
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.open_in_new),
+                      label: Text(widget.opening
+                          ? (portuguese
+                              ? 'A abrir o FinReg…'
+                              : 'Opening FinReg…')
+                          : (portuguese
+                              ? 'Abrir no FinReg'
+                              : 'Open in FinReg')),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      portuguese
+                          ? 'O FinReg abre num separador próprio, com uma sessão de '
+                              'uso único. As operações escolares ficam aqui no Cellen.'
+                          : 'FinReg opens in its own tab with a single-use session. '
+                              'School operations stay here in Cellen.',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                    if (widget.onOpen == null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        portuguese
+                            ? 'Não existem módulos financeiros disponíveis para '
+                                'este perfil.'
+                            : 'No financial modules are available for this profile.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                    if (widget.launchError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(widget.launchError!,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.error)),
+                    ],
+                  ],
                 ],
               ),
-            ] else if (loading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              Text(
-                portuguese
-                    ? 'A validar a ligação ao FinReg…'
-                    : 'Checking the FinReg connection…',
-                style: theme.textTheme.bodySmall,
-              ),
-            ] else if (verticalMismatch) ...[
-              const SizedBox(height: 12),
-              Text(
-                portuguese
-                    ? 'O perfil financeiro desta organização não é escolar.'
-                    : 'This organisation’s financial profile is not a school.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.error),
-              ),
-            ] else if (manifest != null) ...[
-              if (readiness != null)
-                _CompositionReadiness(
-                  capabilityId: 'parties',
-                  readiness: readiness!,
-                  languageCode: languageCode,
-                  onRetry: onRetryReadiness,
-                ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: opening || onOpen == null ? null : onOpen,
-                icon: opening
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.open_in_new),
-                label: Text(opening
-                    ? (portuguese ? 'A abrir o FinReg…' : 'Opening FinReg…')
-                    : (portuguese ? 'Abrir no FinReg' : 'Open in FinReg')),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                portuguese
-                    ? 'O FinReg abre num separador próprio, com uma sessão de '
-                        'uso único. As operações escolares ficam aqui no Cellen.'
-                    : 'FinReg opens in its own tab with a single-use session. '
-                        'School operations stay here in Cellen.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              if (onOpen == null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  portuguese
-                      ? 'Não existem módulos financeiros disponíveis para '
-                          'este perfil.'
-                      : 'No financial modules are available for this profile.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              if (launchError != null) ...[
-                const SizedBox(height: 8),
-                Text(launchError!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.error)),
-              ],
-            ],
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -803,12 +916,6 @@ class _SchoolBillingOperations extends StatelessWidget {
         pt: 'Acordos de pagamento',
         en: 'Payment arrangements',
         route: '/admin/finance/payment-plans'
-      ),
-      (
-        icon: Icons.numbers_outlined,
-        pt: 'Referências de pagamento',
-        en: 'Payment references',
-        route: '/admin/finance/payment-references'
       ),
       (
         icon: Icons.account_balance_wallet_outlined,
