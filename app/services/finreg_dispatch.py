@@ -516,8 +516,13 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
 
 async def dispatch_pending(db: AsyncSession, limit: int = 50) -> tuple[int, int]:
     now = datetime.now(timezone.utc)
+    # "unknown" means a request may have reached FinReg but its outcome was not
+    # confirmed. Every call is idempotent and the retry resends the same keys,
+    # so the outbox -- and only the outbox -- must resolve that ambiguity;
+    # selecting only "pending" left such rows stranded forever, exactly like
+    # the processing rows in the payload defect.
     rows = (await db.execute(select(FinregBillingInstruction).where(
-        FinregBillingInstruction.status == "pending",
+        FinregBillingInstruction.status.in_(("pending", "unknown")),
         (FinregBillingInstruction.next_attempt_at.is_(None) | (FinregBillingInstruction.next_attempt_at <= now)),
     ).order_by(FinregBillingInstruction.created_at).with_for_update(skip_locked=True).limit(limit))).scalars().all()
     confirmed = failed = 0

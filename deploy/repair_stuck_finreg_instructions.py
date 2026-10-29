@@ -9,8 +9,10 @@ unexpected exception never reset the row, the instruction stayed in
 parents therefore saw nothing to pay.
 
 This script rebuilds the missing ``products`` from the school's current
-billing items and returns the row to the outbox. Run against the deployed
-database:
+billing items and returns the row to the outbox. A row FinReg rejected while
+the ledger was still catching up (``http_*``) or one already carrying its
+products is requeued unchanged, so re-running the script after a partial
+deployment is safe. Run against the deployed database:
 
     cd /var/www/cellen && PYTHONPATH=. .venv/bin/python \
         deploy/repair_stuck_finreg_instructions.py --school-slug rainha-njinga
@@ -42,6 +44,17 @@ from app.models.school import School
 from app.services.billing_run import _product_data
 
 TARGET_COMMANDS = {"billing_run", "billing_plan_upsert"}
+# Rejections caused by the outbox wiring or by FinReg not accepting the
+# products yet; they can succeed once this release is deployed. A business
+# refusal (a paused plan, a skipped period) must keep its rejected state.
+REQUEUEABLE_ERRORS = {"dispatch_exception", "product_not_declared"}
+
+
+def _is_requeueable(instruction) -> bool:
+    if instruction.status == "processing":
+        return True
+    code = instruction.error_code or ""
+    return code in REQUEUEABLE_ERRORS or code.startswith("http_")
 
 
 def _line_product_ids(payload: dict) -> list[str]:
@@ -89,7 +102,7 @@ async def main() -> None:
                         .where(
                             FinregBillingInstruction.school_id == school_id,
                             FinregBillingInstruction.command_type.in_(TARGET_COMMANDS),
-                            FinregBillingInstruction.status == "processing",
+                            FinregBillingInstruction.status.in_(("processing", "rejected")),
                         )
                         .order_by(FinregBillingInstruction.created_at)
                     )
@@ -98,16 +111,34 @@ async def main() -> None:
 
             print(f"School: {school_name} ({school_id})")
             print(f"Mode:   {'APPLY' if args.apply else 'dry run'}")
-            print(f"Instructions in processing: {len(rows)}")
+            print(f"Stranded or rejected instructions: {len(rows)}")
             print()
 
             repaired = 0
+            requeued = 0
             rejected = 0
-            already = 0
+            skipped = 0
             for instruction in rows:
+                reference = (
+                    f"{instruction.id} {instruction.command_type} "
+                    f"[{instruction.status}]"
+                )
+                if not _is_requeueable(instruction):
+                    skipped += 1
+                    print(
+                        f"  skip    {reference} "
+                        f"({instruction.error_code or 'sem erro'} — não é deste defeito)"
+                    )
+                    continue
                 payload = dict(instruction.payload or {})
                 if payload.get("products"):
-                    already += 1
+                    instruction.status = "pending"
+                    instruction.attempts = 0
+                    instruction.error_code = None
+                    instruction.error_detail = None
+                    instruction.next_attempt_at = None
+                    requeued += 1
+                    print(f"  requeue {reference} (payload completo)")
                     continue
                 product_ids = _line_product_ids(payload)
                 items = {}
@@ -134,10 +165,7 @@ async def main() -> None:
                     )
                     instruction.next_attempt_at = None
                     rejected += 1
-                    print(
-                        f"  reject  {instruction.id} {instruction.command_type} "
-                        f"({len(missing)} produto(s) em falta)"
-                    )
+                    print(f"  reject  {reference} ({len(missing)} produto(s) em falta)")
                     continue
                 payload["products"] = [
                     {"external_id": external_id, "data": _product_data(item)}
@@ -150,15 +178,12 @@ async def main() -> None:
                 instruction.error_detail = None
                 instruction.next_attempt_at = None
                 repaired += 1
-                print(
-                    f"  repair  {instruction.id} {instruction.command_type} "
-                    f"({len(items)} produto(s))"
-                )
+                print(f"  repair  {reference} ({len(items)} produto(s))")
 
             print()
             print(
-                f"repaired={repaired} rejected={rejected} "
-                f"already-with-products={already}"
+                f"repaired={repaired} requeued={requeued} rejected={rejected} "
+                f"skipped={skipped}"
             )
             if not args.apply:
                 print("Dry run only. Re-run with --apply to write the repair.")

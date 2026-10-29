@@ -153,30 +153,51 @@ echo "==> Verifying public Cellen health"
 curl --fail --silent --show-error "$PUBLIC_HEALTH_URL"
 echo
 
+repair_instructions() {
+  ssh -tt "$VPS_HOST" \
+    "sudo runuser -u postgres -- env PYTHONPATH='$VPS_DIR' DATABASE_URL=postgresql+asyncpg:///cellen SECRET_KEY=cellen-repair PLATFORM_ADMIN_EMAIL=ops@example.invalid PLATFORM_ADMIN_PASSWORD=repair '$VPS_DIR/.venv/bin/python' '$VPS_DIR/deploy/repair_stuck_finreg_instructions.py' --dsn postgresql+asyncpg:///cellen --apply"
+}
+
+wait_for_dispatch() {
+  local attempt processing counts
+  for attempt in $(seq 1 40); do
+    counts=$(ssh "$VPS_HOST" \
+      "sudo -u postgres psql -d cellen -tAc \"select status || '=' || count(*) from finreg_billing_instructions group by status order by status\"" \
+      | tr '\n' ' ')
+    processing=$(ssh "$VPS_HOST" \
+      "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where status = 'processing'\"")
+    echo "  outbox: ${counts:-empty}"
+    if [[ ${processing:-1} -eq 0 ]]; then
+      return 0
+    fi
+    sleep 15
+  done
+  return 1
+}
+
 echo "==> Repairing the instructions stranded in processing"
-ssh -tt "$VPS_HOST" \
-  "sudo runuser -u postgres -- env PYTHONPATH='$VPS_DIR' DATABASE_URL=postgresql+asyncpg:///cellen SECRET_KEY=cellen-repair PLATFORM_ADMIN_EMAIL=ops@example.invalid PLATFORM_ADMIN_PASSWORD=repair '$VPS_DIR/.venv/bin/python' '$VPS_DIR/deploy/repair_stuck_finreg_instructions.py' --dsn postgresql+asyncpg:///cellen --apply"
+repair_instructions
 
 echo "==> Waiting for the dispatcher to confirm the documents"
-dispatch_ok=0
-for attempt in $(seq 1 40); do
-  counts=$(ssh "$VPS_HOST" \
-    "sudo -u postgres psql -d cellen -tAc \"select status || '=' || count(*) from finreg_billing_instructions group by status order by status\"" \
-    | tr '\n' ' ')
-  processing=$(ssh "$VPS_HOST" \
-    "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where status = 'processing'\"")
-  echo "  outbox: ${counts:-empty}"
-  if [[ ${processing:-1} -eq 0 ]]; then
-    dispatch_ok=1
-    break
-  fi
-  sleep 15
-done
-[[ $dispatch_ok -eq 1 ]] || {
+if ! wait_for_dispatch; then
   echo "Instructions are still in processing after ten minutes; check:" >&2
   echo "  sudo journalctl -u cellen-api --since '20 minutes ago' | grep -i finreg" >&2
   exit 1
-}
+fi
+
+unsettled=$(ssh "$VPS_HOST" \
+  "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where status <> 'confirmed'\"")
+if [[ ${unsettled:-1} -ne 0 ]]; then
+  echo "==> $unsettled instruction(s) not confirmed; requeueing the retryable ones"
+  repair_instructions
+  if ! wait_for_dispatch; then
+    echo "Instructions are still in processing after ten minutes; check:" >&2
+    echo "  sudo journalctl -u cellen-api --since '20 minutes ago' | grep -i finreg" >&2
+    exit 1
+  fi
+  unsettled=$(ssh "$VPS_HOST" \
+    "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where status <> 'confirmed'\"")
+fi
 
 documents=$(ssh "$VPS_HOST" \
   "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where command_type = 'billing_run' and finreg_document_id is not null\"")
@@ -184,8 +205,6 @@ run_status=$(ssh "$VPS_HOST" \
   "sudo -u postgres psql -d cellen -tAc \"select status from billing_runs order by created_at desc limit 1\"")
 echo "  October documents issued: $documents"
 echo "  Latest billing run: $run_status"
-unsettled=$(ssh "$VPS_HOST" \
-  "sudo -u postgres psql -d cellen -tAc \"select count(*) from finreg_billing_instructions where status <> 'confirmed'\"")
 if [[ ${unsettled:-1} -ne 0 ]]; then
   echo "Some instructions did not confirm:" >&2
   ssh "$VPS_HOST" \

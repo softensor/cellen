@@ -1253,6 +1253,37 @@ async def test_an_unexpected_dispatch_error_returns_the_instruction_to_pending(
     assert instruction.next_attempt_at is not None
 
 
+async def test_an_unknown_outcome_is_selected_for_retry():
+    """A request FinReg may have applied is parked as "unknown".
+
+    The dispatcher selected only "pending", so such a row never returned to
+    the outbox and its month was never issued. Every FinReg call is idempotent
+    and the retry resends the same keys, so "unknown" must be retried too.
+    """
+    from app.services.finreg_dispatch import dispatch_pending
+
+    statements = []
+
+    class _Rows:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    class _Db:
+        async def execute(self, statement):
+            statements.append(
+                str(statement.compile(compile_kwargs={"literal_binds": True}))
+            )
+            return _Rows()
+
+    confirmed, failed = await dispatch_pending(_Db())
+
+    assert (confirmed, failed) == (0, 0)
+    assert "status IN ('pending', 'unknown')" in statements[0]
+
+
 async def test_auto_generation_sweep_builds_its_policy_query(db):
     """The opted-in sweep must not die on an undefined model at query time.
 
