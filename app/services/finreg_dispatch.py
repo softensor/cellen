@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +17,8 @@ from app.services.finreg import (
     billing_idempotency_key,
     school_context,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def integration_mode(db: AsyncSession, school_id) -> str:
@@ -260,7 +263,15 @@ async def _dispatch_billing(
     lines = []
     for line in plan["template"]["lines"]:
         resolved = dict(line)
-        external_product = resolved.pop("product_external_id")
+        external_product = resolved.pop("product_external_id", None)
+        if not external_product or external_product not in product_ids:
+            # A payload without its fiscal products can never complete, so
+            # retrying it would only repeat the same failure. Reject it: a
+            # regenerated run refreshes the payload of a rejected instruction.
+            raise FinregError(
+                "product_not_declared",
+                "A linha do plano referencia um produto fiscal ausente do payload.",
+            )
         resolved["product_id"] = product_ids[external_product]
         lines.append(resolved)
     body = {
@@ -483,6 +494,24 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
             instruction.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=min(3600, 2 ** min(instruction.attempts, 10)))
         await db.commit()
         raise
+    except Exception as exc:
+        # The dispatcher only selects "pending" rows, so an unexpected
+        # exception must never leave the instruction stuck in "processing":
+        # it would be invisible to every later tick. Persist a retryable
+        # failure and let the next pass try again -- every FinReg call is
+        # idempotent, so a retry cannot issue a duplicate document.
+        logger.exception(
+            "Finreg instruction %s (%s) failed unexpectedly",
+            instruction.id, instruction.command_type,
+        )
+        instruction.error_code = "dispatch_exception"
+        instruction.error_detail = f"{type(exc).__name__}: {exc}"[:1000]
+        instruction.status = "pending"
+        instruction.next_attempt_at = datetime.now(timezone.utc) + timedelta(
+            seconds=min(3600, 2 ** min(instruction.attempts, 10))
+        )
+        await db.commit()
+        raise
 
 
 async def dispatch_pending(db: AsyncSession, limit: int = 50) -> tuple[int, int]:
@@ -497,6 +526,10 @@ async def dispatch_pending(db: AsyncSession, limit: int = 50) -> tuple[int, int]
             await dispatch_instruction(db, row)
             confirmed += 1
         except FinregError:
+            failed += 1
+        except Exception:
+            # One instruction must not stop the rest of the outbox.
+            logger.exception("Finreg instruction %s could not be dispatched", row.id)
             failed += 1
     return confirmed, failed
 

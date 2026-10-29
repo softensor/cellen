@@ -28,7 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.academic import SchoolYear
-from app.models.billing import BillingRun, StudentFinanceProfile
+from app.models.billing import BillingRun, SchoolFeePolicy, StudentFinanceProfile
 from app.models.finance import BillingItem, Invoice
 from app.models.finreg_integration import FinregBillingInstruction
 from app.models.person import Guardian
@@ -589,6 +589,7 @@ async def _run_finreg(
                 "data": _guardian_data(guardian),
             },
             "plan": plan,
+            "products": products,
             "scheduled_run_date": scheduled.isoformat(),
             "run_date": run_date.isoformat(),
             "billing_month": month,
@@ -1050,6 +1051,7 @@ async def rebuild_plans(
                 "data": _guardian_data(guardian),
             },
             "plan": plan,
+            "products": products,
             "pause_after_run": True,
         }
         instruction, _ = await enqueue_billing_instruction(

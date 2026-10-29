@@ -489,6 +489,14 @@ async def test_generate_in_fake_mode_confirms_one_instruction_per_student(
         assert payload["plan"]["template"]["generation_mode"] == "draft"
         assert payload["pause_after_run"] is True
         assert payload["billing_month"] == ctx["month"]
+        # The HTTP dispatcher resolves each plan line's fiscal product from
+        # this list; without it every run crashed before issuing a document.
+        declared = {product["external_id"] for product in payload["products"]}
+        referenced = {
+            line["product_external_id"]
+            for line in payload["plan"]["template"]["lines"]
+        }
+        assert referenced and referenced <= declared
         by_child[payload["plan"]["context"]["pupil_id"]] = instruction
 
     discounted_child = next(
@@ -1186,6 +1194,7 @@ async def test_rebuild_plans_is_idempotent_and_picks_up_policy_changes(
     # Only the discounted child's plan changed; the other plan keeps its
     # revision and reuses its confirmed instruction instead of churning.
     assert len(rows) == 3
+    assert all(row.payload["products"] for row in rows)
     newest_pcts = {
         line["discount_pct"]
         for line in rows[-1].payload["plan"]["template"]["lines"]
@@ -1200,3 +1209,61 @@ async def test_rebuild_plans_is_idempotent_and_picks_up_policy_changes(
         first_revisions[rows[2].payload["plan_external_id"]]
         != rows[2].payload["plan_revision"]
     )
+
+
+async def test_an_unexpected_dispatch_error_returns_the_instruction_to_pending(
+    client: AsyncClient, make_school, db, monkeypatch,
+):
+    """A crashed dispatch must never leave the row invisible in "processing".
+
+    The dispatcher only selects "pending" rows, so any exception outside
+    FinregError used to strand the instruction forever -- which is exactly
+    how parents ended up with no documents to pay.
+    """
+    from app.services.finreg_dispatch import dispatch_instruction
+
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    ctx = await _scaffold(client, make_school, "dispatch-crash")
+    await _activate_finreg(client, ctx, "fake")
+
+    class BrokenAdapter:
+        async def request(self, method, path, body=None, **kwargs):
+            raise KeyError("product id missing from payload")
+
+    instruction = FinregBillingInstruction(
+        school_id=ctx["school_id"],
+        idempotency_key=f"wedge-test-{uuid.uuid4()}",
+        command_type="billing_run",
+        payload={
+            "guardian": {"external_id": "guardian-1", "data": {}},
+            "plan": {"external_id": "plan-1", "template": {"lines": []}},
+            "run_date": "2026-10-01",
+        },
+    )
+    db.add(instruction)
+    await db.commit()
+
+    with pytest.raises(KeyError):
+        await dispatch_instruction(db, instruction, adapter=BrokenAdapter())
+
+    await db.refresh(instruction)
+    assert instruction.status == "pending"
+    assert instruction.error_code == "dispatch_exception"
+    assert "KeyError" in instruction.error_detail
+    assert instruction.next_attempt_at is not None
+
+
+async def test_auto_generation_sweep_builds_its_policy_query(db):
+    """The opted-in sweep must not die on an undefined model at query time.
+
+    The policy query referenced SchoolFeePolicy without importing it, so the
+    daily sweep raised NameError and the scheduler logged it away -- automatic
+    generation could never run for any school.
+    """
+    from app.services.billing_run import auto_generate_due
+
+    result = await auto_generate_due(db)
+
+    assert result["billing_month"]
+    assert isinstance(result["generated"], int)
+    assert isinstance(result["failed"], int)

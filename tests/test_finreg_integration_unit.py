@@ -749,6 +749,94 @@ async def test_fake_adapter_models_unknown_outcome():
     assert raised.value.unknown_outcome
 
 
+class _RecordingHttpAdapter:
+    """Minimal stand-in for HttpFinregAdapter that records request bodies."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, dict | None]] = []
+
+    async def request(self, method, path, body=None, **kwargs):
+        self.calls.append((method, path, body))
+        if path.startswith("customers/"):
+            return {"id": "customer-1"}
+        if path.startswith("products/"):
+            return {"id": f"resolved-{path.split('/', 1)[1]}"}
+        if path.endswith("/run"):
+            return {"status": "confirmed", "document_id": "document-1"}
+        if path.endswith("/pause"):
+            return {}
+        return {"id": "plan-1"}
+
+
+def _billing_instruction(*, products, product_external_id):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        command_type="billing_run",
+        idempotency_key="cellen-run-test",
+        correlation_id=uuid.uuid4(),
+        payload={
+            "guardian": {"external_id": "guardian-1", "data": {"name": "Ana"}},
+            "plan": {
+                "external_id": "plan-1",
+                "template": {
+                    "lines": [{
+                        "product_external_id": product_external_id,
+                        "quantity": "1",
+                        "unit_price": "100000",
+                    }],
+                },
+            },
+            "products": products,
+            "run_date": "2026-10-01",
+            "pause_after_run": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_billing_dispatch_resolves_the_products_declared_in_the_payload():
+    from app.services.finreg_dispatch import _dispatch_billing
+
+    product_external_id = str(uuid.uuid4())
+    instruction = _billing_instruction(
+        products=[{"external_id": product_external_id, "data": {"sku": "MENSU"}}],
+        product_external_id=product_external_id,
+    )
+    adapter = _RecordingHttpAdapter()
+
+    result = await _dispatch_billing(adapter, instruction)
+
+    assert result["document_id"] == "document-1"
+    product_put = next(
+        call for call in adapter.calls if call[1] == f"products/{product_external_id}"
+    )
+    assert product_put[0] == "PUT"
+    assert product_put[2]["product"]["sku"] == "MENSU"
+    plan_put = next(
+        call for call in adapter.calls
+        if call[0] == "PUT" and call[1] == "billing-plans/plan-1"
+    )
+    assert plan_put[2]["template"]["lines"][0]["product_id"] == (
+        f"resolved-{product_external_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_billing_dispatch_rejects_a_payload_without_its_products():
+    from app.services.finreg_dispatch import _dispatch_billing
+
+    instruction = _billing_instruction(
+        products=[],
+        product_external_id=str(uuid.uuid4()),
+    )
+
+    with pytest.raises(FinregError) as raised:
+        await _dispatch_billing(_RecordingHttpAdapter(), instruction)
+
+    assert raised.value.code == "product_not_declared"
+    assert raised.value.retryable is False
+
+
 @pytest.mark.asyncio
 async def test_event_sync_rejects_credentials_for_another_company():
     expected_company = uuid.uuid4()
