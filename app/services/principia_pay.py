@@ -602,6 +602,7 @@ async def _open_debt_row(
     school_id: uuid.UUID,
     document_id: str,
     guardian_id: Optional[uuid.UUID],
+    allowed_child_ids: Optional[set[str]] = None,
     adapter=None,
 ) -> dict:
     debts = await list_debts(db, school_id=school_id, adapter=adapter)
@@ -609,7 +610,13 @@ async def _open_debt_row(
         if str(row.get("document_id")) != str(document_id):
             continue
         owner = row.get("guardian_id")
-        if guardian_id is not None and str(owner) != str(guardian_id):
+        is_owner = guardian_id is None or str(owner) == str(guardian_id)
+        # A second parent may pay for a child they are linked to, even
+        # though the school bills the family through one payer.
+        family_child = str(row.get("student_id") or "") in (
+            allowed_child_ids or set()
+        )
+        if not is_owner and not family_child:
             raise BillingError(
                 "debt_not_found", "Dívida não encontrada para este encarregado.", 404
             )
@@ -659,6 +666,7 @@ async def create_reference(
     guardian_id: Optional[uuid.UUID] = None,
     return_url: Optional[str] = None,
     requested_by: Optional[uuid.UUID] = None,
+    allowed_child_ids: Optional[set[str]] = None,
     adapter=None,
 ) -> PaymentReference:
     """Open (or return) a rail reference against one open debt.
@@ -677,6 +685,7 @@ async def create_reference(
             guardian_id=guardian_id,
             return_url=return_url,
             requested_by=requested_by,
+            allowed_child_ids=allowed_child_ids,
             adapter=adapter,
         )
     except BillingError:
@@ -703,6 +712,7 @@ async def _create_reference(
     guardian_id: Optional[uuid.UUID] = None,
     return_url: Optional[str] = None,
     requested_by: Optional[uuid.UUID] = None,
+    allowed_child_ids: Optional[set[str]] = None,
     adapter=None,
 ) -> PaymentReference:
     row = await _open_debt_row(
@@ -710,6 +720,7 @@ async def _create_reference(
         school_id=school_id,
         document_id=document_id,
         guardian_id=guardian_id,
+        allowed_child_ids=allowed_child_ids,
         adapter=adapter,
     )
     source = row.get("source") or "finreg"

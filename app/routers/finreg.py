@@ -35,6 +35,7 @@ from app.models.person import Child, ChildGuardian, Guardian
 from app.models.school import School
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
+from app.services import parent_finance
 from app.integrations.finreg_school import validate_school_capabilities
 
 router = APIRouter(prefix="/finreg", tags=["Finreg Integration"])
@@ -1259,8 +1260,13 @@ async def _parent_instruction(instruction_id, current_user, db):
     item = await db.get(FinregBillingInstruction, instruction_id)
     if item is None or item.school_id != school_id:
         raise HTTPException(status_code=404, detail="Finreg document not found")
-    if str((item.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
-        raise HTTPException(status_code=403, detail="This document does not belong to the guardian")
+    if not await parent_finance.guardian_can_view_instruction(
+        db,
+        school_id=school_id,
+        guardian_id=guardian_id,
+        instruction=item,
+    ):
+        raise HTTPException(status_code=403, detail="This document does not belong to the family")
     return item
 
 
@@ -1270,67 +1276,44 @@ async def parent_documents(current_user=Depends(require_parent), db: AsyncSessio
     school_id = getattr(current_user, "_school_id", None)
     if guardian_id is None or school_id is None:
         raise HTTPException(status_code=403, detail="Guardian and school context required")
-    rows = (await db.execute(select(FinregBillingInstruction).where(
-        FinregBillingInstruction.school_id == school_id,
-        FinregBillingInstruction.status == "confirmed",
-    ).order_by(FinregBillingInstruction.created_at.desc()))).scalars().all()
-    payment_rows = (await db.execute(select(Payment).where(
-        Payment.school_id == school_id,
-        Payment.billing_guardian_id == guardian_id,
-        Payment.finreg_document_external_reference.is_not(None),
-    ).order_by(Payment.created_at))).scalars().all()
-    proofs_by_document: dict[str, list[dict]] = {}
-    for payment in payment_rows:
-        proofs_by_document.setdefault(
-            str(payment.finreg_document_external_reference), []
-        ).append({
-            "id": str(payment.id),
-            "status": payment.status,
-            "notes": payment.notes,
-            "amount": float(payment.amount),
-            "receipt_proof_url": payment.receipt_proof_url,
-            "created_at": payment.created_at.isoformat() if payment.created_at else None,
-        })
-    output = []
-    for item in rows:
-        if str((item.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
-            continue
-        context = ((item.payload.get("draft") or {}).get("context") or {})
-        document = item.result_snapshot or {}
-        total = document.get("gross_total", 0)
-        output.append({
-            "id": str(item.id), "finreg": True,
-            # The debt read model and principia-pay key off the FinReg
-            # document, not the outbox instruction. Null until the event
-            # sync has seen the document's confirmation.
-            "document_id": str(item.finreg_document_id)
-            if item.finreg_document_id else None,
-            "child_id": context.get("pupil_id"),
-            "child_name": context.get("pupil_name") or "—",
-            "document_type": document.get("document_type", "invoice"),
-            "full_document_number": document.get("full_document_number") or document.get("document_number") or "Finreg",
-            "reference_month": f'{context["billing_period"]}-01' if context.get("billing_period") else None,
-            "gross_total": total, "status": document.get("status", "issued"),
-            "due_date": document.get("due_date"),
-            "amount_paid": document.get("amount_paid", 0),
-            "balance": document.get("balance", total),
-            "payment_proofs": proofs_by_document.get(str(item.id), []),
-        })
-    return output
+    return await parent_finance.list_parent_documents(
+        db, school_id=school_id, guardian_id=guardian_id
+    )
 
 
 @router.get("/parent/documents/{instruction_id}/pdf")
 async def parent_document_pdf(instruction_id: uuid.UUID, current_user=Depends(require_parent), db: AsyncSession = Depends(get_db)):
     item = await _parent_instruction(instruction_id, current_user, db)
+    if item.status != "confirmed" or item.finreg_document_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="O documento fiscal ainda não foi emitido.",
+        )
     try:
         content = await HttpFinregAdapter().download(
-            f"documents/{item.id}/pdf", actor_reference=str(current_user.id)
+            # The outbox instruction id is Cellen's; FinReg only knows the
+            # fiscal document id it returned when the run generated it.
+            f"documents/{item.finreg_document_id}/pdf",
+            actor_reference=str(current_user.id),
         )
         return Response(content=content, media_type="application/pdf", headers={
-            "Content-Disposition": f'inline; filename="finreg-{item.id}.pdf"'
+            "Content-Disposition": f'inline; filename="finreg-{item.finreg_document_id}.pdf"'
         })
     except FinregError as exc:
         raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+
+
+def _family_receipt_filter(school_id, guardian_id, instruction_ids):
+    conditions = [
+        Payment.status == "normal",
+        Payment.finreg_payment_external_reference.is_not(None),
+    ]
+    visibility = [Payment.billing_guardian_id == guardian_id]
+    if instruction_ids:
+        visibility.append(
+            Payment.finreg_document_external_reference.in_(instruction_ids)
+        )
+    return Payment.school_id == school_id, or_(*visibility), *conditions
 
 
 @router.get("/parent/receipts")
@@ -1339,11 +1322,11 @@ async def parent_receipts(current_user=Depends(require_parent), db: AsyncSession
     school_id = getattr(current_user, "_school_id", None)
     if guardian_id is None or school_id is None:
         raise HTTPException(status_code=403, detail="Guardian and school context required")
+    instruction_ids = await parent_finance.visible_instruction_ids(
+        db, school_id=school_id, guardian_id=guardian_id
+    )
     rows = (await db.execute(select(Payment).where(
-        Payment.school_id == school_id,
-        Payment.billing_guardian_id == guardian_id,
-        Payment.status == "normal",
-        Payment.finreg_payment_external_reference.is_not(None),
+        *_family_receipt_filter(school_id, guardian_id, instruction_ids)
     ).order_by(Payment.created_at.desc()))).scalars().all()
     return [{
         "id": str(payment.id),
@@ -1367,27 +1350,56 @@ async def parent_statement(current_user=Depends(require_parent), db: AsyncSessio
     if guardian is None:
         raise HTTPException(status_code=404, detail="Guardian not found")
     today = date.today()
-    try:
-        return await HttpFinregAdapter().request(
+    adapter = HttpFinregAdapter()
+
+    async def _statement(customer_id) -> dict:
+        return await adapter.request(
             "GET",
-            f"customers/{guardian_id}/statement?date_from={today.year}-01-01&date_to={today.isoformat()}",
+            f"customers/{customer_id}/statement?date_from={today.year}-01-01&date_to={today.isoformat()}",
             None,
             actor_reference=str(current_user.id),
         )
+
+    try:
+        return await _statement(guardian_id)
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        # Only the billing guardian is a FinReg customer. A second parent of
+        # the same family still gets the family statement when there is one
+        # unambiguous payer behind the children's documents.
+        if exc.code not in {"http_404", "not_found"}:
+            raise HTTPException(
+                status_code=503 if exc.retryable else 422,
+                detail={"code": exc.code, "message": exc.detail},
+            ) from exc
+        payer_id = await parent_finance.family_billing_guardian_id(
+            db, school_id=school_id, guardian_id=guardian_id
+        )
+        if payer_id is None or payer_id == guardian_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Extrato não disponível para este encarregado.",
+            ) from exc
+        try:
+            return await _statement(payer_id)
+        except FinregError as retry_exc:
+            raise HTTPException(
+                status_code=503 if retry_exc.retryable else 422,
+                detail={"code": retry_exc.code, "message": retry_exc.detail},
+            ) from retry_exc
 
 
 @router.get("/parent/receipts/{payment_id}/pdf")
 async def parent_receipt_pdf(payment_id: uuid.UUID, current_user=Depends(require_parent), db: AsyncSession = Depends(get_db)):
     guardian_id = getattr(current_user, "guardian_id", None)
     school_id = getattr(current_user, "_school_id", None)
+    if guardian_id is None or school_id is None:
+        raise HTTPException(status_code=403, detail="Guardian and school context required")
+    instruction_ids = await parent_finance.visible_instruction_ids(
+        db, school_id=school_id, guardian_id=guardian_id
+    )
     payment = (await db.execute(select(Payment).where(
         Payment.id == payment_id,
-        Payment.school_id == school_id,
-        Payment.billing_guardian_id == guardian_id,
-        Payment.status == "normal",
-        Payment.finreg_payment_external_reference.is_not(None),
+        *_family_receipt_filter(school_id, guardian_id, instruction_ids),
     ))).scalar_one_or_none()
     if payment is None:
         raise HTTPException(status_code=404, detail="Finreg receipt not found")

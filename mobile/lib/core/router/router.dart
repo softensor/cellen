@@ -63,6 +63,7 @@ import '../../features/admin/finance/guardian_statement_screen.dart';
 import '../../features/admin/finance/late_fees_screen.dart';
 import '../../features/admin/finance/modalities_screen.dart';
 import '../../features/admin/finance/principia_pay_screen.dart';
+import '../../features/admin/finance/record_payment_screen.dart';
 import '../../features/admin/finance/service_report_screen.dart';
 import '../../features/admin/finance/transport_screen.dart';
 import '../../features/admin/finance/credit_balances_screen.dart';
@@ -1203,6 +1204,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/admin/finance/statements',
               builder: (_, __) => const GuardianStatementScreen()),
+          GoRoute(
+              path: '/admin/finance/record-payment',
+              builder: (_, state) => RecordPaymentScreen(
+                    documentId: state.uri.queryParameters['document_id'],
+                  )),
           GoRoute(
               path: '/admin/finance/modalities',
               builder: (_, __) => const ModalitiesScreen()),

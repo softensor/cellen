@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/models/account_statement.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -279,20 +280,14 @@ class _StatementView extends StatelessWidget {
     required this.currency,
   });
 
-  double _toDouble(dynamic value) => value == null
-      ? 0
-      : (value is num ? value.toDouble() : double.tryParse('$value') ?? 0);
-
   @override
   Widget build(BuildContext context) {
-    final totalInvoiced = _toDouble(statement['total_invoiced']);
-    final totalSettled = _toDouble(statement['total_settled']);
-    final balance = _toDouble(statement['current_balance']);
-    final creditBalance = _toDouble(statement['credit_balance']);
-    final movements = (statement['movements'] as List? ?? [])
-        .whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList();
+    final parsed = AccountStatement.fromJson(statement);
+    final totalInvoiced = parsed.totalInvoiced;
+    final totalSettled = parsed.totalSettled;
+    final balance = parsed.currentBalance;
+    final creditBalance = parsed.creditBalance;
+    final movements = parsed.movements;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -359,25 +354,18 @@ class _StatementView extends StatelessWidget {
 }
 
 class _MovementRow extends StatelessWidget {
-  final Map<String, dynamic> movement;
+  final AccountMovement movement;
   final NumberFormat currency;
 
   const _MovementRow({required this.movement, required this.currency});
 
-  double _toDouble(dynamic value) => value == null
-      ? 0
-      : (value is num ? value.toDouble() : double.tryParse('$value') ?? 0);
-
   @override
   Widget build(BuildContext context) {
-    final type = movement['type'] as String? ?? '';
-    final description = movement['description'] as String? ?? type;
-    final date = movement['date'] as String? ?? '';
-    final debit = _toDouble(movement['debit']);
-    final credit = _toDouble(movement['credit']);
-    final runningBalance = movement['running_balance'] != null
-        ? _toDouble(movement['running_balance'])
-        : null;
+    final description = movement.description;
+    final date = movement.date;
+    final debit = movement.debit;
+    final credit = movement.credit;
+    final runningBalance = movement.runningBalance;
     final isDebit = debit > 0;
 
     return Container(

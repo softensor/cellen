@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/models/account_statement.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 
@@ -111,6 +112,8 @@ class ParentInvoice {
         return 'Cancelado';
       case 'overdue':
         return 'Em Atraso';
+      case 'processing':
+        return 'Em processamento';
       default:
         return status;
     }
@@ -126,6 +129,8 @@ class ParentInvoice {
         return Colors.orange;
       case 'cancelled':
         return Colors.grey;
+      case 'processing':
+        return Colors.blueGrey;
       default:
         return Colors.orange;
     }
@@ -551,15 +556,12 @@ class _StatementTab extends ConsumerWidget {
             ),
           );
         }
-        final totalInvoiced =
-            (statement['total_invoiced'] as num?)?.toDouble() ?? 0;
-        final totalSettled =
-            (statement['total_settled'] as num?)?.toDouble() ?? 0;
-        final balance = (statement['current_balance'] as num?)?.toDouble() ?? 0;
-        final creditBalance =
-            (statement['credit_balance'] as num?)?.toDouble() ?? 0;
-        final movements = (statement['movements'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
+        final parsed = AccountStatement.fromJson(statement);
+        final totalInvoiced = parsed.totalInvoiced;
+        final totalSettled = parsed.totalSettled;
+        final balance = parsed.currentBalance;
+        final creditBalance = parsed.creditBalance;
+        final movements = parsed.movements;
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(_parentStatementProvider),
           child: ListView(
@@ -603,19 +605,11 @@ class _StatementTab extends ConsumerWidget {
                     style: TextStyle(color: Colors.grey))
               else
                 ...movements.map((m) {
-                  final type = m['type'] as String? ?? '';
-                  final desc = m['description'] as String? ?? type;
-                  final date = m['date'] as String? ?? '';
-                  double _safeNum(dynamic v) => v == null
-                      ? 0
-                      : (v is num
-                          ? v.toDouble()
-                          : double.tryParse(v.toString()) ?? 0);
-                  final debit = _safeNum(m['debit']);
-                  final credit = _safeNum(m['credit']);
-                  final runningBalance = m['running_balance'] != null
-                      ? _safeNum(m['running_balance'])
-                      : null;
+                  final desc = m.description;
+                  final date = m.date;
+                  final debit = m.debit;
+                  final credit = m.credit;
+                  final runningBalance = m.runningBalance;
                   final isDebit = debit > 0;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 4),
@@ -917,7 +911,9 @@ class _InvoiceCardState extends ConsumerState<_InvoiceCard> {
     final theme = Theme.of(context);
     final monthLabel =
         DateFormat('MMMM yyyy', 'pt_PT').format(invoice.referenceMonth);
-    final canPay = invoice.status != 'paid' && invoice.status != 'cancelled';
+    final canPay = invoice.status != 'paid' &&
+        invoice.status != 'cancelled' &&
+        invoice.status != 'processing';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1076,7 +1072,9 @@ class _InvoiceCardState extends ConsumerState<_InvoiceCard> {
             ],
 
             // Submit payment button
-            if (invoice.isFinreg) ...[
+            if (invoice.isFinreg &&
+                invoice.status != 'processing' &&
+                invoice.payDocumentId != null) ...[
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
