@@ -75,7 +75,11 @@ git push -u origin "$BRANCH"
 
 PR_URL=$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || true)
 if [[ -z $PR_URL ]]; then
-  PR_BODY=$(cat <<'BODY'
+  # macOS ships bash 3.2, which mis-parses a quoted heredoc inside $(...) as
+  # soon as its body contains an apostrophe ("school's"), swallowing the rest
+  # of the file. Keep the body in a temp file and pass --body-file instead.
+  PR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/cellen-pr-body.XXXXXX")
+  cat > "$PR_BODY_FILE" <<'BODY'
 Monthly runs and plan rebuilds built the FinReg payload without the `products` list, although every plan line references its fiscal product by external id. The HTTP dispatcher resolved those ids from the payload, raised `KeyError` before creating any document, and the instruction stayed in `processing` — a state the outbox only selects as `pending`, so it was never retried. All 44 Rainha Njinga instructions were stranded there, which is why parents saw nothing to pay.
 
 - **Payload** (`app/services/billing_run.py`): include `products` in both the monthly run and the plan-rebuild payloads; a plan line whose product is missing now raises a clear, non-retryable `product_not_declared` instead of a bare `KeyError`.
@@ -87,12 +91,12 @@ Verified: pytest billing run, dispatcher and FinReg unit tests; ruff fatal check
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 BODY
-)
   PR_URL=$(gh pr create \
     --base master \
     --head "$BRANCH" \
     --title "$PR_TITLE" \
-    --body "$PR_BODY")
+    --body-file "$PR_BODY_FILE")
+  rm -f "$PR_BODY_FILE"
 fi
 echo "==> Pull request: $PR_URL"
 
