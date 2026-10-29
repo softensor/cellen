@@ -89,6 +89,17 @@ class PaymentsHub extends StatelessWidget {
     final portuguese = Localizations.localeOf(context).languageCode == 'pt';
     final receive = <_HubItem>[
       (
+        icon: Icons.payments_outlined,
+        color: Colors.green.shade700,
+        pt: 'Registar pagamento',
+        en: 'Record payment',
+        descriptionPt:
+            'Receba na escola e abata a dívida do aluno em nome da família.',
+        descriptionEn:
+            'Take the payment at school and settle the debt for the family.',
+        route: '/admin/finance/record-payment',
+      ),
+      (
         icon: Icons.qr_code_2_outlined,
         color: Colors.indigo,
         pt: 'Pagamentos por referência',

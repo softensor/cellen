@@ -4,7 +4,7 @@
 # production activation command. Safe to resume after a network/CI interruption.
 set -Eeuo pipefail
 
-CELLEN_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CELLEN_DIR=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 FINREG_DIR=${FINREG_DIR:-$(cd "$CELLEN_DIR/../finreg" && pwd)}
 VPS=${VPS:-jorgehel@167.235.158.77}
 
@@ -170,7 +170,7 @@ git -C "$CELLEN_DIR" add -- \
   alembic/versions/0029_align_required_workflow_columns.py \
   tests/test_flutter_api_contract.py \
   mobile/test/action_callback_contract_test.dart \
-  release-finreg-erp-completion.sh
+  deploy/release-finreg-erp-completion.sh
 git -C "$CELLEN_DIR" diff --cached --check
 if ! git -C "$CELLEN_DIR" diff --cached --quiet; then
   git -C "$CELLEN_DIR" commit -m "feat: complete school finance workflows"

@@ -282,6 +282,11 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: 8),
         _QuickActions(actions: const [
           (
+            icon: Icons.payments_outlined,
+            title: 'Registar pagamento',
+            route: '/admin/finance/record-payment',
+          ),
+          (
             icon: Icons.warning_amber_outlined,
             title: 'Controlo de dívidas',
             route: '/admin/finance/debt-control',
@@ -698,6 +703,11 @@ class _InternalShortcuts extends StatelessWidget {
   ];
 
   static const _payments = <_Shortcut>[
+    (
+      icon: Icons.payments_outlined,
+      label: 'Registar pagamento',
+      route: '/admin/finance/record-payment',
+    ),
     (
       icon: Icons.qr_code_2_outlined,
       label: 'Pagamentos por referência',

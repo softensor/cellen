@@ -294,6 +294,22 @@ class PaymentCreate(BaseModel):
     receipt_proof_url: Optional[str] = None
 
 
+class RecordPaymentRequest(BaseModel):
+    """A payment the school records on the family's behalf.
+
+    ``document_id`` is the row the debt screen showed: a FinReg document id
+    for a FinReg-active school, a local invoice id otherwise.
+    """
+
+    document_id: uuid.UUID
+    amount: DecimalFloat
+    payment_method: str
+    payment_date: Optional[date] = None
+    notes: Optional[str] = None
+    reference: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
 class PaymentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

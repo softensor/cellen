@@ -150,6 +150,15 @@ class _DebtControlScreenState extends ConsumerState<DebtControlScreen> {
       }
     } else if (action == 'reference') {
       await _openReference(context, row, currency);
+    } else if (action == 'payment') {
+      final documentId = row['document_id']?.toString();
+      if (documentId != null && documentId.isNotEmpty) {
+        await context.push(
+          '/admin/finance/record-payment'
+          '?document_id=${Uri.encodeQueryComponent(documentId)}',
+        );
+        ref.invalidate(_debtsProvider(_key));
+      }
     }
   }
 
@@ -671,6 +680,15 @@ class _DebtDetailSheet extends StatelessWidget {
                 ),
             ],
             const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop('payment'),
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Registar pagamento'),
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 if (studentId != null && studentId.isNotEmpty)

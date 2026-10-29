@@ -54,10 +54,14 @@ final parentOutstandingInvoicesProvider =
           .toList(),
     );
   }
-  final data = await api.get('/finance/parent/invoices') as List;
-  return _ParentPaymentOverview(
-    isFinreg: true,
-    items: data
+  // A FinReg-active school bills through FinReg documents, not local
+  // invoices. Reading only the local endpoint here is why the home said
+  // "Sem faturas pendentes" while the family had an open month.
+  final local = await api.get('/finance/parent/invoices') as List;
+  final finreg = await api.get('/finreg/parent/documents') as List;
+
+  final items = <_ParentPaymentItem>[
+    ...local
         .map((e) => Invoice.fromJson(e as Map<String, dynamic>))
         .where((invoice) =>
             invoice.status != 'paid' && invoice.status != 'cancelled')
@@ -65,9 +69,30 @@ final parentOutstandingInvoicesProvider =
               description: invoice.description ?? invoice.childName ?? 'Fatura',
               amount: invoice.totalAmount,
               status: invoice.status,
-            ))
-        .toList(),
-  );
+            )),
+    ...finreg.map((raw) {
+      final row = raw as Map;
+      final status = row['status']?.toString() ?? 'pending';
+      final child = row['child_name']?.toString();
+      final month = DateTime.tryParse(row['reference_month']?.toString() ?? '');
+      final description = month == null
+          ? (child ?? 'Cobrança')
+          : '${child ?? 'Cobrança'} · '
+              '${DateFormat('MMMM yyyy', 'pt_PT').format(month)}';
+      return _ParentPaymentItem(
+        description: description,
+        amount: (row['balance'] as num?)?.toDouble() ??
+            (row['gross_total'] as num?)?.toDouble() ??
+            0,
+        status: status,
+      );
+    }).where((item) =>
+        item.status != 'paid' &&
+        item.status != 'cancelled' &&
+        item.status != 'processing'),
+  ];
+
+  return _ParentPaymentOverview(isFinreg: true, items: items);
 });
 
 class _ParentPaymentOverview {

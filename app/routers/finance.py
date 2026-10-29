@@ -109,6 +109,7 @@ from app.schemas.finance import (
     RailReferenceCreate,
     PaymentResponse,
     ReceiptResponse,
+    RecordPaymentRequest,
     ReminderCreate,
     ReminderResponse,
 )
@@ -138,7 +139,7 @@ from app.services.finreg_dispatch import (
 from app.services.storage import save_upload
 from app.services.payment_control import finreg_is_active
 from app.services.billing_run import BillingError
-from app.services import principia_pay
+from app.services import parent_finance, principia_pay
 from app.utils.agt import now_luanda, signature_excerpt, today_luanda
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
@@ -1223,6 +1224,63 @@ async def get_payment(
         {"invoice_id": str(a.invoice_id), "amount_applied": float(a.amount_applied)}
         for a in allocs
     ]
+    return data
+
+
+@router.post("/payments/record", response_model=PaymentResponse, status_code=201)
+async def record_payment_on_behalf(
+    body: RecordPaymentRequest,
+    school_id: uuid.UUID = Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_finance_access),
+):
+    """Record a payment made in person (cash, transfer, counter card).
+
+    Parents pay the school directly all the time; the family's debt must then
+    settle in whichever engine owns it and show up in the parent portal.
+    """
+    from app.services.in_person_payment import (
+        InPersonPaymentError,
+        record_in_person_payment,
+    )
+
+    try:
+        payment = await record_in_person_payment(
+            db,
+            school_id=school_id,
+            document_id=body.document_id,
+            amount=body.amount,
+            payment_method=body.payment_method,
+            payment_date=body.payment_date,
+            notes=body.notes,
+            reference=body.reference,
+            received_by=getattr(current_user, "employee_id", None),
+            idempotency_key=body.idempotency_key,
+            actor_reference=str(getattr(current_user, "id", "school-finance")),
+        )
+    except InPersonPaymentError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        )
+
+    alloc_r = await db.execute(
+        select(PaymentAllocation).where(PaymentAllocation.payment_id == payment.id)
+    )
+    data = PaymentResponse.model_validate(payment)
+    data.allocated_invoices = [
+        {"invoice_id": str(a.invoice_id), "amount_applied": float(a.amount_applied)}
+        for a in alloc_r.scalars().all()
+    ]
+    guardian = (
+        await db.execute(
+            select(Guardian.first_name, Guardian.last_name).where(
+                Guardian.id == payment.billing_guardian_id
+            )
+        )
+    ).first()
+    if guardian is not None:
+        data.guardian_name = f"{guardian[0]} {guardian[1]}"
     return data
 
 
@@ -2474,6 +2532,9 @@ async def parent_create_rail_reference(
             document_id=body.document_id,
             amount=body.amount,
             guardian_id=guardian_id,
+            allowed_child_ids=await parent_finance.linked_child_ids(
+                db, school_id=school_id, guardian_id=guardian_id
+            ),
             return_url=body.return_url,
         )
     except BillingError as exc:
@@ -2556,8 +2617,6 @@ async def parent_submit_payment(
     current_user=Depends(require_parent),
 ):
     """Parent submits proof of payment for review."""
-    from app.models.person import ChildGuardian
-
     guardian_id = getattr(current_user, "guardian_id", None)
     if not guardian_id:
         raise HTTPException(status_code=403, detail="No guardian linked")
@@ -2586,16 +2645,20 @@ async def parent_submit_payment(
         ))).scalar_one_or_none()
         if finreg_instruction is None:
             raise HTTPException(status_code=404, detail="Invoice not found")
-        if str((finreg_instruction.payload.get("guardian") or {}).get("external_id")) != str(guardian_id):
+        if not await parent_finance.guardian_can_view_instruction(
+            db,
+            school_id=finreg_instruction.school_id,
+            guardian_id=guardian_id,
+            instruction=finreg_instruction,
+        ):
             raise HTTPException(status_code=403, detail="Not your invoice")
 
     is_billing_guardian = invoice is not None and invoice.billing_guardian_id and str(invoice.billing_guardian_id) == str(guardian_id)
     if invoice is not None and not is_billing_guardian:
         # Check if invoice belongs to one of this guardian's children
-        child_ids_r = await db.execute(
-            select(ChildGuardian.child_id).where(ChildGuardian.guardian_id == guardian_id)
+        linked_child_ids = await parent_finance.linked_child_ids(
+            db, school_id=invoice.school_id, guardian_id=guardian_id
         )
-        linked_child_ids = [str(r[0]) for r in child_ids_r.all()]
         if not invoice.child_id or str(invoice.child_id) not in linked_child_ids:
             raise HTTPException(status_code=403, detail="Not your invoice")
 
@@ -2621,8 +2684,14 @@ async def parent_submit_payment(
         raise HTTPException(status_code=409, detail="Já existe um comprovativo em análise para esta factura")
 
     # Create a pending-review payment
-    finreg_result = (finreg_instruction.result_snapshot or {}) if finreg_instruction else {}
-    default_amount = invoice.gross_total if invoice is not None else finreg_result.get("balance", finreg_result.get("gross_total", 0))
+    if invoice is not None:
+        default_amount = invoice.gross_total
+    else:
+        default_amount = await parent_finance.outstanding_for_instruction(
+            db,
+            school_id=finreg_instruction.school_id,
+            instruction=finreg_instruction,
+        )
     amount = Decimal(str(body.get("amount", default_amount)))
     if amount <= 0:
         raise HTTPException(status_code=422, detail="amount must be greater than zero")
