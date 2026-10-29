@@ -4,7 +4,7 @@
 # It is resumable: merged branches and completed CI runs are reused.
 set -Eeuo pipefail
 
-CELLEN_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+CELLEN_DIR=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 FINREG_DIR=${FINREG_DIR:-$(cd "$CELLEN_DIR/../finreg" && pwd)}
 VPS=${VPS:-jorgehel@167.235.158.77}
 

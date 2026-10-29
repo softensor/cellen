@@ -61,9 +61,23 @@ if [[ $FEATURE_SHA != "$EXPECTED_SHA" ]]; then
   }
   extra_paths=$(git diff --name-only "$EXPECTED_SHA".."$FEATURE_SHA" -- . ':(exclude)deploy/')
   if [[ -n $extra_paths ]]; then
-    echo "Refusing to release: commits after the reviewed revision change files outside deploy/:" >&2
-    echo "$extra_paths" >&2
-    exit 2
+    # Moving an ops script into deploy/ is bookkeeping: its old root path
+    # disappears and the same basename exists under deploy/ at the new tip.
+    unexpected=()
+    while IFS= read -r path; do
+      [[ -n $path ]] || continue
+      base=${path##*/}
+      if ! git cat-file -e "$FEATURE_SHA:$path" 2>/dev/null \
+         && git cat-file -e "$FEATURE_SHA:deploy/$base" 2>/dev/null; then
+        continue
+      fi
+      unexpected+=("$path")
+    done <<< "$extra_paths"
+    if [[ ${#unexpected[@]} -gt 0 ]]; then
+      echo "Refusing to release: commits after the reviewed revision change files outside deploy/:" >&2
+      printf '%s\n' "${unexpected[@]}" >&2
+      exit 2
+    fi
   fi
 fi
 
