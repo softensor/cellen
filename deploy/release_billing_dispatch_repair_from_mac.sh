@@ -20,7 +20,7 @@ PR_TITLE=${CELLEN_RELEASE_TITLE:-"fix(finance): ship billing products to FinReg 
 VPS_HOST=${CELLEN_VPS_HOST:-jorgehel@167.235.158.77}
 VPS_DIR=${CELLEN_VPS_DIR:-/var/www/cellen}
 PUBLIC_HEALTH_URL=${CELLEN_PUBLIC_HEALTH_URL:-https://167.235.158.77.nip.io/health}
-EXPECTED_SHA=${1:-6628f7efd4ab027cc716a7a75f997b98593f845b}
+EXPECTED_SHA=${1:-b04b3d7c3e34fc054dce318b4ea09ce7f738f25f}
 
 failed() {
   local status=$?
