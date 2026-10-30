@@ -158,8 +158,25 @@ curl --fail --silent --show-error "$PUBLIC_HEALTH_URL"
 echo
 
 repair_instructions() {
+  # `cd /tmp` first, and it is not cosmetic. `app/core/config.py` declares
+  # `SettingsConfigDict(env_file=".env")` — a *relative* path — and builds
+  # `settings` at import time, so merely importing the repair script's
+  # dependencies makes pydantic stat `./.env`. Without a cd, the remote cwd is
+  # the ssh login's home (`/home/jorgehel`), which `postgres` cannot search,
+  # and `Path.is_file()` ignores only ENOENT/ENOTDIR/EBADF/ELOOP — EACCES
+  # propagates. The release therefore died at this line with
+  # `PermissionError: [Errno 13] Permission denied: '.env'` *after* the API had
+  # already deployed, leaving the stranded instructions unrepaired.
+  #
+  # `/tmp` rather than `$VPS_DIR`: the repo does hold a real `.env`, which
+  # `postgres` may stat but not necessarily read, so pointing the cd there
+  # trades an EACCES on stat for an EACCES on open. A directory with no `.env`
+  # at all is the stable answer — the four required settings
+  # (DATABASE_URL, SECRET_KEY, PLATFORM_ADMIN_EMAIL, PLATFORM_ADMIN_PASSWORD)
+  # are all passed explicitly below, so no env file is wanted here. Imports
+  # resolve through PYTHONPATH, not the cwd.
   ssh -tt "$VPS_HOST" \
-    "sudo runuser -u postgres -- env PYTHONPATH='$VPS_DIR' DATABASE_URL=postgresql+asyncpg:///cellen SECRET_KEY=cellen-repair PLATFORM_ADMIN_EMAIL=ops@example.invalid PLATFORM_ADMIN_PASSWORD=repair '$VPS_DIR/.venv/bin/python' '$VPS_DIR/deploy/repair_stuck_finreg_instructions.py' --dsn postgresql+asyncpg:///cellen --apply"
+    "cd /tmp && sudo runuser -u postgres -- env PYTHONPATH='$VPS_DIR' DATABASE_URL=postgresql+asyncpg:///cellen SECRET_KEY=cellen-repair PLATFORM_ADMIN_EMAIL=ops@example.invalid PLATFORM_ADMIN_PASSWORD=repair '$VPS_DIR/.venv/bin/python' '$VPS_DIR/deploy/repair_stuck_finreg_instructions.py' --dsn postgresql+asyncpg:///cellen --apply"
 }
 
 wait_for_dispatch() {
