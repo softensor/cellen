@@ -193,6 +193,7 @@ class _OpsApi extends ApiClient {
   Map<String, dynamic>? lastReferenceBody;
   Map<String, dynamic>? probeResult;
   Map<String, dynamic>? dashboardOverride;
+  Map<String, dynamic>? debtsOverride;
   final List<Map<String, dynamic>> dunningBodies = [];
   final List<Map<String, dynamic>> putBodies = [];
   int refreshCalls = 0;
@@ -202,7 +203,7 @@ class _OpsApi extends ApiClient {
       {Map<String, dynamic>? queryParameters, Duration? receiveTimeout}) async {
     switch (path) {
       case '/billing/debts':
-        return _debts();
+        return debtsOverride ?? _debts();
       case '/billing/dashboard':
         return dashboardOverride ?? _dashboard();
       case '/billing/principia-pay':
@@ -353,7 +354,35 @@ void main() {
 
     expect(api.lastReferenceBody?['document_id'], 'doc-1');
     expect(api.lastReferenceBody?['amount'], 120000.0);
-    expect(find.text('Referência criada'), findsOneWidget);
+    expect(find.text('Referência do encarregado'), findsOneWidget);
+    expect(find.text('987654321'), findsOneWidget);
+    // The admin hands the reference over; only the family opens the payment.
+    expect(find.text('Copiar mensagem'), findsOneWidget);
+    expect(find.text('https://pay.example/ref-1'), findsNothing);
+  });
+
+  testWidgets(
+      'a debt the dispatcher already referenced shows it, not a new one',
+      (tester) async {
+    final api = _OpsApi()
+      ..debtsOverride = {
+        ..._debts(),
+        'rows': [
+          {..._debtRow(), 'payment_reference': _reference()},
+        ],
+      };
+    await _pump(tester, const DebtControlScreen(), api: api);
+
+    await tester.tap(find.text('Ana Silva'));
+    await tester.pumpAndSettle();
+    expect(find.text('Referência enviada ao encarregado'), findsOneWidget);
+    expect(find.text('Gerar referência'), findsNothing);
+
+    await tester.tap(find.text('Ver referência'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastReferenceBody, isNull);
+    expect(find.text('Referência do encarregado'), findsOneWidget);
     expect(find.text('987654321'), findsOneWidget);
   });
 
@@ -364,6 +393,9 @@ void main() {
     expect(find.text('Escola ligada à principia-pay'), findsOneWidget);
     expect(find.textContaining('FT 2026/1'), findsOneWidget);
     expect(find.text('Activa'), findsOneWidget);
+
+    expect(find.text('Copiar mensagem para o encarregado'), findsOneWidget);
+    expect(find.text('Abrir pagamento'), findsNothing);
 
     await tester.tap(find.text('Consultar estado'));
     await tester.pumpAndSettle();
@@ -443,6 +475,71 @@ void main() {
     expect(find.text('geração automática ligada'), findsOneWidget);
     expect(find.text('Ver dívidas'), findsOneWidget);
     expect(find.text('Ver execução'), findsOneWidget);
+  });
+
+  testWidgets('finance home follows the month to the families and the payments',
+      (tester) async {
+    final api = _OpsApi()
+      ..dashboardOverride = {
+        ..._dashboard(),
+        'month': {
+          'billing_month': '2026-10',
+          'generated': true,
+          'status': 'completed',
+          'students': 42,
+          'failed': 0,
+          'total': 5610000.0,
+          'due_date': '2026-11-10',
+          'auto_generate': false,
+          'references': {
+            'enabled': true,
+            'documents': 42,
+            'sent': 40,
+            'waiting': 0,
+            'failed': 2,
+            'skipped': 0,
+            'paid': 12,
+          },
+        },
+      };
+    await _pump(tester, const FinanceHomeScreen(), api: api);
+
+    expect(find.text('Referências enviadas: 40 de 42'), findsOneWidget);
+    expect(find.text('Pagas por referência: 12 de 40'), findsOneWidget);
+    expect(
+        find.text('2 por enviar — o sistema volta a tentar'), findsOneWidget);
+  });
+
+  testWidgets('finance home asks to connect the rail when families get none',
+      (tester) async {
+    final api = _OpsApi()
+      ..dashboardOverride = {
+        ..._dashboard(),
+        'month': {
+          'billing_month': '2026-10',
+          'generated': true,
+          'status': 'completed',
+          'students': 42,
+          'failed': 0,
+          'total': 5610000.0,
+          'due_date': '2026-11-10',
+          'auto_generate': false,
+          'references': {
+            'enabled': false,
+            'documents': 42,
+            'sent': 0,
+            'waiting': 42,
+            'failed': 0,
+            'skipped': 0,
+            'paid': 0,
+          },
+        },
+      };
+    await _pump(tester, const FinanceHomeScreen(), api: api);
+
+    expect(find.textContaining('ainda não recebem referência automática'),
+        findsOneWidget);
+    expect(find.textContaining('Referências enviadas'), findsNothing);
   });
 
   testWidgets('dunning previews today and sends only the latest rung',

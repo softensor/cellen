@@ -26,6 +26,10 @@ class ParentInvoice {
   final DateTime? dueDate;
   final String? multicaixaEntity;
   final String? multicaixaRef;
+
+  /// The rail's hosted payment page for the reference above, when the
+  /// provider offers one. It belongs to the family: only this screen opens it.
+  final String? checkoutUrl;
   final double amountPaid;
   final double balance;
   final String? proofStatus; // pending_review | approved | rejected | null
@@ -47,6 +51,7 @@ class ParentInvoice {
     this.dueDate,
     this.multicaixaEntity,
     this.multicaixaRef,
+    this.checkoutUrl,
     required this.amountPaid,
     required this.balance,
     this.proofStatus,
@@ -89,6 +94,9 @@ class ParentInvoice {
           : null,
       multicaixaEntity: json['multicaixa_entity'] as String?,
       multicaixaRef: json['multicaixa_ref'] as String?,
+      checkoutUrl: (json['payment_reference'] is Map)
+          ? (json['payment_reference'] as Map)['checkout_url'] as String?
+          : null,
       amountPaid: (json['amount_paid'] as num?)?.toDouble() ?? 0.0,
       balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
       proofStatus: proofStatus,
@@ -105,6 +113,7 @@ class ParentInvoice {
       case 'paid':
         return 'Pago';
       case 'pending':
+      case 'issued':
         return 'Pendente';
       case 'partially_paid':
         return 'Parcialmente Pago';
@@ -1027,6 +1036,29 @@ class _InvoiceCardState extends ConsumerState<_InvoiceCard> {
                     ? invoice.balance
                     : invoice.totalAmount),
               ),
+              if (canPay && (invoice.checkoutUrl?.isNotEmpty ?? false)) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.tryParse(invoice.checkoutUrl!);
+                      if (uri == null) return;
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Pagar online'),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Ou use a entidade e a referência em qualquer ATM ou no '
+                  'Multicaixa Express. A factura é liquidada automaticamente.',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
             ] else ...[
               Row(
                 children: [
@@ -1093,13 +1125,21 @@ class _InvoiceCardState extends ConsumerState<_InvoiceCard> {
             ],
             if (canPay && invoice.proofStatus != 'pending_review') ...[
               const SizedBox(height: 16),
+              // With a rail reference the payment settles itself; a proof is
+              // only the fallback for a transfer made some other way.
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => _showPaymentDialog(context, ref),
-                  icon: const Icon(Icons.camera_alt_outlined),
-                  label: const Text('Enviar Comprovativo de Pagamento'),
-                ),
+                child: invoice.multicaixaRef != null
+                    ? OutlinedButton.icon(
+                        onPressed: () => _showPaymentDialog(context, ref),
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Enviar comprovativo (outro meio)'),
+                      )
+                    : FilledButton.icon(
+                        onPressed: () => _showPaymentDialog(context, ref),
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Enviar Comprovativo de Pagamento'),
+                      ),
               ),
             ],
           ],

@@ -29,6 +29,7 @@ class _ParentApi extends ApiClient {
   _ParentApi() : super(const FlutterSecureStorage());
 
   Map<String, dynamic>? lastReferenceBody;
+  Map<String, dynamic>? documentOverride;
 
   @override
   Future<dynamic> get(String path,
@@ -37,7 +38,7 @@ class _ParentApi extends ApiClient {
       case '/finance/parent/invoices':
         return <dynamic>[];
       case '/finreg/parent/documents':
-        return [_finregDocument()];
+        return [documentOverride ?? _finregDocument()];
       case '/guardians/me':
         return {'nif': '123456789'};
       case '/finance/parent/credits':
@@ -102,5 +103,40 @@ void main() {
     expect(api.lastReferenceBody?['document_id'], 'finreg-doc-1');
     expect(find.text('Referência de pagamento'), findsOneWidget);
     expect(find.text('987654321'), findsOneWidget);
+  });
+
+  testWidgets('the reference issued with the bill carries its online payment',
+      (tester) async {
+    final api = _ParentApi()
+      ..documentOverride = {
+        ..._finregDocument(),
+        'payment_reference': {
+          'id': 'ref-auto',
+          'entity': '12345',
+          'reference': '555666777',
+          'amount': 120000.0,
+          'status': 'active',
+          'provider': 'principia_pay',
+          'checkout_url': 'https://pay.example/ref-auto',
+          'expires_at': null,
+        },
+        'multicaixa_entity': '12345',
+        'multicaixa_ref': '555666777',
+      };
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        currencyFormatProvider.overrideWithValue(
+          NumberFormat.currency(locale: 'pt_AO', symbol: 'Kz'),
+        ),
+      ],
+      child: const MaterialApp(home: ParentInvoicesScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pagar via Multicaixa'), findsOneWidget);
+    expect(find.text('Pagar online'), findsOneWidget);
+    // The family already has its reference: no second one to generate.
+    expect(find.text('Pagar com referência'), findsNothing);
   });
 }

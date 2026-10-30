@@ -31,8 +31,11 @@ from app.models.finance import (
     InvoiceLine,
     Payment,
     PaymentAllocation,
+    PaymentReference,
 )
+from app.models.finreg_integration import FinregBillingInstruction
 from app.models.person import Child
+from app.models.principia_pay import PrincipiaPayConnection
 from app.services.billing_profiles import (
     get_fee_policy,
     get_school_year,
@@ -46,7 +49,7 @@ from app.services.billing_run import (
     current_billing_month,
 )
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
-from app.services.finreg_dispatch import integration_mode
+from app.services.finreg_dispatch import BILLING_RUN_COMMAND, integration_mode
 from app.utils.agt import today_luanda
 
 BUCKETS = ("current", "bucket_0_30", "bucket_31_60", "bucket_61_90", "bucket_90_plus")
@@ -624,7 +627,70 @@ async def _month_status(
         "total": totals.get("total"),
         "due_date": stats.get("due_date") or due_date,
         "auto_generate": auto_generate,
+        "references": await _month_references(
+            db, school_id=school_id, month=month
+        ),
     }
+
+
+async def _month_references(
+    db: AsyncSession, *, school_id: UUID, month: str
+) -> dict:
+    """How far the month's bills got on their way to the families.
+
+    Generating the debts is only the first step: each emitted document then
+    gets a payment reference the guardian sees in the app, and the reference
+    is eventually paid. The home card shows that chain, so a director can see
+    "sent to 40 of 42 families, 12 paid" without opening three screens.
+    """
+    enabled = (
+        await db.execute(
+            select(func.count())
+            .select_from(PrincipiaPayConnection)
+            .where(
+                PrincipiaPayConnection.school_id == school_id,
+                PrincipiaPayConnection.status == "active",
+            )
+        )
+    ).scalar_one() > 0
+    rows = (
+        await db.execute(
+            select(
+                FinregBillingInstruction.payment_reference_status,
+                PaymentReference.status,
+                func.count(),
+            )
+            .select_from(FinregBillingInstruction)
+            .outerjoin(
+                PaymentReference,
+                PaymentReference.id == FinregBillingInstruction.payment_reference_id,
+            )
+            .where(
+                FinregBillingInstruction.school_id == school_id,
+                FinregBillingInstruction.command_type == BILLING_RUN_COMMAND,
+                FinregBillingInstruction.status == "confirmed",
+                FinregBillingInstruction.payload["billing_month"].astext == month,
+            )
+            .group_by(
+                FinregBillingInstruction.payment_reference_status,
+                PaymentReference.status,
+            )
+        )
+    ).all()
+    counts = {"documents": 0, "sent": 0, "waiting": 0, "failed": 0, "skipped": 0, "paid": 0}
+    for issue_status, reference_status, count in rows:
+        counts["documents"] += count
+        if issue_status == "created":
+            counts["sent"] += count
+            if reference_status == "paid":
+                counts["paid"] += count
+        elif issue_status == "failed":
+            counts["failed"] += count
+        elif issue_status == "skipped":
+            counts["skipped"] += count
+        else:
+            counts["waiting"] += count
+    return {"enabled": enabled, **counts}
 
 
 async def dashboard(db: AsyncSession, *, school_id: UUID, adapter=None) -> dict:

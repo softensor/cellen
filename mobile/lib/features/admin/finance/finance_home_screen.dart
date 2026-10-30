@@ -501,6 +501,8 @@ class _MonthStatusCard extends StatelessWidget {
     final students = month['students'];
     final total = (month['total'] as num?)?.toDouble();
     final failedCount = (month['failed'] as num?)?.toInt() ?? 0;
+    final references =
+        Map<String, dynamic>.from((month['references'] as Map?) ?? const {});
     final accent =
         failedRun ? theme.colorScheme.error : theme.colorScheme.primary;
     final details = <String>[
@@ -566,6 +568,10 @@ class _MonthStatusCard extends StatelessWidget {
                     ?.copyWith(color: theme.colorScheme.error),
               ),
             ],
+            if (generated && references.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _MonthReferenceSteps(references: references),
+            ],
             if (autoGenerate) ...[
               const SizedBox(height: 6),
               Chip(
@@ -596,6 +602,110 @@ class _MonthStatusCard extends StatelessWidget {
                     onPressed: () => context.push('/admin/finance/billing-run'),
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: const Text('Ver execução'),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What happened to the month's bills after they were emitted: each one gets
+/// a payment reference the family sees in the app, and the family pays it.
+///
+/// The school never pays a reference itself, so the steps stop at "sent" and
+/// "paid"; the only action offered is fixing the rail when something stuck.
+class _MonthReferenceSteps extends StatelessWidget {
+  const _MonthReferenceSteps({required this.references});
+
+  final Map<String, dynamic> references;
+
+  int _count(String key) => (references[key] as num?)?.toInt() ?? 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final enabled = references['enabled'] == true;
+    final documents = _count('documents');
+    final sent = _count('sent');
+    final waiting = _count('waiting');
+    final failed = _count('failed');
+    final paid = _count('paid');
+    final muted = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+    if (!enabled) {
+      return InkWell(
+        onTap: () => context.push('/admin/finance/principia-pay'),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Icon(Icons.link_off, size: 16, color: theme.colorScheme.outline),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'As famílias ainda não recebem referência automática. '
+                  'Ligue os pagamentos por referência.',
+                  style: muted,
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 18),
+            ],
+          ),
+        ),
+      );
+    }
+    if (documents == 0) return const SizedBox.shrink();
+
+    final steps = <({IconData icon, String text, Color? color})>[
+      (
+        icon: Icons.mark_email_read_outlined,
+        text: 'Referências enviadas: $sent de $documents',
+        color: sent == documents ? Colors.green.shade700 : null,
+      ),
+      if (sent > 0)
+        (
+          icon: Icons.check_circle_outline,
+          text: 'Pagas por referência: $paid de $sent',
+          color: paid == sent ? Colors.green.shade700 : null,
+        ),
+      if (waiting > 0)
+        (
+          icon: Icons.hourglass_empty,
+          text: '$waiting a preparar',
+          color: null,
+        ),
+      if (failed > 0)
+        (
+          icon: Icons.error_outline,
+          text: '$failed por enviar — o sistema volta a tentar',
+          color: theme.colorScheme.error,
+        ),
+    ];
+    return InkWell(
+      onTap: () => context.push('/admin/finance/principia-pay'),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 4,
+          children: [
+            for (final step in steps)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(step.icon,
+                      size: 16,
+                      color: step.color ?? theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Text(
+                    step.text,
+                    style: muted?.copyWith(color: step.color),
                   ),
                 ],
               ),
