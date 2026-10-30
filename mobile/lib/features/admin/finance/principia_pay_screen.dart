@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_exception.dart';
@@ -405,7 +404,6 @@ class _ReferenceCard extends StatelessWidget {
         0;
     final entity = reference['entity']?.toString() ?? '';
     final number = reference['reference']?.toString() ?? '';
-    final checkout = reference['checkout_url']?.toString();
     final documentNumber =
         reference['finreg_document_number']?.toString() ?? '';
     final paidAt = reference['paid_at']?.toString();
@@ -478,18 +476,15 @@ class _ReferenceCard extends StatelessWidget {
                     icon: const Icon(Icons.sync, size: 18),
                     label: const Text('Consultar estado'),
                   ),
-                if (checkout != null && checkout.isNotEmpty)
+                // The family pays; the school only hands the reference over.
+                if (status == 'active' &&
+                    entity.isNotEmpty &&
+                    number.isNotEmpty)
                   TextButton.icon(
-                    onPressed: () async {
-                      final uri = Uri.tryParse(checkout);
-                      if (uri == null) return;
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri,
-                            mode: LaunchMode.externalApplication);
-                      }
-                    },
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    label: const Text('Abrir pagamento'),
+                    onPressed: () =>
+                        onCopy(guardianReferenceMessage(reference)),
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Copiar mensagem para o encarregado'),
                   ),
               ],
             ),

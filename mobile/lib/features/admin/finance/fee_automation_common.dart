@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 
@@ -129,4 +130,33 @@ Future<String?> pickBillingMonth(
       ),
     ),
   );
+}
+
+/// The text an administrator sends a family that asked for its reference.
+///
+/// The school issues references; the family pays them. So the admin side
+/// never opens the payment page itself: it hands these digits (and the
+/// online-payment link, which is the family's to open) to the guardian.
+String guardianReferenceMessage(
+  Map<String, dynamic> reference, {
+  String? documentNumber,
+}) {
+  final entity = reference['entity']?.toString() ?? '';
+  final number = reference['reference']?.toString() ?? '';
+  final amount = (reference['amount'] as num?)?.toDouble();
+  final checkout = reference['checkout_url']?.toString() ?? '';
+  final document =
+      documentNumber ?? reference['finreg_document_number']?.toString() ?? '';
+  return [
+    document.isEmpty
+        ? 'Pagamento por referência'
+        : 'Pagamento por referência — $document',
+    'Entidade: $entity',
+    'Referência: $number',
+    if (amount != null && amount > 0)
+      'Montante: ${NumberFormat('#,##0.00', 'pt_PT').format(amount)} Kz',
+    if (checkout.isNotEmpty) 'Pagar online: $checkout',
+    'Pague em qualquer ATM, Multicaixa Express ou banca electrónica. '
+        'A factura é liquidada automaticamente.',
+  ].join('\n');
 }

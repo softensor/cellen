@@ -86,6 +86,7 @@ from app.schemas.finance import PaymentReferenceResponse, RailReferenceCreate
 from app.services import principia_pay
 from app.services.debt_control import dashboard as finance_dashboard
 from app.services.debt_control import list_debts, service_report
+from app.services.parent_finance import active_rail_references
 from app.services.dunning import list_deliveries, run_dunning
 from app.services.late_fees import (
     assess_late_fees,
@@ -1633,9 +1634,14 @@ async def debts_endpoint(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_finance_access),
 ):
-    """Every open debt, from FinReg or from local invoices, in one shape."""
+    """Every open debt, from FinReg or from local invoices, in one shape.
+
+    Each row carries the family's open payment reference, if one exists, so
+    the debt list says "reference sent" instead of offering to create one the
+    dispatcher already issued.
+    """
     try:
-        return await list_debts(
+        result = await list_debts(
             db,
             school_id=school_id,
             as_of=as_of,
@@ -1647,6 +1653,18 @@ async def debts_endpoint(
         )
     except BillingError as exc:
         _raise_billing(exc)
+    document_ids = []
+    for row in result["rows"]:
+        try:
+            document_ids.append(uuid.UUID(str(row.get("document_id"))))
+        except ValueError:
+            continue
+    references = await active_rail_references(
+        db, school_id=school_id, document_ids=document_ids
+    )
+    for row in result["rows"]:
+        row["payment_reference"] = references.get(str(row.get("document_id")))
+    return result
 
 
 @router.get("/students/{child_id}/debts")

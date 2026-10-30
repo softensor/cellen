@@ -390,7 +390,7 @@ def _fallback_state(
     return ("overdue" if overdue else "pending"), paid_float, balance
 
 
-async def _active_rail_references(
+async def active_rail_references(
     db: AsyncSession, *, school_id: UUID, document_ids: Iterable[UUID]
 ) -> dict[str, dict]:
     """The open payment reference per FinReg document, keyed by document id.
@@ -450,7 +450,7 @@ async def list_parent_documents(
     )
     if not instructions:
         return []
-    references = await _active_rail_references(
+    references = await active_rail_references(
         db,
         school_id=school_id,
         document_ids=[

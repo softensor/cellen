@@ -448,7 +448,9 @@ void main() {
 
     await _tapTab(tester, 'Pagamentos');
     expect(find.text('Pagamentos por referência'), findsOneWidget);
-    expect(find.text('Referências Multicaixa'), findsOneWidget);
+    // A FinReg school's rail settles references itself; the manual
+    // register that books a local payment is internal-mode only.
+    expect(find.text('Referências Multicaixa'), findsNothing);
     expect(find.text('Comprovativos de pagamento'), findsOneWidget);
     expect(find.text('Fecho de caixa'), findsOneWidget);
     expect(find.text('Despesas'), findsOneWidget);

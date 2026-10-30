@@ -104,20 +104,14 @@ class PaymentsHub extends StatelessWidget {
         color: Colors.indigo,
         pt: 'Pagamentos por referência',
         en: 'Reference payments',
+        // FinReg schools: the rail issues one reference per bill and settles
+        // it by itself, so the manual Multicaixa register (which books a
+        // local payment) has no place here. Internal schools keep it on the
+        // finance home.
         descriptionPt:
-            'Referências emitidas e o estado da ligação à principia-pay.',
-        descriptionEn:
-            'Issued references and the state of the principia-pay link.',
+            'Referências enviadas às famílias e quais já foram pagas.',
+        descriptionEn: 'References sent to families and which are paid.',
         route: '/admin/finance/principia-pay',
-      ),
-      (
-        icon: Icons.point_of_sale_outlined,
-        color: Colors.blue,
-        pt: 'Referências Multicaixa',
-        en: 'Multicaixa references',
-        descriptionPt: 'Referências de Multicaixa registadas manualmente.',
-        descriptionEn: 'Manually recorded Multicaixa references.',
-        route: '/admin/finance/payment-references',
       ),
       (
         icon: Icons.receipt_long_outlined,

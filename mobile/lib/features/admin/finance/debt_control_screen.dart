@@ -80,6 +80,15 @@ class _DebtControlScreenState extends ConsumerState<DebtControlScreen> {
     Map<String, dynamic> row,
     NumberFormat currency,
   ) async {
+    // The dispatcher issues a reference as soon as the month is billed; the
+    // family already has it in the app, so show that one instead of asking
+    // for an amount and creating a second.
+    final existing = row['payment_reference'];
+    if (existing is Map) {
+      await _showReference(context, Map<String, dynamic>.from(existing));
+      if (mounted) ref.invalidate(_debtsProvider(_key));
+      return;
+    }
     final outstanding = (row['outstanding'] as num?)?.toDouble() ?? 0;
     final amount = await showDialog<double>(
       context: context,
@@ -503,6 +512,7 @@ class _DebtRowTile extends StatelessWidget {
         .map((service) => Map<String, dynamic>.from(service))
         .toList();
     final documentType = row['document_type']?.toString();
+    final hasReference = row['payment_reference'] is Map;
     return InkWell(
       onTap: onOpenDetails,
       child: Padding(
@@ -561,6 +571,23 @@ class _DebtRowTile extends StatelessWidget {
                 ],
               ),
             ],
+            if (hasReference) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.mark_email_read_outlined,
+                      size: 16, color: Colors.green.shade700),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Referência enviada ao encarregado',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: Colors.green.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -581,7 +608,11 @@ class _DebtRowTile extends StatelessWidget {
                         )
                       : const Icon(Icons.qr_code_2, size: 18),
                   label: Text(
-                    generating ? 'A criar…' : 'Gerar referência',
+                    generating
+                        ? 'A criar…'
+                        : hasReference
+                            ? 'Ver referência'
+                            : 'Gerar referência',
                   ),
                 ),
               ],
@@ -705,7 +736,9 @@ class _DebtDetailSheet extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: () => Navigator.of(context).pop('reference'),
                     icon: const Icon(Icons.qr_code_2),
-                    label: const Text('Gerar referência'),
+                    label: Text(row['payment_reference'] is Map
+                        ? 'Ver referência'
+                        : 'Gerar referência'),
                   ),
                 ),
               ],
@@ -897,11 +930,16 @@ class _ReferenceDialogState extends ConsumerState<_ReferenceDialog> {
     final theme = Theme.of(context);
     final entity = _reference['entity']?.toString() ?? '';
     final number = _reference['reference']?.toString() ?? '';
-    final checkout = _reference['checkout_url']?.toString();
     final status = _reference['status']?.toString() ?? 'creating';
     final pending = entity.isEmpty || number.isEmpty;
     return AlertDialog(
-      title: Text(pending ? 'Referência em confirmação' : 'Referência criada'),
+      title: Text(
+        status == 'paid'
+            ? 'Referência paga'
+            : pending
+                ? 'Referência em confirmação'
+                : 'Referência do encarregado',
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -930,21 +968,22 @@ class _ReferenceDialogState extends ConsumerState<_ReferenceDialog> {
               onCopy: () => _copy(number),
             ),
           ],
-          if (checkout != null && checkout.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SelectableText(
-              checkout,
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
           const SizedBox(height: 8),
           Text(
-            'O pagamento é conciliado automaticamente e fica registado no motor fiscal.',
+            'O encarregado vê esta referência na aplicação e paga-a por '
+            'ATM, Multicaixa Express ou online. O pagamento é conciliado '
+            'automaticamente e fica registado no motor fiscal.',
             style: theme.textTheme.bodySmall,
           ),
         ],
       ),
       actions: [
+        if (!pending && status != 'paid' && status != 'cancelled')
+          TextButton.icon(
+            onPressed: () => _copy(guardianReferenceMessage(_reference)),
+            icon: const Icon(Icons.share_outlined, size: 18),
+            label: const Text('Copiar mensagem'),
+          ),
         if (status != 'paid' && status != 'cancelled')
           TextButton.icon(
             onPressed: _refreshing ? null : _refresh,
