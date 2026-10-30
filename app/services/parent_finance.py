@@ -29,12 +29,12 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.finance import Payment
+from app.models.finance import Payment, PaymentReference
 from app.models.finreg_integration import FinregBillingInstruction
 from app.models.person import ChildGuardian
 from app.services.finreg import FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import integration_mode
-from app.utils.agt import today_luanda
+from app.utils.agt import now_luanda, today_luanda
 
 RECEIVABLE_PAGE_SIZE = 2000
 RECEIVABLE_MAX_PAGES = 5
@@ -390,6 +390,53 @@ def _fallback_state(
     return ("overdue" if overdue else "pending"), paid_float, balance
 
 
+async def _active_rail_references(
+    db: AsyncSession, *, school_id: UUID, document_ids: Iterable[UUID]
+) -> dict[str, dict]:
+    """The open payment reference per FinReg document, keyed by document id.
+
+    The card is where a guardian looks for the Multicaixa digits, not a
+    banner at the top of the list: without this join the parent screen says
+    "Referência de pagamento não disponível" even after a reference exists.
+    """
+    ids = [document_id for document_id in document_ids if document_id]
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(PaymentReference)
+            .where(
+                PaymentReference.school_id == school_id,
+                PaymentReference.finreg_document_id.in_(ids),
+                PaymentReference.status.in_(("creating", "active")),
+                or_(
+                    PaymentReference.expires_at.is_(None),
+                    PaymentReference.expires_at > now_luanda(),
+                ),
+            )
+            .order_by(PaymentReference.created_at.desc())
+        )
+    ).scalars().all()
+    by_document: dict[str, dict] = {}
+    for reference in rows:
+        key = str(reference.finreg_document_id)
+        if key in by_document:
+            continue
+        by_document[key] = {
+            "id": str(reference.id),
+            "entity": reference.entity,
+            "reference": reference.reference,
+            "amount": _money(reference.amount),
+            "status": reference.status,
+            "provider": reference.provider,
+            "checkout_url": reference.checkout_url,
+            "expires_at": (
+                reference.expires_at.isoformat() if reference.expires_at else None
+            ),
+        }
+    return by_document
+
+
 async def list_parent_documents(
     db: AsyncSession,
     *,
@@ -403,6 +450,15 @@ async def list_parent_documents(
     )
     if not instructions:
         return []
+    references = await _active_rail_references(
+        db,
+        school_id=school_id,
+        document_ids=[
+            item.finreg_document_id
+            for item in instructions
+            if item.finreg_document_id
+        ],
+    )
 
     mode = await integration_mode(db, school_id)
     if adapter is None and mode in FEED_MODES:
@@ -518,6 +574,18 @@ async def list_parent_documents(
             # Nothing payable and nothing recorded: do not invent a row.
             continue
 
+        reference = references.get(str(item.finreg_document_id))
+        # Only real digits go into the card's Multicaixa block; a reference
+        # still being created has none yet, and an empty box reads worse
+        # than "not available yet".
+        digits = (
+            reference
+            if reference
+            and reference.get("status") == "active"
+            and reference.get("entity")
+            and reference.get("reference")
+            else None
+        )
         output.append({
             "id": str(item.id),
             "finreg": True,
@@ -526,6 +594,9 @@ async def list_parent_documents(
             "document_id": str(item.finreg_document_id)
             if item.finreg_document_id
             else None,
+            "payment_reference": reference,
+            "multicaixa_entity": digits["entity"] if digits else None,
+            "multicaixa_ref": digits["reference"] if digits else None,
             "child_id": context.get("pupil_id"),
             "child_name": context.get("pupil_name") or "—",
             "document_type": document_type,

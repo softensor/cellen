@@ -252,7 +252,10 @@ async def run_finreg_dispatcher():
     from app.services.billing_run import apply_confirmed_plan_results, refresh_open_runs
     from app.services.finreg_events import synchronize_enabled_connections
     from app.services.late_fees import reconcile_assessments
-    from app.services.principia_pay import reconcile_references
+    from app.services.principia_pay import (
+        issue_references_for_confirmed_runs,
+        reconcile_references,
+    )
 
     while True:
         async with AsyncSessionLocal() as db:
@@ -274,6 +277,19 @@ async def run_finreg_dispatcher():
                     logger.info("Fee automation: plans synced=%d runs refreshed=%d", plans, runs)
                 if late_fees:
                     logger.info("Late fees: reconciled=%d assessments", late_fees)
+                # One bad reference must not block the rest of the tick: the
+                # pass has its own per-document isolation, and this keeps a
+                # database error inside it from skipping reconcile_references.
+                try:
+                    auto_refs = await issue_references_for_confirmed_runs(db)
+                except Exception:
+                    logger.exception("Auto payment references failed")
+                else:
+                    if any(auto_refs.values()):
+                        logger.info(
+                            "Auto payment references: created=%d skipped=%d failed=%d",
+                            auto_refs["created"], auto_refs["skipped"], auto_refs["failed"],
+                        )
                 if rail["checked"]:
                     logger.info(
                         "Reference payments: checked=%d settled=%d failed=%d",

@@ -31,12 +31,13 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Optional
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.finance import PaymentReference
+from app.models.finreg_integration import FinregBillingInstruction
 from app.models.platform_settings import PlatformSettings
 from app.models.principia_pay import PrincipiaPayConnection
 from app.models.school import School
@@ -44,7 +45,7 @@ from app.services.billing_run import BillingError, FINREG_MODES
 from app.services.debt_control import list_debts
 from app.services.finance import PaymentIntakeService
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
-from app.services.finreg_dispatch import integration_mode
+from app.services.finreg_dispatch import BILLING_RUN_COMMAND, integration_mode
 from app.services.principia_pay_client import (
     PrincipiaPayClient,
     PrincipiaPayError,
@@ -668,8 +669,13 @@ async def create_reference(
     requested_by: Optional[uuid.UUID] = None,
     allowed_child_ids: Optional[set[str]] = None,
     adapter=None,
+    debt_row: Optional[dict] = None,
 ) -> PaymentReference:
     """Open (or return) a rail reference against one open debt.
+
+    ``debt_row`` lets a batched caller (the auto-issuer that reads the whole
+    receivables feed once per school) hand over the row it already matched,
+    instead of forcing a fresh feed read per document.
 
     A browser cannot tell an unhandled 500 from a dead network: both surface
     as a generic "sem ligação ao servidor". This boundary turns any
@@ -687,6 +693,7 @@ async def create_reference(
             requested_by=requested_by,
             allowed_child_ids=allowed_child_ids,
             adapter=adapter,
+            debt_row=debt_row,
         )
     except BillingError:
         raise
@@ -714,8 +721,9 @@ async def _create_reference(
     requested_by: Optional[uuid.UUID] = None,
     allowed_child_ids: Optional[set[str]] = None,
     adapter=None,
+    debt_row: Optional[dict] = None,
 ) -> PaymentReference:
-    row = await _open_debt_row(
+    row = debt_row or await _open_debt_row(
         db,
         school_id=school_id,
         document_id=document_id,
@@ -1206,6 +1214,155 @@ async def handle_callback(
         "reference_status": reference.status,
         "rail_status": reference.rail_status,
     }
+
+
+# ── Auto-issuing: the monthly bill carries its payment route ───────────────
+
+AUTO_REFERENCE_BATCH = 25
+_AUTO_REFERENCE_TERMINAL = {
+    # A settled or missing debt is final: retrying it every tick would hit
+    # the receivables feed forever and can never succeed.
+    "debt_not_found",
+    "debt_settled",
+    "debt_missing_guardian",
+    "amount_exceeds_outstanding",
+    "invalid_amount",
+    "reference_exists",
+}
+_AUTO_REFERENCE_RETRY_CAP_SECONDS = 3600
+
+
+def _auto_reference_backoff(attempts: int) -> timedelta:
+    return timedelta(
+        seconds=min(_AUTO_REFERENCE_RETRY_CAP_SECONDS, 60 * 2 ** min(attempts, 6))
+    )
+
+
+async def issue_references_for_confirmed_runs(
+    db: AsyncSession, *, limit: int = AUTO_REFERENCE_BATCH
+) -> dict:
+    """Open the family's payment reference when the month's bills are emitted.
+
+    A confirmed ``billing_run`` instruction is one finalized fiscal document.
+    For every school whose rail connection is already active, this pass opens
+    (or finds) one reference per document so a guardian can pay without an
+    administrator pressing "Gerar referência" first.
+
+    It never registers a school that has not opted in: the school list comes
+    from existing ``active`` connections. The pass is idempotent (an active
+    reference is returned, not duplicated) and keeps its own retry bookkeeping
+    on the instruction, so a rail outage retries with backoff while a settled
+    debt is skipped once and left alone.
+    """
+    result = {"created": 0, "skipped": 0, "failed": 0}
+    if not await is_configured(db):
+        return result
+    school_ids = (
+        await db.execute(
+            select(PrincipiaPayConnection.school_id).where(
+                PrincipiaPayConnection.status == "active"
+            )
+        )
+    ).scalars().all()
+    if not school_ids:
+        return result
+
+    for school_id in school_ids:
+        now = datetime.now(timezone.utc)
+        pending = (
+            await db.execute(
+                select(FinregBillingInstruction)
+                .where(
+                    FinregBillingInstruction.school_id == school_id,
+                    FinregBillingInstruction.command_type == BILLING_RUN_COMMAND,
+                    FinregBillingInstruction.status == "confirmed",
+                    FinregBillingInstruction.finreg_document_id.is_not(None),
+                    or_(
+                        FinregBillingInstruction.payment_reference_status.is_(None),
+                        and_(
+                            FinregBillingInstruction.payment_reference_status
+                            == "failed",
+                            or_(
+                                FinregBillingInstruction.payment_reference_next_attempt_at.is_(
+                                    None
+                                ),
+                                FinregBillingInstruction.payment_reference_next_attempt_at
+                                <= now,
+                            ),
+                        ),
+                    ),
+                )
+                .order_by(FinregBillingInstruction.created_at)
+                .limit(limit)
+            )
+        ).scalars().all()
+        if not pending:
+            continue
+
+        try:
+            debts = await list_debts(db, school_id=school_id)
+        except BillingError as exc:
+            # The fiscal engine is unreachable; leave every row pending and
+            # let the next tick try again.
+            logger.warning(
+                "auto reference: receivables unavailable for school %s (%s)",
+                school_id,
+                exc.code,
+            )
+            continue
+        open_rows = {str(row.get("document_id")): row for row in debts["rows"]}
+
+        for instruction in pending:
+            row = open_rows.get(str(instruction.finreg_document_id))
+            if row is None:
+                instruction.payment_reference_status = "skipped"
+                instruction.payment_reference_error = "debt_not_found"
+                instruction.payment_reference_next_attempt_at = None
+                result["skipped"] += 1
+                await db.commit()
+                continue
+            try:
+                reference = await create_reference(
+                    db,
+                    school_id=school_id,
+                    document_id=str(instruction.finreg_document_id),
+                    debt_row=row,
+                )
+            except BillingError as exc:
+                if exc.code in _AUTO_REFERENCE_TERMINAL:
+                    instruction.payment_reference_status = "skipped"
+                    instruction.payment_reference_error = exc.code[:300]
+                    instruction.payment_reference_next_attempt_at = None
+                    result["skipped"] += 1
+                else:
+                    instruction.payment_reference_attempts += 1
+                    instruction.payment_reference_status = "failed"
+                    instruction.payment_reference_error = (
+                        f"{exc.code}: {exc.detail}"[:300]
+                    )
+                    instruction.payment_reference_next_attempt_at = (
+                        now
+                        + _auto_reference_backoff(
+                            instruction.payment_reference_attempts
+                        )
+                    )
+                    result["failed"] += 1
+                    logger.warning(
+                        "auto reference: school %s document %s failed (%s)",
+                        school_id,
+                        instruction.finreg_document_id,
+                        exc.code,
+                    )
+                await db.commit()
+                continue
+            instruction.payment_reference_status = "created"
+            instruction.payment_reference_id = reference.id
+            instruction.payment_reference_error = None
+            instruction.payment_reference_next_attempt_at = None
+            result["created"] += 1
+            await db.commit()
+
+    return result
 
 
 async def reconcile_references(
