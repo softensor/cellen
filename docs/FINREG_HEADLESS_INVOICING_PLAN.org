@@ -1,0 +1,203 @@
+#+TITLE: Cellen ↔ FinReg — Headless Invoicing Plan
+#+DATE: 2026-11-27
+#+STATUS: Draft — supersedes handbook rules 3 and 6 once accepted
+
+* 1. Goal
+
+Cellen becomes the *only* interface a school ever sees. FinReg stays the fiscal
+authority (numbering, tax totals, AGT signing, SAF-T, official PDFs) but works
+entirely in the background, server to server. No "Abrir no FinReg", no second
+login, no FinReg screens.
+
+One line: /Cellen owns the experience, FinReg owns the legal truth./
+
+* 2. Where we are today
+
+Most of the background plumbing already exists:
+
+| Concern                     | Already in Cellen                                                        |
+|-----------------------------+--------------------------------------------------------------------------|
+| Issue (billing run)         | ~/billing/runs~ → ~FinregBillingInstruction~ outbox → FinReg              |
+| Issue (ad hoc)              | ~POST /finreg/sales/preview~, ~POST /finreg/sales/issue~                  |
+| Payments / corrections      | ~POST /finreg/payments~, ~POST /finreg/documents/{ref}/corrections~       |
+| Document + PDF              | ~GET /finreg/documents/{ref}~, ~/pdf~                                     |
+| Parent side                 | ~/finreg/parent/documents~, ~/receipts~, ~/statement~ (already native)    |
+| Idempotent retry            | ~/finreg/instructions/{id}/retry~, same idempotency key                   |
+| Event sync                  | ~app/services/finreg_events.py~ polls FinReg ~GET /integrations/events~   |
+
+*The redirect is limited to six admin routes* in ~mobile/lib/core/router/router.dart~,
+all rendered by ~FinregSalesHostScreen~ → ~POST /finreg/workspace-launch/{capability}~:
+
+| Cellen route                   | Launches FinReg workspace |
+|--------------------------------+---------------------------|
+| ~/admin/finance/invoices~      | billing                   |
+| ~/admin/finance/credit-notes~  | billing                   |
+| ~/admin/finance/receipts~      | payments                  |
+| ~/admin/finance/statement~     | receivables               |
+| ~/admin/finance/saft~          | reporting                 |
+| ~/admin/finance/audit-log~     | reporting                 |
+
+So this project is mainly *replacing six launcher routes with native screens*,
+plus a local document ledger so those screens are fast and work offline from
+FinReg's UI.
+
+* 3. Target architecture
+
+#+begin_example
+  Cellen app (admin / parent)
+        │  only Cellen UI, Cellen auth, Cellen roles
+        ▼
+  Cellen backend
+    ├─ business intent: propina, matrícula, multa, pagamento
+    ├─ outbox (FinregBillingInstruction) ── idempotent ──► FinReg integrations API
+    ├─ FinregDocument ledger  ◄── events poller (GET /integrations/events)
+    └─ PDF proxy (stream from FinReg, never re-render)
+                                                         FinReg
+                                                           ├─ numbering, series, tax
+                                                           ├─ AGT submission / signature
+                                                           ├─ official PDF
+                                                           └─ SAF-T
+#+end_example
+
+Invariants (unchanged):
+- Cellen never calculates tax, numbers or totals. It shows what ~preview~ returns.
+- Every fiscal mutation goes through the outbox with a stable instruction UUID.
+- FinReg API scope/tenant/capability enforcement stays authoritative.
+- Sandbox and production remain strictly separated.
+
+* 4. Handbook changes (ENGINEERING_AND_FINREG_INTEGRATION_HANDBOOK.md §3)
+
+- Rule 3 → /"Cellen does not embed or launch FinReg UI. All FinReg interaction is
+  server-to-server through the integrations API; the school never sees FinReg."/
+- Rule 5 → drop the launch wording; keep "never passes FinReg credentials or
+  tokens to the client".
+- Rule 6 → /"Cellen owns all finance navigation. Native screens map to FinReg
+  integration endpoints; there are no FinReg deep links."/
+- Rule 7 → /"Fiscal actions are native Cellen screens that call FinReg through
+  the backend."/
+- Rules 1, 2, 4, 8, 9, 10 unchanged.
+
+* 5. Phases
+
+** Phase 0 — Contract and decisions (small)
+- [ ] Accept this plan and rewrite handbook rules (§4).
+- [ ] Decide the fate of the ERP add-on (see §8, Q1).
+- [ ] Confirm the FinReg-side gaps in §6 and open the matching FinReg PRs.
+
+** Phase 1 — Local document ledger (backend)
+A Cellen-side mirror of every fiscal document, so the admin screens list,
+filter and search without calling FinReg for each row.
+
+- [ ] New model ~FinregDocument~ (alembic migration):
+  ~school_id, finreg_external_id, instruction_id, kind (FT/FR/NC/ND/RC),
+  number, series, status (draft/finalized/cancelled/corrected),
+  agt_status, total_minor, currency, customer_external_id, guardian_id,
+  pupil_id, issued_at, corrected_by, last_event_sequence~.
+- [ ] Populate from two sources:
+  1. instruction outcomes (~sales/issue~, billing run dispatch) — immediate;
+  2. events poller — ~document.created~, ~document.finalized~,
+     ~document.corrected~, ~document.cancelled~, ~receipt.issued~,
+     ~payment.recorded~, ~payment.reversed~, ~receivable.settled~.
+- [ ] Backfill job: build the ledger from existing ~FinregBillingInstruction~
+  rows with ~finreg_document_id~.
+- [ ] Endpoints:
+  - ~GET /finreg/admin/documents~ (filters: kind, status, period, guardian, pupil, text)
+  - ~GET /finreg/admin/receipts~
+  - ~GET /finreg/admin/guardians/{id}/statement~ (proxy ~customers/{id}/statement~)
+  - ~GET /finreg/admin/saft?period=YYYY-MM~ (proxy ~reports/saft-sales~, stream file)
+  - ~GET /finreg/admin/receipts/{ref}/pdf~ (proxy)
+- [ ] Tests with ~FakeFinregAdapter~: ledger from outcomes, from events, idempotent
+  replays of the same event, backfill.
+
+** Phase 2 — Native admin screens (mobile/web)
+Replace each launcher route; reuse existing widgets where they exist.
+
+| Route                         | Native screen                                                                 | Backend                                |
+|-------------------------------+-------------------------------------------------------------------------------+----------------------------------------|
+| ~/admin/finance/invoices~     | Faturas: list, filters, detail sheet, PDF, share/resend to guardian           | ledger + ~/finreg/documents/{ref}/pdf~ |
+| ~/admin/finance/credit-notes~ | Notas de crédito: list + "Anular / corrigir" flow (reuse ~void_invoice_dialog~) | ~/finreg/documents/{ref}/corrections~  |
+| ~/admin/finance/receipts~     | Recibos: list + PDF                                                           | ledger + receipts PDF proxy            |
+| ~/admin/finance/statement~    | Extrato do encarregado (admin version of the parent statement)                | statement proxy                        |
+| ~/admin/finance/saft~         | "Exportar SAF-T" — pick month, download                                       | SAF-T proxy                            |
+| ~/admin/finance/audit-log~    | Registo fiscal: every instruction, who, when, outcome, retry                  | ~/finreg/instructions~ (Cellen-side)   |
+
+- [ ] Document detail shows: number, series, AGT status chip, lines, totals
+  /as returned by FinReg/, linked pupil/guardian, linked payments/receipts.
+- [ ] "Emitir fatura avulsa" (one-off invoice): form → ~sales/preview~ → confirm
+  → ~sales/issue~. Totals on the confirm step come only from ~preview~.
+- [ ] Remove the ~initialCapabilityId~ launcher usages from ~router.dart~.
+
+** Phase 3 — Status, errors, trust
+- [ ] Status chips everywhere: /Em processamento/, /Emitida/, /Aceite pela AGT/,
+  /Rejeitada/, /Anulada/.
+- [ ] Error translation table, FinReg code → school language, for example:
+  - missing customer NIF → "Falta o NIF do encarregado"
+  - ~capability_entitlement_blocked~ → "O plano de faturação da escola não inclui esta operação"
+  - AGT rejection → reason plus a "Corrigir" action
+- [ ] ~unknown_outcome~ → show "A confirmar com o sistema fiscal", auto-retry
+  with the *same* instruction id, never a new one.
+- [ ] Admin finance dashboard tile: "Documentos pendentes / rejeitados".
+
+** Phase 4 — Setup without FinReg UI
+- [ ] Fiscal onboarding (NIF, series, AGT certificate, sandbox→production)
+  stays in the *FinReg owner console*, done by the platform owner, not the school.
+- [ ] Cellen shows a read-only "Dados fiscais" card plus the existing
+  ~composition-readiness~ checks, phrased as a setup checklist.
+- [ ] Branding: Cellen sends the school logo/contact details to FinReg so the
+  official PDF carries the school identity.
+
+** Phase 5 — Remove the launcher
+- [ ] Delete the launcher card and "Abrir no FinReg" from ~finreg_sales_host_screen.dart~
+  (keep or move ~_FinregAccessPolicyDialog~ and the native tabs).
+- [ ] Remove ~POST /finreg/workspace-launch/{capability_id}~ and
+  ~HttpFinregAdapter.workspace_launch~ (unless Q1 keeps them for ERP).
+- [ ] Drop ~workspace:launch~ from Cellen's FinReg client scopes.
+- [ ] Update/remove ~mobile/test/finreg_finance_host_launcher_test.dart~.
+- [ ] Update ~manual_escolas~ screenshots and text.
+
+** Phase 6 — Rollout
+- [ ] Sandbox school end to end first (AGT sandbox only).
+- [ ] Ship behind a per-school flag ~finreg_native_admin~; the launcher remains
+  the fallback until the flag is on for every live school.
+- [ ] Promote the pilot school through the existing guarded shadow → pilot → live scripts.
+- [ ] Turn on for all schools, then do Phase 5.
+
+* 6. FinReg-side changes needed
+
+| Gap                                                     | Why                                                       | Proposal                                              |
+|---------------------------------------------------------+-----------------------------------------------------------+-------------------------------------------------------|
+| No AGT status event                                     | Cellen can't show accepted/rejected without polling       | emit ~document.agt_status_changed~ with reason code   |
+| No integration document list                            | ledger backfill / reconciliation                          | ~GET /integrations/documents?since=&kind=~ (paged)    |
+| No integration audit endpoint                           | audit-log screen can only show Cellen-side history        | optional; Cellen-side history is enough for v1        |
+| PDF branding inputs                                     | school logo on official PDF                               | tenant branding fields settable via provisioning API  |
+| Receipts list per tenant                                | receipts screen backfill                                  | covered by the document list with ~kind=RC~           |
+
+FinReg remains a separate product (rule 1); these are additions to its public
+integrations API, versioned through ~finreg-kit~ (rule 4).
+
+* 7. Acceptance criteria
+- A school admin can, without ever leaving Cellen: run monthly billing, see every
+  invoice with its AGT status, open/share the official PDF, register a payment
+  and get the receipt, correct or void an invoice with a credit note, view a guardian
+  statement, and export SAF-T for a month.
+- No Cellen screen, link or email points to a FinReg URL.
+- Every fiscal number, total and PDF shown in Cellen comes from FinReg.
+- Killing FinReg mid-operation leaves an instruction that, once FinReg is back,
+  completes with the same identity (no duplicates).
+- Sandbox school data never reaches production FinReg, and vice versa.
+
+* 8. Open questions
+1. *ERP add-on*: schools with the full FinReg ERP (accounting, payables,
+   inventory) — keep a launcher only for them, or offer the ERP as a separate
+   FinReg product with its own login? Recommendation: separate login, keep Cellen
+   free of any launcher.
+2. *Certified-software mention*: the official PDF most likely needs to show
+   FinReg's AGT software certification line. Confirm the exact wording against
+   the AGT rules. This is expected and fine: FinReg is invisible in the UI, not on
+   the legal document.
+3. *Local ~Invoice~ model* (~app/models/finance.py~): for schools in
+   ~disabled~ mode Cellen still issues internal, non-fiscal invoices. Keep both
+   paths, but make the native screens show the FinReg ledger whenever the connection
+   is ~pilot~/~live~, and label internal documents as non-fiscal.
+4. Event delivery: polling is enough for v1; consider FinReg → Cellen webhooks
+   later for lower latency.
