@@ -725,7 +725,7 @@ async def create_enrollment(
         if not billing_item.finreg_tax_option_code:
             raise HTTPException(
                 status_code=422,
-                detail="O serviço de matrícula não tem tratamento fiscal Finreg configurado",
+                detail="O serviço de matrícula não tem tratamento fiscal configurado. Configure-o em Serviços.",
             )
         if billing_item.iva_rate == 0 and not billing_item.iva_exemption_reason:
             raise HTTPException(

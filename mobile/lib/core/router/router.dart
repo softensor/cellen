@@ -16,7 +16,13 @@ import '../../features/admin/employees/employees_list_screen.dart';
 import '../../features/admin/employees/employee_form_screen.dart';
 import '../../features/admin/finance/finance_dashboard_screen.dart';
 import '../../features/admin/finance/cash_sessions_screen.dart';
-import '../../features/admin/finance/finreg_sales_host_screen.dart';
+import '../../features/admin/finance/school_finance_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_activity_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_documents_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_receipts_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_saft_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_setup_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_statement_screen.dart';
 import '../../features/admin/finance/expenses_screen.dart';
 import '../../features/admin/academic/turmas_screen.dart';
 import '../../features/admin/academic/schedules_screen.dart';
@@ -1162,7 +1168,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/food', builder: (_, __) => const AdminFoodScreen()),
           GoRoute(
               path: '/admin/finance',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const SchoolFinanceScreen()),
           GoRoute(
               path: '/admin/finance/home',
               builder: (_, __) => const FinanceHomeScreen()),
@@ -1183,9 +1189,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const PrincipiaPayScreen()),
           GoRoute(
               path: '/admin/finance/invoices',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'billing',
-                  )),
+              builder: (_, __) => const FiscalDocumentsScreen()),
           GoRoute(
               path: '/admin/finance/expenses',
               builder: (_, __) => const ExpensesScreen()),
@@ -1217,19 +1221,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const TransportScreen()),
           GoRoute(
               path: '/admin/finance/receipts',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'payments',
-                  )),
+              builder: (_, __) => const FiscalReceiptsScreen()),
           GoRoute(
               path: '/admin/finance/credit-notes',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'billing',
-                  )),
+              builder: (_, __) => const FiscalDocumentsScreen.creditNotes()),
           GoRoute(
               path: '/admin/finance/saft',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'reporting',
-                  )),
+              builder: (_, __) => const FiscalSaftScreen()),
           GoRoute(
               path: '/admin/finance/delinquent',
               builder: (_, state) => DebtControlScreen(
@@ -1254,14 +1252,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const DunningScreen()),
           GoRoute(
               path: '/admin/finance/statement',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'receivables',
-                  )),
+              builder: (_, __) => const FiscalStatementScreen()),
           GoRoute(
               path: '/admin/finance/audit-log',
-              builder: (_, __) => const FinregSalesHostScreen(
-                    initialCapabilityId: 'reporting',
-                  )),
+              builder: (_, __) => const FiscalActivityScreen()),
+          GoRoute(
+              path: '/admin/finance/fiscal-setup',
+              builder: (_, __) => const FiscalSetupScreen()),
           GoRoute(
               path: '/admin/finance/payment-references',
               builder: (_, __) => const PaymentReferencesScreen()),

@@ -12,6 +12,7 @@ from app.models.finreg_integration import (
 )
 from app.core.config import settings
 from app.services.finreg import FinregError, HttpFinregAdapter
+from app.services.finreg_ledger import apply_event
 
 
 async def synchronize_connection(
@@ -86,6 +87,7 @@ async def synchronize_connection(
                         instruction.status = "confirmed"
                         instruction.result_snapshot = payload
                         instruction.error_code = instruction.error_detail = None
+            await apply_event(db, connection.school_id, event)
             db.add(FinregEventReceipt(
                 school_id=connection.school_id,
                 event_id=event_id,

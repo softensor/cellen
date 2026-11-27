@@ -854,7 +854,7 @@ class _FinanceTab extends ConsumerWidget {
                 label: const Text('Gerir transporte'),
               ),
               const SizedBox(height: 8),
-              _SectionTitle('Plano no Finreg'),
+              _SectionTitle('Plano de faturação'),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),

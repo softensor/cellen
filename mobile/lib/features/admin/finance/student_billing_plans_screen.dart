@@ -106,7 +106,7 @@ class _StudentBillingPlansBody extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 28),
               child: Text(
                 'A ficha financeira do aluno define a propina, o encarregado e o estado do plano. '
-                'Os planos são enviados ao Finreg e as facturas emitidas por ele.',
+                'Cada plano gera a fatura certificada do aluno em cada período.',
                 textAlign: TextAlign.center,
               ),
             ),
@@ -356,7 +356,7 @@ class _StudentFinanceDialogState extends ConsumerState<_StudentFinanceDialog> {
                         padding: EdgeInsets.only(top: 10),
                         child: Text(
                           'Depois de guardar, use Reconstruir planos para '
-                          'enviar a alteração ao Finreg.',
+                          'aplicar a alteração às próximas faturas.',
                           style: TextStyle(fontSize: 12),
                         ),
                       ),

@@ -163,6 +163,81 @@ class PaymentsHub extends StatelessWidget {
   }
 }
 
+/// Every certified fiscal document the school issued, and the tools around
+/// them. Served by Cellen's own screens; the fiscal engine stays invisible.
+class FiscalDocumentsHub extends StatelessWidget {
+  const FiscalDocumentsHub({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final portuguese = Localizations.localeOf(context).languageCode == 'pt';
+    final documents = <_HubItem>[
+      (
+        icon: Icons.receipt_long_outlined,
+        color: Colors.indigo,
+        pt: 'Faturas',
+        en: 'Invoices',
+        descriptionPt: 'Todas as faturas emitidas, estado na AGT e PDF oficial.',
+        descriptionEn: 'Every issued invoice, its AGT status and official PDF.',
+        route: '/admin/finance/invoices',
+      ),
+      (
+        icon: Icons.undo_outlined,
+        color: Colors.orange.shade800,
+        pt: 'Notas de crédito',
+        en: 'Credit notes',
+        descriptionPt: 'Faturas anuladas e as respectivas notas de crédito.',
+        descriptionEn: 'Cancelled invoices and their credit notes.',
+        route: '/admin/finance/credit-notes',
+      ),
+      (
+        icon: Icons.receipt_outlined,
+        color: Colors.green.shade700,
+        pt: 'Recibos',
+        en: 'Receipts',
+        descriptionPt: 'Recibo oficial de cada pagamento registado.',
+        descriptionEn: 'The official receipt of each recorded payment.',
+        route: '/admin/finance/receipts',
+      ),
+      (
+        icon: Icons.account_balance_wallet_outlined,
+        color: Colors.blueGrey,
+        pt: 'Extrato fiscal',
+        en: 'Fiscal statement',
+        descriptionPt: 'Conta-corrente certificada de cada encarregado.',
+        descriptionEn: 'The certified account of each guardian.',
+        route: '/admin/finance/statement',
+      ),
+    ];
+    final compliance = <_HubItem>[
+      (
+        icon: Icons.description_outlined,
+        color: Colors.brown,
+        pt: 'Exportar SAF-T',
+        en: 'SAF-T export',
+        descriptionPt: 'Ficheiro mensal de faturação para a AGT.',
+        descriptionEn: 'Monthly invoicing file for the AGT.',
+        route: '/admin/finance/saft',
+      ),
+      (
+        icon: Icons.history,
+        color: Colors.deepPurple,
+        pt: 'Registo fiscal',
+        en: 'Fiscal log',
+        descriptionPt: 'Cada operação fiscal: quem, quando e o resultado.',
+        descriptionEn: 'Every fiscal operation: who, when and the outcome.',
+        route: '/admin/finance/audit-log',
+      ),
+    ];
+    return _HubList(
+      sections: [
+        (title: portuguese ? 'Documentos' : 'Documents', items: documents),
+        (title: portuguese ? 'Conformidade' : 'Compliance', items: compliance),
+      ],
+    );
+  }
+}
+
 class FinanceConfigHub extends StatelessWidget {
   const FinanceConfigHub({super.key});
 
@@ -187,6 +262,17 @@ class FinanceConfigHub extends StatelessWidget {
         descriptionPt: 'Catálogo de serviços, preços e IVA.',
         descriptionEn: 'Service catalogue, prices and VAT.',
         route: '/admin/finance/billing-items',
+      ),
+      (
+        icon: Icons.verified_user_outlined,
+        color: Colors.teal,
+        pt: 'Dados fiscais',
+        en: 'Fiscal setup',
+        descriptionPt:
+            'Identidade fiscal, ligação à AGT, séries e o que falta configurar.',
+        descriptionEn:
+            'Fiscal identity, AGT link, series and what is left to configure.',
+        route: '/admin/finance/fiscal-setup',
       ),
     ];
     final extras = <_HubItem>[

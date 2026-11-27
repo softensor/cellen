@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api/api_client.dart';
-import 'finance/finreg_sales_host_screen.dart';
+import 'finance/school_access_policy_dialog.dart';
 
 // ---------------------------------------------------------------------------
 // Data model

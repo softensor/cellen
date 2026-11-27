@@ -49,6 +49,7 @@ from app.services.billing_run import (
     current_billing_month,
 )
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
+from app.services.finreg_errors import explain
 from app.services.finreg_dispatch import BILLING_RUN_COMMAND, integration_mode
 from app.utils.agt import today_luanda
 
@@ -426,7 +427,7 @@ async def list_debts(
         except FinregError as exc:
             raise BillingError(
                 exc.code,
-                f"Não foi possível ler as dívidas do FinReg: {exc.detail}",
+                f"Não foi possível ler as dívidas: {explain(exc).message}",
                 502,
             ) from exc
     else:
@@ -493,7 +494,7 @@ async def service_report(
         except FinregError as exc:
             raise BillingError(
                 exc.code,
-                f"Não foi possível ler o relatório do FinReg: {exc.detail}",
+                f"Não foi possível ler o relatório: {explain(exc).message}",
                 502,
             ) from exc
         items = await _item_labels(
@@ -726,7 +727,7 @@ async def dashboard(db: AsyncSession, *, school_id: UUID, adapter=None) -> dict:
         except FinregError as exc:
             raise BillingError(
                 exc.code,
-                f"Não foi possível ler o painel do FinReg: {exc.detail}",
+                f"Não foi possível ler o painel: {explain(exc).message}",
                 502,
             ) from exc
     else:

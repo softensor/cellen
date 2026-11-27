@@ -65,7 +65,7 @@ class InternalPaymentsScreen extends ConsumerWidget {
             SizedBox(width: 10),
             Expanded(
                 child: Text(
-              'Registo interno sem valor fiscal. Não gera factura, recibo, numeração fiscal ou lançamento no Finreg.',
+              'Registo interno sem valor fiscal. Não gera factura, recibo, numeração fiscal ou lançamento contabilístico.',
             )),
           ]),
         ),

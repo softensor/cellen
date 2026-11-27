@@ -78,8 +78,8 @@ class _EmployeesListScreenState extends ConsumerState<EmployeesListScreen> {
       final review = result['requires_review'] == true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(review
-            ? 'Vínculo já existente no Finreg. Reveja alterações contratuais em Processamento salarial.'
-            : '${emp.fullName} preparado para processamento salarial no Finreg.'),
+            ? 'Vínculo já existente. Reveja alterações contratuais em Processamento salarial.'
+            : '${emp.fullName} preparado para processamento salarial.'),
       ));
     } catch (e) {
       if (!mounted) return;

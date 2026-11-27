@@ -1,0 +1,95 @@
+#+TITLE: Headless invoicing — rollout runbook
+#+DATE: 2026-11-27
+#+STATUS: Ready to deploy
+#+SEE_ALSO: FINREG_HEADLESS_INVOICING_PLAN.org
+
+* 1. What ships
+
+| Repository | Branch                            | Commits                                                     |
+|------------+-----------------------------------+-------------------------------------------------------------|
+| finreg     | ~feat/host-document-reads~ (from master b4b4784) | ~ca73420~ plan-generated documents readable by FinReg id; ~7eaa468~ read-only ~/integrations/fiscal-profile~ |
+| cellen     | ~feat/headless-finreg-invoicing~ (from master c569ef3) | plan doc, phases 1–6                                       |
+
+Cellen migration: ~0038_finreg_document_ledger~ (one new table, no change to
+existing tables; downgrade drops it).
+
+No new environment variable. No new FinReg scope: the fiscal profile uses
+~capabilities:read~, which the Cellen client already has. ~FINREG_WEB_URL~ and
+~CELLEN_WEB_URL~ are no longer used (harmless if still set).
+
+* 2. Order
+
+FinReg first, then Cellen backend, then the Cellen web bundle.
+
+1. *FinReg* — merge ~feat/host-document-reads~ into ~master~ and deploy as
+   usual. Both changes are additive: no migration, no existing behaviour
+   changes. Without it, monthly (billing-run) invoices still list in Cellen
+   but their PDF, state refresh and correction answer "fiscal record missing",
+   and "Dados fiscais" shows a notice instead of the profile.
+2. *Cellen backend* — merge ~feat/headless-finreg-invoicing~ into ~master~
+   and run the usual ~release_cellen_from_vps.sh~ (it runs ~alembic upgrade
+   head~ and restarts the API). On start, the dispatcher tick backfills the
+   ledger from the outbox and refreshes pending documents every 30 s.
+3. *Cellen web/mobile* — publish the Flutter bundle. Until it is live,
+   the old web app keeps working except its "Abrir no FinReg" button, whose
+   backend route is gone: publish the bundle right after the backend.
+
+* 3. Verify (pilot school first)
+
+On the VPS, from ~/var/www/cellen~, one line each:
+
+#+begin_src sh
+.venv/bin/python -m app.scripts.headless_invoicing_check --school SLUG
+.venv/bin/python -m app.scripts.headless_invoicing_check --school SLUG --refresh
+#+end_src
+
+Expect ~unledgered=0~ and no ~rejected~ / ~failed_operations~ (exit 0). Then
+in the web app, as the school admin:
+
+- [ ] Finanças opens with seven tabs, including *Documentos fiscais*; no
+      "FinReg" text anywhere.
+- [ ] Faturas lists last month's invoices with numbers and totals; open one,
+      *Confirmar estado*, *PDF oficial* downloads the certified PDF.
+- [ ] Recibos lists payments; the receipt PDF opens.
+- [ ] Extrato fiscal for one guardian matches what the parent sees.
+- [ ] Exportar SAF-T for last month downloads an XML.
+- [ ] Registo fiscal shows recent operations with the admin's name.
+- [ ] Dados fiscais shows the school's NIF, AGT channel and series.
+- [ ] In AGT *sandbox* only: *Emitir fatura* (one line, small amount), then
+      *Anular (nota de crédito)* on it; the credit note appears under Notas de
+      crédito and the invoice shows *Anulada*.
+
+Then run the check for every school:
+
+#+begin_src sh
+.venv/bin/python -m app.scripts.headless_invoicing_check
+#+end_src
+
+* 4. Rollback
+
+- Cellen: redeploy the previous master SHA. The ledger table can stay (it is
+  read-only for the old code); to remove it: ~.venv/bin/alembic downgrade 0037~.
+  The old web bundle needs the old backend (the launch route).
+- FinReg: no rollback needed — both changes are additive. Reverting them only
+  brings back the 404 on billing-run documents.
+- Fiscal data is never at risk: Cellen's ledger is a copy of what FinReg
+  returned, and every fiscal write still goes through FinReg with the same
+  idempotency keys as before.
+
+* 5. Deviations from the plan
+
+- *Per-school flag with the launcher as fallback* (plan §5 phase 6) was
+  dropped: phase 5 removed the launcher, so there is nothing to fall back to.
+  Safety comes from the existing connection modes (shadow → pilot → live and
+  the kill switch), which gate every fiscal write from the native screens,
+  plus this runbook's pilot-first verification.
+- *PDF branding sync* (phase 4) was not built: FinReg's certified PDF prints
+  no tenant logo, and changing a certified document layout is FinReg
+  certification work, not an integration change.
+- *AGT status event*: FinReg declares ~agt.submission_changed~ but does not
+  emit it yet. Cellen handles it when it arrives; until then the refresh pass
+  polls documents whose AGT status is still pending.
+- *Document list endpoint* in FinReg was not needed: the backfill builds the
+  ledger from Cellen's own outbox.
+- *Full ERP add-on*: schools entitled to FinReg's ERP workspaces no longer
+  get a launcher; they need a FinReg login from the platform owner for those workspaces.

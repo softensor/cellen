@@ -31,7 +31,7 @@ class ParentPaymentReviewScreen extends ConsumerWidget {
                   Text('Comprovativos dos encarregados',
                       style: Theme.of(context).textTheme.headlineSmall),
                   const Text(
-                      'A aprovação confirma o pagamento no Finreg e disponibiliza o recibo oficial.'),
+                      'A aprovação confirma o pagamento e emite o recibo oficial.'),
                 ],
               ),
             ),
@@ -82,7 +82,7 @@ class _PaymentReviewTileState extends ConsumerState<_PaymentReviewTile> {
       builder: (context) => AlertDialog(
         title: const Text('Aprovar comprovativo?'),
         content: const Text(
-            'O pagamento será confirmado no Finreg. Depois da confirmação, o recibo oficial ficará disponível ao encarregado.'),
+            'O pagamento será confirmado. Depois da confirmação, o recibo oficial ficará disponível ao encarregado.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),

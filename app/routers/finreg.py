@@ -35,6 +35,7 @@ from app.models.person import Child, ChildGuardian, Guardian
 from app.models.school import School
 from app.services.finreg import FakeFinregAdapter, FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import dispatch_instruction
+from app.services.finreg_errors import http_error
 from app.services import parent_finance
 from app.integrations.finreg_school import validate_school_capabilities
 
@@ -258,7 +259,7 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
     if missing_tax:
         raise HTTPException(
             status_code=422,
-            detail="Select a governed Finreg tax treatment for: "
+            detail="Configure o tratamento fiscal destes serviços: "
             + ", ".join(sorted(missing_tax)),
         )
     products, lines = [], []
@@ -369,7 +370,7 @@ async def capabilities(user=Depends(require_finance_access), school_id=Depends(g
         manifest["locally_granted_capabilities"] = sorted(allowed)
         manifest["finreg_plan"] = _manifest_plan(school, manifest)
         return manifest
-    except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 502, detail={"code": exc.code, "message": exc.detail})
+    except FinregError as exc: raise http_error(exc)
 
 
 @router.get("/guardians")
@@ -411,10 +412,7 @@ async def tax_options(
             "GET", path, None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 422,
-            detail={"code": exc.code, "message": exc.detail},
-        ) from exc
+        raise http_error(exc) from exc
 
 
 @router.get("/guardians/{guardian_id}/pupils")
@@ -448,69 +446,6 @@ async def guardian_pupils(
         {"id": str(child.id), "display_name": f"{child.first_name} {child.last_name}"}
         for child in rows
     ]
-
-
-@router.post("/workspace-launch/{capability_id}")
-async def workspace_launch(
-    capability_id: str,
-    user=Depends(require_finance_access),
-    school_id=Depends(get_school_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a short-lived handoff to the complete authoritative Finreg UI."""
-    connection = (await db.execute(select(FinregSchoolConnection).where(
-        FinregSchoolConnection.school_id == school_id
-    ))).scalar_one_or_none()
-    if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
-        raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
-    school = await _school(db, school_id)
-    try:
-        manifest = await HttpFinregAdapter().capabilities(str(user.id))
-        plan = _manifest_plan(school, manifest)
-        if capability_id in FINREG_ERP_CAPABILITIES and not plan["erp_enabled"]:
-            raise HTTPException(status_code=403, detail={
-                "code": "finreg_erp_not_enabled",
-                "message": "The full FinReg ERP add-on is not enabled for this school",
-            })
-        workspace_ids = {
-            str(item["capability_id"])
-            for item in manifest.get("workspaces") or []
-        }
-        if capability_id not in _allowed_local_capabilities(
-            school, user, _plan_allowed_capabilities(school, workspace_ids, manifest)
-        ):
-            raise HTTPException(
-                status_code=403, detail="Module is not granted to this school role"
-            )
-        roles = list(
-            getattr(user, "_roles_list", None)
-            or getattr(user, "roles", None)
-            or []
-        )
-        display_name = (
-            getattr(user, "username", None)
-            or getattr(user, "email", None)
-            or str(user.id)
-        )
-        return_to = None
-        if settings.CELLEN_WEB_URL and settings.CELLEN_WEB_URL.startswith(
-            ("http://", "https://")
-        ):
-            return_to = {"label": "Cellen", "url": settings.CELLEN_WEB_URL}
-        return await HttpFinregAdapter().workspace_launch(
-            capability_id=capability_id,
-            external_user_id=str(user.id),
-            display_name=display_name,
-            roles=roles,
-            web_base_url=settings.FINREG_WEB_URL or settings.finreg_origin,
-            actor_reference=str(user.id),
-            return_to=return_to,
-        )
-    except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 403,
-            detail={"code": exc.code, "message": exc.detail},
-        ) from exc
 
 
 @router.get("/local-access-policy")
@@ -700,7 +635,7 @@ async def retry(instruction_id: uuid.UUID, user=Depends(require_finance_access),
     item.status, item.next_attempt_at = "pending", None
     item.payload["actor_reference"] = str(user.id)
     try: await dispatch_instruction(db, item)
-    except FinregError as exc: raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+    except FinregError as exc: raise http_error(exc)
     return {"id": str(item.id), "status": item.status, "finreg_document_id": str(item.finreg_document_id)}
 
 
@@ -778,10 +713,7 @@ async def sync_employee_to_finreg(
             correlation_id=str(uuid.uuid4()), actor_reference=str(user.id),
         )
     except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 422,
-            detail={"code": exc.code, "message": exc.detail},
-        ) from exc
+        raise http_error(exc) from exc
     finreg_id = uuid.UUID(response["id"])
     mapping = await db.scalar(select(FinregEntityMapping).where(
         FinregEntityMapping.school_id == school_id,
@@ -900,8 +832,7 @@ async def billing_plans(user=Depends(require_finance_access), school_id=Depends(
             "GET", "billing-plans", None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422,
-                            detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.put("/billing-plans/{external_id}")
@@ -928,7 +859,7 @@ async def upsert_billing_plan(
     if missing_tax:
         raise HTTPException(
             status_code=422,
-            detail="Select a governed Finreg tax treatment for: "
+            detail="Configure o tratamento fiscal destes serviços: "
             + ", ".join(sorted(missing_tax)),
         )
     adapter = HttpFinregAdapter()
@@ -982,8 +913,7 @@ async def upsert_billing_plan(
                                      idempotency_key=f"{key}:upsert", correlation_id=correlation,
                                      actor_reference=actor)
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422,
-                            detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.post("/billing-plans/{external_id}/{action}")
@@ -1001,8 +931,7 @@ async def change_billing_plan_state(
             "next_run_date": body.next_run_date.isoformat() if body.next_run_date else None,
         }, actor_reference=str(user.id))
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422,
-                            detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.post("/sales/preview")
@@ -1026,8 +955,7 @@ async def sales_preview(body: SalesDraft, user=Depends(require_finance_access), 
             "POST", "preview", payload["draft"], actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422,
-                            detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.post("/sales/issue", status_code=201)
@@ -1057,7 +985,7 @@ async def sales_issue(body: SalesDraft, user=Depends(require_finance_access), sc
         await dispatch_instruction(db, instruction)
     except FinregError as exc:
         if not exc.retryable:
-            raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.detail})
+            raise http_error(exc)
     return {"id": str(instruction.id), "status": instruction.status,
             "finreg_document_id": str(instruction.finreg_document_id) if instruction.finreg_document_id else None}
 
@@ -1080,7 +1008,7 @@ async def document_detail(external_reference: uuid.UUID, user=Depends(require_fi
             "GET", f"documents/{external_reference}", None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/documents/{external_reference}/pdf")
@@ -1093,7 +1021,7 @@ async def document_pdf(external_reference: uuid.UUID, user=Depends(require_finan
             "Content-Disposition": f'inline; filename="finreg-{external_reference}.pdf"'
         })
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.post("/payments", status_code=201)
@@ -1118,7 +1046,7 @@ async def register_payment(body: PaymentDraft, user=Depends(require_finance_acce
         return {"id": payment["id"], "status": "confirmed",
                 "receipt_id": receipt.get("receipt_document_id"), "receipt": receipt}
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.post("/documents/{external_reference}/corrections", status_code=201)
@@ -1132,7 +1060,7 @@ async def correct_document(external_reference: uuid.UUID, body: CorrectionDraft,
             correlation_id=str(body.external_reference), actor_reference=str(user.id),
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/receipts/{payment_reference}/pdf")
@@ -1145,7 +1073,7 @@ async def receipt_pdf(payment_reference: uuid.UUID, user=Depends(require_finance
             "Content-Disposition": f'inline; filename="finreg-receipt-{payment_reference}.pdf"'
         })
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/customers/{guardian_id}/statement")
@@ -1164,7 +1092,7 @@ async def customer_statement(guardian_id: uuid.UUID, date_from: date, date_to: d
             None, actor_reference=str(user.id),
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/reports/sales-summary")
@@ -1175,7 +1103,7 @@ async def sales_summary(date_from: date, date_to: date, user=Depends(require_fin
             None, actor_reference=str(user.id),
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/reports/delinquent")
@@ -1186,7 +1114,7 @@ async def delinquent_report(as_of: date | None = None, user=Depends(require_fina
             "GET", f"reports/delinquent{suffix}", None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 @router.get("/reports/saft-sales")
@@ -1214,10 +1142,7 @@ async def sales_saft(
             },
         )
     except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 422,
-            detail={"code": exc.code, "message": exc.detail},
-        )
+        raise http_error(exc)
 
 
 @router.get("/accounting/overview")
@@ -1230,10 +1155,7 @@ async def accounting_overview(
             "GET", "accounting/overview", None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 422,
-            detail={"code": exc.code, "message": exc.detail},
-        )
+        raise http_error(exc)
 
 
 @router.get("/cash-sessions")
@@ -1246,10 +1168,7 @@ async def cash_sessions(
             "GET", "cash-sessions", None, actor_reference=str(user.id)
         )
     except FinregError as exc:
-        raise HTTPException(
-            status_code=503 if exc.retryable else 422,
-            detail={"code": exc.code, "message": exc.detail},
-        )
+        raise http_error(exc)
 
 
 async def _parent_instruction(instruction_id, current_user, db):
@@ -1300,7 +1219,7 @@ async def parent_document_pdf(instruction_id: uuid.UUID, current_user=Depends(re
             "Content-Disposition": f'inline; filename="finreg-{item.finreg_document_id}.pdf"'
         })
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)
 
 
 def _family_receipt_filter(school_id, guardian_id, instruction_ids):
@@ -1331,7 +1250,7 @@ async def parent_receipts(current_user=Depends(require_parent), db: AsyncSession
     return [{
         "id": str(payment.id),
         "finreg": True,
-        "full_document_number": f"Finreg RC · {str(payment.id)[:8]}",
+        "full_document_number": f"Recibo · {str(payment.id)[:8]}",
         "system_entry_date": payment.created_at.isoformat(),
         "gross_total": float(payment.amount),
         "payment_method": payment.payment_method,
@@ -1367,10 +1286,7 @@ async def parent_statement(current_user=Depends(require_parent), db: AsyncSessio
         # the same family still gets the family statement when there is one
         # unambiguous payer behind the children's documents.
         if exc.code not in {"http_404", "not_found"}:
-            raise HTTPException(
-                status_code=503 if exc.retryable else 422,
-                detail={"code": exc.code, "message": exc.detail},
-            ) from exc
+            raise http_error(exc) from exc
         payer_id = await parent_finance.family_billing_guardian_id(
             db, school_id=school_id, guardian_id=guardian_id
         )
@@ -1382,10 +1298,7 @@ async def parent_statement(current_user=Depends(require_parent), db: AsyncSessio
         try:
             return await _statement(payer_id)
         except FinregError as retry_exc:
-            raise HTTPException(
-                status_code=503 if retry_exc.retryable else 422,
-                detail={"code": retry_exc.code, "message": retry_exc.detail},
-            ) from retry_exc
+            raise http_error(retry_exc) from retry_exc
 
 
 @router.get("/parent/receipts/{payment_id}/pdf")
@@ -1412,4 +1325,4 @@ async def parent_receipt_pdf(payment_id: uuid.UUID, current_user=Depends(require
             "Content-Disposition": f'inline; filename="finreg-receipt-{payment.id}.pdf"'
         })
     except FinregError as exc:
-        raise HTTPException(status_code=503 if exc.retryable else 422, detail={"code": exc.code, "message": exc.detail})
+        raise http_error(exc)

@@ -189,7 +189,7 @@ class _ReportBody extends StatelessWidget {
                     ),
                     Chip(
                       label: Text(
-                          data['mode'] == 'internal' ? 'Interno' : 'FinReg'),
+                          data['mode'] == 'internal' ? 'Interno' : 'Certificado AGT'),
                     ),
                   ],
                 ),

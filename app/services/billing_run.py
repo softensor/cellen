@@ -955,7 +955,7 @@ async def rebuild_plans(
     if mode not in FINREG_MODES:
         raise BillingError(
             "finreg_inactive",
-            "Os planos escolares só existem quando o FinReg está ativo.",
+            "Os planos de faturação só existem quando a faturação certificada está activa.",
             409,
         )
     inputs, unbilled, policy_row = await load_billing_inputs(

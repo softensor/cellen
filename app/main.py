@@ -38,6 +38,7 @@ from app.routers import (
     timetable,
     lesson_attendance,
     finreg,
+    finreg_admin,
     billing,
     platform_payments,
 )
@@ -102,6 +103,7 @@ app.include_router(grades.router, prefix="/api/v1")
 app.include_router(timetable.router, prefix="/api/v1")
 app.include_router(lesson_attendance.router, prefix="/api/v1")
 app.include_router(finreg.router, prefix="/api/v1")
+app.include_router(finreg_admin.router, prefix="/api/v1")
 app.include_router(billing.router, prefix="/api/v1")
 
 # Ensure media directory exists and mount static files

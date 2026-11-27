@@ -95,6 +95,7 @@ from app.services.late_fees import (
 )
 from app.services.finance import DocumentEmissionService
 from app.services.finreg import FinregError
+from app.services.finreg_errors import explain
 from app.services.finreg_dispatch import (
     BILLING_RUN_COMMAND,
     dispatch_instruction,
@@ -883,7 +884,7 @@ async def _charge_modality_inscription(
         if not item.finreg_tax_option_code:
             raise HTTPException(
                 status_code=422,
-                detail="O serviço da modalidade não tem tratamento fiscal Finreg configurado",
+                detail="O serviço da modalidade não tem tratamento fiscal configurado. Configure-o em Serviços.",
             )
         if item.iva_rate == 0 and not item.iva_exemption_reason:
             raise HTTPException(
@@ -910,7 +911,7 @@ async def _charge_modality_inscription(
         try:
             await dispatch_instruction(db, instruction)
         except FinregError as exc:
-            error = {"code": exc.code, "message": exc.detail}
+            error = {"code": exc.code, "message": explain(exc).message}
             logger.warning(
                 "Modality inscription %s for student modality %s left for the outbox: %s",
                 instruction.id, student_modality.id, exc.code,

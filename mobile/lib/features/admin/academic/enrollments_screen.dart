@@ -661,7 +661,7 @@ class _CreateEnrollmentSheetState
                             Expanded(
                               child: Text(
                                 paymentMode == 'finreg'
-                                    ? 'A cobrança será tratada pelo Finreg. A matrícula ficará pendente até ao pagamento.'
+                                    ? 'Será emitida uma fatura certificada. A matrícula ficará pendente até ao pagamento.'
                                     : 'Será criado um controlo interno sem factura nem recibo fiscal. A matrícula será activada após confirmação do comprovativo.',
                                 style: TextStyle(
                                     fontSize: 12, color: Colors.blue.shade700),
@@ -750,7 +750,7 @@ class _PaymentStatusCell extends StatelessWidget {
       final status = enrollment.feeInstructionStatus;
       if (status == null) {
         return const Chip(
-            label: Text('Finreg'), visualDensity: VisualDensity.compact);
+            label: Text('Fatura certificada'), visualDensity: VisualDensity.compact);
       }
       final paid = status == 'confirmed' && enrollment.status == 'active';
       final label = paid
@@ -771,7 +771,7 @@ class _PaymentStatusCell extends StatelessWidget {
             };
       return Tooltip(
         message:
-            'Factura emitida no Finreg; o pagamento é confirmado no Finreg',
+            'Fatura certificada emitida; o pagamento é confirmado automaticamente',
         child: Chip(
           label: Text(label),
           visualDensity: VisualDensity.compact,

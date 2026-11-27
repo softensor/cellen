@@ -7,6 +7,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import 'fee_automation_common.dart';
+import 'fiscal/fiscal_attention_card.dart';
 
 final _dashboardProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -95,7 +96,7 @@ class _DashboardBody extends StatelessWidget {
   double _money(Map<String, dynamic> source, String key) =>
       (source[key] as num?)?.toDouble() ?? 0;
 
-  String get _modeLabel => data['mode'] == 'internal' ? 'Interno' : 'FinReg';
+  String get _modeLabel => data['mode'] == 'internal' ? 'Interno' : 'Certificado AGT';
 
   void _openCollections(BuildContext context) {
     final methods = ((_collections['by_method'] as List?) ?? const [])
@@ -194,6 +195,7 @@ class _DashboardBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        const FiscalAttentionCard(),
         if (month.isNotEmpty) ...[
           _MonthStatusCard(month: month, currency: currency),
           const SizedBox(height: 16),
@@ -209,7 +211,7 @@ class _DashboardBody extends StatelessWidget {
             ),
             Chip(
               avatar: const Icon(Icons.verified_outlined, size: 16),
-              label: Text('Motor: $_modeLabel'),
+              label: Text('Faturação: $_modeLabel'),
             ),
           ],
         ),

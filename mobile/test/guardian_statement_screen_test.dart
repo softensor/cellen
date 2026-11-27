@@ -135,7 +135,7 @@ void main() {
     expect(query?['to_date'], isNotNull);
     expect(
       find.text(
-          'O FinReg não respondeu; a mostrar o extrato interno do Cellen.'),
+          'O sistema fiscal não respondeu; a mostrar o extrato interno do Cellen.'),
       findsOneWidget,
     );
     expect(find.text('FT 2026/1 · Propina de Outubro'), findsOneWidget);
