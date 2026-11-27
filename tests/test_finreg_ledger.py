@@ -41,8 +41,12 @@ def _document(document_id, **overrides) -> dict:
             "description": "Propina Novembro",
             "quantity": 1,
             "unit_price": 100000,
+            "discount_pct": 0,
             "tax_rate": 14,
-            "line_total": 114000,
+            # FinReg's DocumentLineOut field names, as production returns them
+            "net_amount": 100000,
+            "tax_amount": 14000,
+            "gross_amount": 114000,
         }],
     }
     body.update(overrides)
@@ -287,7 +291,11 @@ async def test_admin_lists_only_its_own_school_and_backfills(client, db, make_sc
     document = body["items"][0]
     detail = await client.get(f"/finreg/admin/documents/{document['id']}", headers=auth(token))
     assert detail.status_code == 200
-    assert detail.json()["lines"][0]["description"] == "Propina Novembro"
+    line = detail.json()["lines"][0]
+    assert line["description"] == "Propina Novembro"
+    assert line["line_total"] == 114000
+    assert line["net_amount"] == 100000
+    assert line["tax_amount"] == 14000
     assert detail.json()["software_cert_number"] == "AGT/123/2026"
 
     # Another school never sees, opens or downloads this document.
@@ -466,6 +474,35 @@ async def test_fiscal_setup_is_a_read_only_checklist(client, db, make_school, mo
     }
     items = next(check for check in body["checks"] if check["key"] == "billing_items")
     assert "Uniforme" in items["detail"]
+
+
+async def test_fiscal_setup_shows_the_certificate_finreg_prints_when_the_profile_lacks_it(
+    client, db, make_school, monkeypatch
+):
+    """Production FinReg leaves the tenant's certificate empty but stamps it on
+    every document; the setup card shows what the documents carry."""
+    from app.core.config import settings
+    from app.routers import finreg_admin
+
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+
+    class _Adapter(FakeFinregAdapter):
+        async def request(self, method, operation, payload, **kwargs):
+            if operation == "fiscal-profile":
+                return {"name": "Colégio Teste", "tax_id": "5000000001", "software_cert_number": None,
+                        "agt_channel": "production", "non_fiscal": False, "series": []}
+            return await super().request(method, operation, payload, **kwargs)
+
+    monkeypatch.setattr(finreg_admin, "HttpFinregAdapter", _Adapter)
+    school_id, token, _, _ = await _school_with_family(db, make_school, mode="live")
+    db.add(FinregDocument(
+        school_id=school_id, finreg_document_id=uuid.uuid4(), reference=f"ref-{uid()}",
+        document_status="finalized", snapshot={"software_cert_number": "FE/501/AGT/2026"},
+    ))
+    await db.commit()
+
+    body = (await client.get("/finreg/admin/setup", headers=auth(token))).json()
+    assert body["profile"]["software_cert_number"] == "FE/501/AGT/2026"
 
 
 async def test_fiscal_setup_without_a_connection_says_so(client, db, make_school):
