@@ -33,6 +33,7 @@ from app.services.finreg import FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import (
     BILLING_PLAN_UPSERT_COMMAND,
     BILLING_RUN_COMMAND,
+    CORRECTION_COMMAND,
     LATE_FEE_COMMAND,
 )
 
@@ -233,6 +234,21 @@ async def record_instruction(db: AsyncSession, instruction: FinregBillingInstruc
     ):
         return None
     snapshot = instruction.result_snapshot or {}
+    if instruction.command_type == CORRECTION_COMMAND:
+        original_id = _uuid((instruction.payload or {}).get("document_id"))
+        original = await _row_for(db, instruction.school_id, original_id) if original_id else None
+        if original is None:
+            return None
+        row = await record_correction(
+            db,
+            school_id=instruction.school_id,
+            original=original,
+            correction_reference=str((instruction.payload or {}).get("external_id") or instruction.id),
+            response={**snapshot, "credit_note_id": str(instruction.finreg_document_id)},
+        )
+        if row is not None:
+            row.instruction_id = instruction.id
+        return row
     document = snapshot if looks_like_document(snapshot) else None
     if document and _uuid(document.get("id")) != instruction.finreg_document_id:
         document = None

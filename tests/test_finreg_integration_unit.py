@@ -603,17 +603,17 @@ def test_school_context_uses_only_contract_fields():
     assert value["pupil_id"] == str(pupil)
 
 
-def test_authoritative_saft_export_is_exposed_by_router_and_embedded_host():
+def test_authoritative_saft_export_is_downloaded_natively():
     router = Path("app/routers/finreg.py").read_text()
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    screen = Path(
+        "mobile/lib/features/admin/finance/fiscal/fiscal_saft_screen.dart"
     ).read_text()
     assert '@router.get("/reports/saft-sales")' in router
     navigation = Path("mobile/lib/core/router/router.dart").read_text()
-    assert "initialCapabilityId: 'reporting'" in navigation
+    assert "const FiscalSaftScreen()" in navigation
     assert "initialFinregRoute" not in navigation
-    assert "FinregEmbeddedModuleHost(" not in host
-    assert "finregUrlLauncher(" in host
+    # FinReg generates the file; Cellen only asks for the month.
+    assert "/finreg/reports/saft-sales" in screen
 
 
 def test_legacy_reduced_operational_finreg_screen_is_not_shipped():

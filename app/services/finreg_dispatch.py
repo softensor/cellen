@@ -89,6 +89,9 @@ MODALITY_INSCRIPTION_COMMAND = "modality_inscription_fee"
 BILLING_RUN_COMMAND = "billing_run"
 BILLING_PLAN_UPSERT_COMMAND = "billing_plan_upsert"
 LATE_FEE_COMMAND = "late_fee"
+# A credit note cancelling one ledgered document. Staged in the outbox so an
+# unknown outcome is retried with the same key instead of being re-pressed.
+CORRECTION_COMMAND = "correction"
 
 
 async def enqueue_modality_inscription_instruction(
@@ -360,6 +363,42 @@ async def _dispatch_late_fee(adapter, instruction: FinregBillingInstruction) -> 
     )
 
 
+async def _dispatch_correction(adapter, instruction: FinregBillingInstruction) -> dict:
+    """Cancel a fiscal document in FinReg, which issues its credit note.
+
+    FinReg refuses to cancel the same document twice and answers a repeat
+    with the credit note it already issued, so a resend is safe.
+    """
+    payload = instruction.payload
+    actor = payload.get("actor_reference", "cellen-system")
+    body = {"external_id": payload["external_id"], "reason": payload["reason"]}
+    operation = f"documents/{payload['document_reference']}/corrections"
+    if isinstance(adapter, FakeFinregAdapter):
+        result = await adapter.execute(
+            operation, body,
+            idempotency_key=instruction.idempotency_key,
+            correlation_id=str(instruction.correlation_id),
+            actor_reference=actor,
+        )
+    else:
+        result = await adapter.request(
+            "POST", operation, body,
+            idempotency_key=instruction.idempotency_key,
+            correlation_id=str(instruction.correlation_id),
+            actor_reference=actor,
+        )
+    result = dict(result or {})
+    credit_note_id = result.get("credit_note_id") or result.get("id")
+    if not credit_note_id:
+        raise FinregError(
+            "correction_without_credit_note",
+            "O FinReg não devolveu a nota de crédito.",
+            unknown_outcome=True,
+        )
+    result["id"] = str(credit_note_id)
+    return result
+
+
 async def enqueue_enrollment_fee_instruction(
     db: AsyncSession, *, school_id, enrollment_id, child_id, child_name,
     school_year_id, school_year_label, enrollment_date, guardian, billing_item,
@@ -464,6 +503,8 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
             )
         elif instruction.command_type == LATE_FEE_COMMAND:
             document = await _dispatch_late_fee(adapter, instruction)
+        elif instruction.command_type == CORRECTION_COMMAND:
+            document = await _dispatch_correction(adapter, instruction)
         elif isinstance(adapter, FakeFinregAdapter):
             document = await adapter.execute("drafts", payload["draft"],
                 idempotency_key=instruction.idempotency_key, correlation_id=str(instruction.correlation_id), actor_reference=actor)
@@ -496,7 +537,7 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
         if instruction.command_type not in {
             BILLING_RUN_COMMAND, BILLING_PLAN_UPSERT_COMMAND
         }:
-            instruction.finreg_document_id = uuid.UUID(document["id"])
+            instruction.finreg_document_id = uuid.UUID(str(document["id"]))
         instruction.result_snapshot = document
         instruction.status = "confirmed"
         instruction.error_code = instruction.error_detail = None

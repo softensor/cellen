@@ -313,3 +313,113 @@ async def test_a_draft_document_has_no_pdf_yet(client, db, make_school):
     pdf = await client.get(f"/finreg/admin/documents/{item['id']}/pdf", headers=auth(token))
     assert pdf.status_code == 409
     assert pdf.json()["detail"]["code"] == "document_not_finalized"
+
+
+async def _ledgered(client, db, make_school, *, mode="fake"):
+    school_id, token, guardian, child = await _school_with_family(db, make_school, mode=mode)
+    document_id = uuid.uuid4()
+    db.add(_draft_instruction(
+        school_id, guardian, child, document_id=document_id,
+        snapshot=_document(document_id, agt_status="accepted"),
+    ))
+    await db.commit()
+    listed = (await client.get("/finreg/admin/documents", headers=auth(token))).json()
+    return school_id, token, guardian, listed["items"][0]
+
+
+async def test_a_correction_goes_through_the_outbox_once(client, db, make_school, monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    school_id, token, _, document = await _ledgered(client, db, make_school)
+    request_id = str(uuid.uuid4())
+
+    response = await client.post(
+        f"/finreg/admin/documents/{document['id']}/corrections",
+        json={"request_id": request_id, "reason": "Valor errado"},
+        headers=auth(token),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "confirmed"
+    assert body["document"]["state"] == "cancelled"
+    assert body["credit_note"]["kind"] == "credit_note"
+    assert body["credit_note"]["corrects_document_id"] == document["finreg_document_id"]
+
+    # The same dialog pressed again is the same correction.
+    replay = await client.post(
+        f"/finreg/admin/documents/{document['id']}/corrections",
+        json={"request_id": request_id, "reason": "Valor errado"},
+        headers=auth(token),
+    )
+    assert replay.status_code == 201
+    assert replay.json()["instruction_id"] == body["instruction_id"]
+    assert replay.json()["credit_note"]["id"] == body["credit_note"]["id"]
+
+    # A new request for an already cancelled document is refused.
+    again = await client.post(
+        f"/finreg/admin/documents/{document['id']}/corrections",
+        json={"request_id": str(uuid.uuid4()), "reason": "Outra vez"},
+        headers=auth(token),
+    )
+    assert again.status_code == 409
+    assert again.json()["detail"]["code"] == "document_already_cancelled"
+
+    credit_notes = (await client.get(
+        "/finreg/admin/documents?kind=credit_note", headers=auth(token)
+    )).json()
+    assert credit_notes["total"] == 1
+
+    activity = (await client.get("/finreg/admin/activity", headers=auth(token))).json()
+    labels = [item["label"] for item in activity["items"]]
+    assert "Anulação (nota de crédito)" in labels
+    correction = next(item for item in activity["items"] if item["command"] == "correction")
+    assert correction["status"] == "confirmed"
+    assert correction["actor"]  # the admin's username, not "Sistema"
+    assert correction["actor"] != "Sistema"
+
+
+async def test_corrections_are_refused_when_fiscal_writes_are_off(client, db, make_school, monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    _, token, _, document = await _ledgered(client, db, make_school, mode="shadow")
+    response = await client.post(
+        f"/finreg/admin/documents/{document['id']}/corrections",
+        json={"request_id": str(uuid.uuid4()), "reason": "Valor errado"},
+        headers=auth(token),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "finreg_writes_disabled"
+
+
+async def test_receipts_are_listed_per_school(client, db, make_school):
+    from datetime import date as _date
+    from app.models.finance import Payment
+
+    school_id, token, guardian, _ = await _school_with_family(db, make_school)
+    other_id, other_token, other_guardian, _ = await _school_with_family(db, make_school)
+    mine = Payment(
+        school_id=school_id, billing_guardian_id=guardian.id, payment_date=_date(2026, 11, 3),
+        amount=Decimal("114000"), payment_method="transfer",
+        finreg_payment_external_reference=uuid.uuid4(),
+    )
+    local_only = Payment(
+        school_id=school_id, billing_guardian_id=guardian.id, payment_date=_date(2026, 11, 4),
+        amount=Decimal("5000"), payment_method="cash",
+    )
+    theirs = Payment(
+        school_id=other_id, billing_guardian_id=other_guardian.id, payment_date=_date(2026, 11, 3),
+        amount=Decimal("1"), payment_method="cash",
+        finreg_payment_external_reference=uuid.uuid4(),
+    )
+    db.add_all([mine, local_only, theirs])
+    await db.commit()
+
+    body = (await client.get("/finreg/admin/receipts", headers=auth(token))).json()
+    assert body["total"] == 1
+    assert body["items"][0]["guardian_name"] == "Maria Encarregada"
+    assert body["items"][0]["amount"] == 114000.0
+    searched = (await client.get("/finreg/admin/receipts?q=Maria", headers=auth(token))).json()
+    assert searched["total"] == 1
+
+    foreign = await client.get(f"/finreg/admin/receipts/{mine.id}/pdf", headers=auth(other_token))
+    assert foreign.status_code == 404
