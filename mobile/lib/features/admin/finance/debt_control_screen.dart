@@ -317,7 +317,7 @@ class _DebtsBody extends StatelessWidget {
                 ),
                 Chip(
                   label:
-                      Text(data['mode'] == 'internal' ? 'Interno' : 'FinReg'),
+                      Text(data['mode'] == 'internal' ? 'Interno' : 'Certificado AGT'),
                 ),
               ],
             ),
@@ -657,7 +657,7 @@ class _DebtDetailSheet extends StatelessWidget {
               [
                 row['document_type']?.toString(),
                 if (row['source'] != null)
-                  row['source'] == 'internal' ? 'Motor interno' : 'FinReg',
+                  row['source'] == 'internal' ? 'Interno' : 'Certificado',
                 'Vence ${formatIsoDate(row['due_date']?.toString())}',
               ].whereType<String>().where((v) => v.isNotEmpty).join(' · '),
               style: theme.textTheme.bodySmall

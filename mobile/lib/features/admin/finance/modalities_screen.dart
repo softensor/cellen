@@ -506,8 +506,8 @@ class _EnrollDialogState extends ConsumerState<_EnrollDialog> {
       );
       final message = switch (inscription['mode']) {
         'finreg' => inscription['status'] == 'confirmed'
-            ? 'Inscrição registada e cobrança confirmada no Finreg.'
-            : 'Inscrição registada. A cobrança segue para o Finreg pela fila.',
+            ? 'Inscrição registada e fatura emitida.'
+            : 'Inscrição registada. A fatura é emitida em instantes.',
         'internal' => 'Inscrição registada e factura emitida: '
             '${inscription['invoice_number'] ?? ''}.',
         _ => 'Inscrição registada (sem taxa de inscrição).',

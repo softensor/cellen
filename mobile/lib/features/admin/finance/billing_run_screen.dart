@@ -422,7 +422,7 @@ class _PreviewContent extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              'Actualiza os planos no Finreg depois de mudar propinas, '
+              'Actualiza os planos de faturação depois de mudar propinas, '
               'modalidades, transporte ou descontos.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
@@ -774,17 +774,17 @@ String _runStatusLabel(String? status) => switch (status) {
     };
 
 String _instructionStatus(String? status) => switch (status) {
-      'confirmed' => 'Confirmada no Finreg',
-      'pending' => 'Em fila para o Finreg',
+      'confirmed' => 'Fatura emitida',
+      'pending' => 'Em fila de emissão',
       'failed' => 'Falhou',
       _ => status ?? '—',
     };
 
 String _modeLabel(String mode) => switch (mode) {
-      'fake' => 'Finreg em simulação',
-      'shadow' => 'Finreg em sombra (rascunhos)',
-      'pilot' => 'Finreg em piloto',
-      'live' => 'Finreg em produção fiscal',
+      'fake' => 'Faturação em simulação',
+      'shadow' => 'Faturação em ensaio (rascunhos)',
+      'pilot' => 'Faturação certificada (piloto)',
+      'live' => 'Faturação certificada',
       _ => 'Facturação interna',
     };
 

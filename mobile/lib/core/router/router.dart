@@ -16,7 +16,7 @@ import '../../features/admin/employees/employees_list_screen.dart';
 import '../../features/admin/employees/employee_form_screen.dart';
 import '../../features/admin/finance/finance_dashboard_screen.dart';
 import '../../features/admin/finance/cash_sessions_screen.dart';
-import '../../features/admin/finance/finreg_sales_host_screen.dart';
+import '../../features/admin/finance/school_finance_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_activity_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_documents_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_receipts_screen.dart';
@@ -1168,7 +1168,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/admin/food', builder: (_, __) => const AdminFoodScreen()),
           GoRoute(
               path: '/admin/finance',
-              builder: (_, __) => const FinregSalesHostScreen()),
+              builder: (_, __) => const SchoolFinanceScreen()),
           GoRoute(
               path: '/admin/finance/home',
               builder: (_, __) => const FinanceHomeScreen()),

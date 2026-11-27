@@ -95,10 +95,8 @@ def test_preview_is_a_read_even_though_it_posts():
         finreg_service._scopes_for("POST", "preview")
         == finreg_service._READ_SCOPES
     )
-    assert (
-        finreg_service._scopes_for("POST", "workspace-launches")
-        == finreg_service._LAUNCH_SCOPES
-    )
+    # No host flow requests a launch scope any more.
+    assert not hasattr(finreg_service, "_LAUNCH_SCOPES")
 
 
 @pytest.mark.asyncio
@@ -129,69 +127,6 @@ async def test_download_returns_bytes_with_read_scopes(finreg):
 
     assert payload.startswith(b"%PDF-1.4")
     assert _scopes(finreg.token_requests) == finreg_service._READ_SCOPES
-
-
-@pytest.mark.asyncio
-async def test_workspace_launch_mints_a_delegated_url(finreg):
-    adapter = HttpFinregAdapter()
-
-    launch = await adapter.workspace_launch(
-        capability_id="billing",
-        external_user_id="user-1",
-        display_name="Ana",
-        roles=["finance_officer"],
-        web_base_url="https://cellen.test",
-        actor_reference="user-1",
-    )
-
-    assert launch["url"].startswith("https://cellen.test/#/delegated?code=")
-    assert launch["target_path"] == "/billing"
-    assert launch["expires_in"] == 60
-    assert _scopes(finreg.token_requests) == finreg_service._LAUNCH_SCOPES
-    assert finreg.launch_codes[next(iter(finreg.launch_codes))]["roles"] == [
-        "finance_officer"
-    ]
-    # No host address, no return target — never a dangling one.
-    assert finreg.launch_codes[next(iter(finreg.launch_codes))]["return_to"] is None
-
-
-@pytest.mark.asyncio
-async def test_workspace_launch_carries_the_host_return_target(finreg):
-    adapter = HttpFinregAdapter()
-
-    await adapter.workspace_launch(
-        capability_id="billing",
-        external_user_id="user-1",
-        display_name="Ana",
-        roles=["finance_officer"],
-        web_base_url="https://cellen.test",
-        actor_reference="user-1",
-        return_to={"label": "Cellen", "url": "https://cellen.test"},
-    )
-
-    code = next(iter(finreg.launch_codes))
-    assert finreg.launch_codes[code]["return_to"] == {
-        "label": "Cellen",
-        "url": "https://cellen.test",
-    }
-
-
-@pytest.mark.asyncio
-async def test_workspace_launch_refuses_an_empty_host_role(finreg):
-    adapter = HttpFinregAdapter()
-
-    with pytest.raises(FinregError) as raised:
-        await adapter.workspace_launch(
-            capability_id="billing",
-            external_user_id="user-1",
-            display_name="Ana",
-            roles=[],
-            web_base_url="https://cellen.test",
-            actor_reference="user-1",
-        )
-
-    assert raised.value.code == "no_host_role"
-    assert finreg.requests == []
 
 
 @pytest.mark.asyncio

@@ -74,7 +74,7 @@ class FiscalStateChip extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: dense ? 6 : 8, vertical: dense ? 2 : 4),
       decoration: BoxDecoration(
-        color: look.color.withOpacity(0.1),
+        color: look.color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [

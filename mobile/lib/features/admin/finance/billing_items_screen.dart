@@ -338,7 +338,7 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'Não foi possível carregar o catálogo fiscal Finreg: $error';
+        _error = 'Não foi possível carregar o catálogo fiscal: $error';
         _taxOptionsLoading = false;
       });
     }
@@ -471,8 +471,8 @@ class _BillingItemDialogState extends ConsumerState<_BillingItemDialog> {
                     labelText: 'Tratamento fiscal *',
                     prefixIcon: const Icon(Icons.percent),
                     helperText: _taxOptionsLoading
-                        ? 'A carregar catálogo Finreg…'
-                        : 'Opções vigentes configuradas no Finreg',
+                        ? 'A carregar catálogo fiscal…'
+                        : 'Opções fiscais em vigor',
                   ),
                   items: _taxOptions
                       .map((option) => DropdownMenuItem<String>(

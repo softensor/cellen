@@ -269,9 +269,9 @@ class _AttentionBanner extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(children: [
         Icon(icon, color: color, size: 18),
@@ -480,7 +480,7 @@ class _FiscalDocumentDetailSheetState
           margin: const EdgeInsets.only(top: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppTheme.danger.withOpacity(0.08),
+            color: AppTheme.danger.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text('Motivo da AGT: ${document['agt_message']}',

@@ -88,7 +88,7 @@ class _GuardianStatementScreenState
         }
         if (statement == null) {
           _fallbackNotice =
-              'O FinReg não respondeu; a mostrar o extrato interno do Cellen.';
+              'O sistema fiscal não respondeu; a mostrar o extrato interno do Cellen.';
         }
       }
       statement ??= Map<String, dynamic>.from(await api.get(

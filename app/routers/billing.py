@@ -884,7 +884,7 @@ async def _charge_modality_inscription(
         if not item.finreg_tax_option_code:
             raise HTTPException(
                 status_code=422,
-                detail="O serviço da modalidade não tem tratamento fiscal Finreg configurado",
+                detail="O serviço da modalidade não tem tratamento fiscal configurado. Configure-o em Serviços.",
             )
         if item.iva_rate == 0 and not item.iva_exemption_reason:
             raise HTTPException(

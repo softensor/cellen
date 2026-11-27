@@ -96,7 +96,7 @@ class _DashboardBody extends StatelessWidget {
   double _money(Map<String, dynamic> source, String key) =>
       (source[key] as num?)?.toDouble() ?? 0;
 
-  String get _modeLabel => data['mode'] == 'internal' ? 'Interno' : 'FinReg';
+  String get _modeLabel => data['mode'] == 'internal' ? 'Interno' : 'Certificado AGT';
 
   void _openCollections(BuildContext context) {
     final methods = ((_collections['by_method'] as List?) ?? const [])
@@ -211,7 +211,7 @@ class _DashboardBody extends StatelessWidget {
             ),
             Chip(
               avatar: const Icon(Icons.verified_outlined, size: 16),
-              label: Text('Motor: $_modeLabel'),
+              label: Text('Faturação: $_modeLabel'),
             ),
           ],
         ),

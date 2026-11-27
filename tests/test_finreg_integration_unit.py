@@ -30,19 +30,20 @@ from app.routers.finreg import (
 )
 
 
-def test_primary_finance_route_opens_finreg_without_an_embedded_copy():
+def test_primary_finance_route_is_cellen_only():
     root = Path(__file__).resolve().parents[1]
     router = (root / "mobile/lib/core/router/router.dart").read_text()
-    host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+    host = (root / "mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
 
     assert "path: '/admin/finance'" in router
-    assert "const FinregSalesHostScreen()" in router
+    assert "const SchoolFinanceScreen()" in router
+    # Certified invoicing runs in the background: nothing opens FinReg.
+    assert not (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").exists()
+    assert "url_launcher" not in host
     assert "FinregEmbeddedModuleHost(" not in host
     assert "package:finreg_app" not in host
     assert "package:finreg_client_sdk" not in host
-    assert "FinregSchoolBillingModule(" not in host
-    assert "finregUrlLauncher(" in host
-    assert "return const InvoicesScreen()" not in host
+    assert "FinReg" not in host.split("class SchoolFinanceScreen")[1]
 
 
 def test_finreg_parent_payment_cross_system_references_are_persisted():
@@ -52,19 +53,13 @@ def test_finreg_parent_payment_cross_system_references_are_persisted():
 
 def test_school_extensions_and_parent_finreg_payments_are_wired():
     root = Path(__file__).resolve().parents[1]
-    host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+    host = (root / "mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
     hubs = (root / "mobile/lib/features/admin/finance/school_finance_hubs.dart").read_text()
     parent = (root / "mobile/lib/features/parent/finance/parent_invoices_screen.dart").read_text()
     assert "FinregEmbeddedModuleHost(" not in host
-    assert "finregEmbeddedModules" not in host
-    assert "onOpenWorkspace: _openWorkspace" not in host
-    assert "package:url_launcher/url_launcher.dart" in host
-    assert "/finreg/workspace-launch/$capabilityId" in host
-    assert "_SchoolBillingOperations" not in host
-    # The native finance shortcuts live in the workflow hubs now.
+    assert "/finreg/workspace-launch" not in host
+    # The native finance shortcuts live in the workflow hubs.
     assert "'/admin/finance/payment-proofs'" in hubs
-    assert "FinregAccountingOverviewScreen" not in host
-    assert "FinregCashSessionsScreen" not in host
     assert "final canPay = invoice.status != 'paid' &&" in parent
     assert "/finreg/parent/receipts" in parent
     assert "/finreg/parent/statement" in parent
@@ -179,134 +174,17 @@ def test_every_school_segment_sells_the_billing_plan_by_default():
         assert defaults["finreg_erp"] is False, segment
 
 
-def test_the_plan_is_enforced_on_capabilities_launch_and_local_policy():
+def test_the_plan_is_enforced_on_capabilities_and_local_policy():
     router = Path("app/routers/finreg.py").read_text()
     assert 'manifest["finreg_plan"] = _manifest_plan(school, manifest)' in router
-    assert "capability_id in FINREG_ERP_CAPABILITIES" in router
-    assert '"code": "finreg_erp_not_enabled"' in router
-    assert router.count("_plan_allowed_capabilities(") == 5
     assert "available_set = _plan_allowed_capabilities(" in router
     assert "available = _plan_allowed_capabilities(" in router
-    assert 'return_to = {"label": "Cellen", "url": settings.CELLEN_WEB_URL}' in router
-
-
-class _LaunchAdapter:
-    """Stands in for FinReg's HTTP adapter on the launch path only."""
-
-    manifest: dict = {}
-    launches: list[dict] = []
-
-    async def capabilities(self, _external_user_id):
-        return type(self).manifest
-
-    async def workspace_launch(self, **kwargs):
-        type(self).launches.append(kwargs)
-        return {
-            "url": "https://finreg.test/#/delegated?code=abc",
-            "target_path": "/billing",
-            "expires_in": 60,
-        }
-
-
-class _LaunchSession:
-    def __init__(self, school, mode="pilot"):
-        self.school = school
-        self.mode = mode
-
-    async def execute(self, _statement):
-        connection = SimpleNamespace(mode=self.mode)
-        return SimpleNamespace(scalar_one_or_none=lambda: connection)
-
-    async def get(self, _model, _identifier):
-        return self.school
-
-
-def _launch_school():
-    return SimpleNamespace(
-        id=uuid.uuid4(),
-        features={},
-        resolved_features={},
-    )
-
-
-def _launch_user():
-    return SimpleNamespace(
-        id=uuid.uuid4(),
-        username="admin",
-        email="admin@cellen.app",
-        _roles={"school_admin"},
-        _roles_list=["school_admin"],
-    )
-
-
-def _launch_manifest(*, erp_entitled: bool) -> dict:
-    workspaces = [{"capability_id": "billing"}, {"capability_id": "accounting"}]
-    navigable = ["billing"] + (["accounting"] if erp_entitled else [])
-    return {
-        "erp_entitled": erp_entitled,
-        "erp_capabilities": (
-            sorted(FINREG_ERP_CAPABILITIES) if erp_entitled else []
-        ),
-        "navigable_capabilities": navigable,
-        "workspaces": workspaces,
-    }
-
-
-@pytest.mark.asyncio
-async def test_the_erp_addon_cannot_be_launched_without_the_entitlement(
-    monkeypatch,
-):
-    _LaunchAdapter.manifest = _launch_manifest(erp_entitled=False)
-    _LaunchAdapter.launches = []
-    monkeypatch.setattr(finreg_router, "HttpFinregAdapter", _LaunchAdapter)
-    monkeypatch.setattr(settings, "CELLEN_WEB_URL", None)
-    session = _LaunchSession(_launch_school())
-    user = _launch_user()
-
-    with pytest.raises(HTTPException) as raised:
-        await finreg_router.workspace_launch(
-            "accounting", user=user, school_id=uuid.uuid4(), db=session
-        )
-
-    assert raised.value.status_code == 403
-    assert raised.value.detail["code"] == "finreg_erp_not_enabled"
-    assert _LaunchAdapter.launches == []
-
-    # The base billing plan still launches; without a host address the mint
-    # carries no return target rather than a broken one.
-    result = await finreg_router.workspace_launch(
-        "billing", user=user, school_id=uuid.uuid4(), db=session
-    )
-    assert result["url"].startswith("https://finreg.test/")
-    assert _LaunchAdapter.launches[0]["capability_id"] == "billing"
-    assert _LaunchAdapter.launches[0]["return_to"] is None
-
-
-@pytest.mark.asyncio
-async def test_the_erp_launch_carries_the_host_return_target(monkeypatch):
-    _LaunchAdapter.manifest = _launch_manifest(erp_entitled=True)
-    _LaunchAdapter.launches = []
-    monkeypatch.setattr(finreg_router, "HttpFinregAdapter", _LaunchAdapter)
-    monkeypatch.setattr(settings, "CELLEN_WEB_URL", "https://cellen.test")
-
-    await finreg_router.workspace_launch(
-        "accounting",
-        user=_launch_user(),
-        school_id=uuid.uuid4(),
-        db=_LaunchSession(_launch_school()),
-    )
-
-    assert _LaunchAdapter.launches[0]["capability_id"] == "accounting"
-    assert _LaunchAdapter.launches[0]["return_to"] == {
-        "label": "Cellen",
-        "url": "https://cellen.test",
-    }
 
 
 def test_local_module_access_is_separate_from_finreg_control_plane():
     router = Path("app/routers/finreg.py").read_text()
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    dialog = Path(
+        "mobile/lib/features/admin/finance/school_access_policy_dialog.dart"
     ).read_text()
     for role in (
         "coordinator", "finance_officer", "secretary", "teacher", "nurse",
@@ -317,19 +195,17 @@ def test_local_module_access_is_separate_from_finreg_control_plane():
     assert '@router.put("/local-access-policy")' in router
     assert router.count("user=Depends(require_school_admin)") >= 2
     assert "Local policy cannot grant a capability outside Finreg composition" in router
-    assert router.count("Module is not granted to this school role") == 1
     assert "authority\": \"local_access_only" in router
-    assert "Acessos e funções" in host
-    assert "Não podem ativar módulos" in host
-    assert "for (final definition in _roles)" in host
-    assert "payload['custom_roles']" in host
-    assert "role_workspaces" in router
+    assert "Acessos e funções" in dialog
+    assert "for (final definition in _roles)" in dialog
+    assert "payload['custom_roles']" in dialog
     assert "role_features" in router
     assert "school_features" in router
     assert "role_available" in router
-    assert "Áreas do Cellen" in host
-    assert "Módulos financeiros Finreg" in host
-    assert "Função desativada para esta escola" in host
+    assert "Áreas do Cellen" in dialog
+    assert "Função desativada para esta escola" in dialog
+    # FinReg's own workspaces are no longer a school-facing concept.
+    assert "Finreg" not in dialog and "FinReg" not in dialog
     settings = Path("mobile/lib/features/admin/school_settings_screen.dart").read_text()
     assert "showSchoolAccessPolicyDialog" in settings
     assert "Acessos e funções" in settings
@@ -344,51 +220,37 @@ def test_finance_policy_is_enforced_by_navigation_and_backend():
     assert "final hasFinanceAccess" in navigation
 
 
-def test_host_consumes_the_manifest_and_launches_without_sdk_types():
-    models = Path("mobile/lib/core/models/finreg_models.dart").read_text()
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
-    assert "value['workspaces']" in models
-    assert "value['capability_id']" in models
-    assert "value['route']" in models
-    assert "value['agt_channel']" in models
-    assert "/finreg/workspace-launch/$capabilityId" in host
-    assert "FinregWorkspaceLaunch.fromJson" in host
-    assert "finreg_client_sdk" not in host
-    assert "finreg_client_sdk" not in models
+def test_no_workspace_launch_remains_anywhere():
+    root = Path(__file__).resolve().parents[1]
+    router = (root / "app/routers/finreg.py").read_text()
+    service = (root / "app/services/finreg.py").read_text()
+    assert "/workspace-launch" not in router
+    assert "workspace_launch" not in service
+    assert "workspace:launch" not in service
+    assert not (root / "mobile/lib/core/models/finreg_models.dart").exists()
+    for dart in (root / "mobile/lib").rglob("*.dart"):
+        text = dart.read_text()
+        assert "workspace-launch" not in text, dart
+        assert "Abrir no FinReg" not in text, dart
 
 
-def test_finreg_has_one_entry_card_and_the_native_tabs_never_depend_on_it():
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
-    assert "FinReg — facturação e conformidade" in host
-    assert "_NativeSchoolFinanceTabs" in host
-    # The workspace menu is gone: FinReg owns its own navigation. The only
-    # tabs left are the school's own six areas.
-    assert "widget.workspaces.length" not in host
-    assert "_FinregWorkspaceMenu" not in host
+def test_the_finance_tabs_never_depend_on_the_fiscal_engine():
+    host = Path("mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
     assert "DefaultTabController(" in host
-    assert "length: 6" in host
-    assert "FinregSchoolBillingModule(" not in host
+    assert "length: 7" in host
+    for tab in ("FinanceHomeScreen()", "DebtsHub()", "PaymentsHub()",
+                "FiscalDocumentsHub()", "FinanceConfigHub()",
+                "GuardiansListScreen()", "EmployeesListScreen()"):
+        assert tab in host
+    # No manifest call gates the tabs: they render while FinReg is down.
+    assert "/finreg/capabilities" not in host
     assert "IndexedStack" not in host
-    assert "initialRoute:" not in host
-    assert "onSessionExpired:" not in host
-    assert "finregUrlLauncher(" in host
-    assert "LaunchMode.externalApplication" in host
-    assert "webOnlyWindowName: '_blank'" in host
-    assert "if (_opening) return;" in host
-    assert "'Abrir no FinReg'" in host
-    # The card's failure branch must not replace the school tabs.
-    assert "O FinReg está indisponível" in host
-    assert "const Expanded(child: _NativeSchoolFinanceTabs())" in host
 
 
 def test_school_billing_resolves_and_validates_payer_learner_relationships():
     router = Path("app/routers/finreg.py").read_text()
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+    issue = Path(
+        "mobile/lib/features/admin/finance/fiscal/fiscal_issue_invoice_screen.dart"
     ).read_text()
     assert '@router.get("/guardians/{guardian_id}/pupils")' in router
     assert '@router.get("/guardians")' in router
@@ -396,20 +258,20 @@ def test_school_billing_resolves_and_validates_payer_learner_relationships():
     assert "ChildGuardian.guardian_id == Guardian.id" in router
     assert "The learner is not associated with the selected payer" in router
     assert router.count("await _linked_guardian_child(") == 2
-    assert "FinregEmbeddedModuleHost(" not in host
-    assert "finregUrlLauncher(" in host
-    assert "_CellenFinregAdapter" not in host
+    assert "/finreg/guardians/${guardian['id']}/pupils" in issue
 
 
-def test_vertical_host_does_not_reimplement_finreg_sales_state():
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
+def test_the_native_invoice_screen_never_computes_fiscal_totals():
+    issue = Path(
+        "mobile/lib/features/admin/finance/fiscal/fiscal_issue_invoice_screen.dart"
     ).read_text()
-    assert "_CellenFinregAdapter" not in host
-    assert "FinregSalesRepository" not in host
-    assert "FinregEmbeddedModuleHost(" not in host
-    assert "_open(" in host
-    assert "_createWorkspaceLaunch" in host
+    # Totals come only from FinReg's preview; issuing reuses the request id.
+    assert "/finreg/sales/preview" in issue
+    assert "/finreg/sales/issue" in issue
+    assert "final String _requestId = newRequestId();" in issue
+    assert "tax_rate" not in issue
+    assert "iva_rate" not in issue
+    assert "_preview!['gross_total']" in issue
 
 
 @pytest.mark.asyncio
@@ -446,62 +308,43 @@ def test_school_profile_requirements_have_an_authoritative_workspace():
     assert missing == set()
 
 
-def test_workspace_launch_is_user_bound_and_never_exposes_client_credentials():
+def test_finreg_credentials_never_reach_the_client():
     router = Path("app/routers/finreg.py").read_text()
-    service = Path("app/services/finreg.py").read_text()
-    assert '@router.post("/workspace-launch/{capability_id}")' in router
-    assert 'getattr(user, "_roles_list", None)' in router
-    assert "await HttpFinregAdapter().workspace_launch(" in router
-    assert "external_user_id=str(user.id)" in router
-    assert "roles=roles" in router
-    assert "FINREG_CLIENT_SECRET" not in router
-    assert "/delegated#" not in router
-    assert "launch_workspace(" in service
+    admin = Path("app/routers/finreg_admin.py").read_text()
+    for source in (router, admin):
+        assert "FINREG_CLIENT_SECRET" not in source
+    for dart in Path("mobile/lib").rglob("*.dart"):
+        text = dart.read_text()
+        assert "FINREG_CLIENT_SECRET" not in text, dart
+        assert "finreg_client_sdk" not in text, dart
 
 
-def test_embedded_session_is_retired_and_launch_never_exposes_credentials():
+def test_embedded_session_is_retired():
     router = Path("app/routers/finreg.py").read_text()
     service = Path("app/services/finreg.py").read_text()
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
     assert '@router.post("/embedded-session/{capability_id}")' not in router
     assert "exchange_delegated" not in service
     assert 'f"{settings.FINREG_BASE_URL}/auth/delegated/exchange"' not in service
     assert 'f"{settings.FINREG_BASE_URL}/auth/me"' not in service
-    assert "FINREG_CLIENT_SECRET" not in host
-    assert "finreg_client_sdk" not in host
-    assert "finregUrlLauncher(" in host
-    assert "localeTag: localeTag" not in host
 
 
 def test_school_composition_uses_native_tabs_without_duplicate_modules():
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
-    assert "schoolBillingCapabilities" not in host
-    assert "manifest.operationalWorkspaces" in host
-    assert "finregEmbeddedModules" not in host
-    assert "GuardiansListScreen()" in host
-    assert "EmployeesListScreen()" in host
-    # FinReg's workspace list is not mirrored as host panes: the school tabs
-    # group their own workflows into hubs instead of a flat card grid.
-    assert "_NativeSchoolFinanceTabs" in host
-    assert "_SchoolBillingOperations" not in host
+    host = Path("mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
     hubs = Path(
         "mobile/lib/features/admin/finance/school_finance_hubs.dart"
     ).read_text()
-    assert "DebtsHub()" in host
-    assert "PaymentsHub()" in host
-    assert "FinanceConfigHub()" in host
+    assert "finregEmbeddedModules" not in host
+    assert "GuardiansListScreen()" in host
+    assert "EmployeesListScreen()" in host
     assert "class DebtsHub" in hubs
+    assert "class FiscalDocumentsHub" in hubs
+    for route in ("/admin/finance/invoices", "/admin/finance/credit-notes",
+                  "/admin/finance/receipts", "/admin/finance/statement",
+                  "/admin/finance/saft", "/admin/finance/audit-log",
+                  "/admin/finance/fiscal-setup"):
+        assert f"route: '{route}'" in hubs, route
     assert "context.push(item.route)" in hubs
     assert "context.go(" not in hubs
-    assert "_SchoolContextualModule" not in host
-    assert "_CompositionReadiness" in host
-    assert "'/finreg/composition-readiness/$capabilityId'" in host
-    assert ".label(" in host
-    assert "Localizations.localeOf(context).languageCode" in host
     assert '@router.get("/composition-readiness/{capability_id}")' in Path(
         "app/routers/finreg.py"
     ).read_text()
@@ -531,13 +374,10 @@ def test_school_employee_payroll_handoff_is_complete_and_reviewable():
     assert "N.º de inscrição no INSS *" in form
     assert "Salário base" in form
     assert "Preparar processamento salarial" in listing
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
+    host = Path("mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
     # Payroll itself is FinReg's: the host only hands over the employee
-    # record and leaves the mapping review to FinReg's payroll workspace.
+    # record for review.
     assert "EmployeesListScreen()" in host
-    assert "_SchoolContextDefinition" not in host
 
 
 def test_release_grants_catalog_and_employee_integration_scopes():
@@ -619,13 +459,8 @@ def test_authoritative_saft_export_is_downloaded_natively():
 def test_legacy_reduced_operational_finreg_screen_is_not_shipped():
     router = Path("app/routers/finreg.py").read_text()
     screen = Path("mobile/lib/features/admin/finance/finreg_operational_modules_screen.dart")
-    host = Path(
-        "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart"
-    ).read_text()
     assert not screen.exists()
-    assert "FinregOperationalModulesScreen" not in host
-    # These proxy endpoints remain valid API integrations, but are no longer
-    # presented as substitutes for the complete authoritative workspaces.
+    # These proxy endpoints remain valid API integrations.
     assert '@router.get("/accounting/overview")' in router
     assert '"GET", "accounting/overview"' in router
     assert '@router.get("/cash-sessions")' in router
@@ -728,8 +563,8 @@ def test_agt_mode_lifecycle_is_explicit_and_fail_closed():
     assert "series_code LIKE 'OFF%'" in sandbox.read_text()
     assert "current channel=$AGT_CHANNEL" in live
     assert "set_agt_channel 5000413178 production" in live
-    models = Path("mobile/lib/core/models/finreg_models.dart").read_text()
-    assert "value['agt_channel']" in models
+    setup = Path("app/routers/finreg_admin.py").read_text()
+    assert 'profile.get("agt_channel")' in setup
 
 
 @pytest.mark.asyncio

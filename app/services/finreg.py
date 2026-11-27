@@ -55,7 +55,6 @@ class FinregAdapter(Protocol):
 # of minting a token per call the way the previous hand-rolled client did.
 # Every operation maps onto exactly one bundle; the union is the grant the
 # deploy script gives the school's integration client.
-_LAUNCH_SCOPES = frozenset({"workspace:launch"})
 _READ_SCOPES = frozenset({
     "billing_plans:read",
     "capabilities:read",
@@ -136,8 +135,6 @@ def _split_operation(operation: str) -> tuple[str, dict[str, str] | None]:
 
 def _scopes_for(method: str, path: str) -> frozenset[str]:
     normalized = path.strip("/")
-    if normalized == "workspace-launches":
-        return _LAUNCH_SCOPES
     if method.upper() in _READ_METHODS or normalized in _READ_POST_OPERATIONS:
         return _READ_SCOPES
     return _WRITE_SCOPES
@@ -246,28 +243,6 @@ class HttpFinregAdapter:
         try:
             return await client.request_bytes(
                 "GET", path, scopes=_READ_SCOPES, params=params
-            )
-        except _KIT_FAILURES as exc:
-            raise _translate_kit_error(exc) from exc
-
-    async def workspace_launch(self, *, capability_id: str, external_user_id: str,
-                               display_name: str, roles: list[str],
-                               web_base_url: str, actor_reference: str,
-                               return_to: dict | None = None,
-                               correlation_id: str | None = None) -> dict:
-        """Mint a single-use delegated launch: ``{url, target_path, expires_in}``."""
-        if not roles:
-            raise FinregError("no_host_role", "Host role cannot access Finreg workspaces")
-        client = await self._client_for(actor_reference)
-        try:
-            return await client.launch_workspace(
-                web_base_url=web_base_url,
-                capability_id=capability_id,
-                external_user_id=external_user_id,
-                display_name=display_name,
-                roles=roles,
-                return_to=return_to,
-                correlation_id=correlation_id,
             )
         except _KIT_FAILURES as exc:
             raise _translate_kit_error(exc) from exc

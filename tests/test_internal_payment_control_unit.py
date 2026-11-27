@@ -64,7 +64,7 @@ def test_finreg_mode_requires_global_and_school_activation():
 
 def test_ui_switches_exclusively_between_finreg_and_internal_control():
     root = Path.cwd()
-    host = (root / "mobile/lib/features/admin/finance/finreg_sales_host_screen.dart").read_text()
+    host = (root / "mobile/lib/features/admin/finance/school_finance_screen.dart").read_text()
     internal = (root / "mobile/lib/features/admin/finance/internal_payments_screen.dart").read_text()
     academic = (root / "app/routers/academic.py").read_text()
     assert "return const InternalPaymentsScreen();" in host

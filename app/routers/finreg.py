@@ -259,7 +259,7 @@ async def _sales_payload(body: SalesDraft, school_id, db, actor_reference):
     if missing_tax:
         raise HTTPException(
             status_code=422,
-            detail="Select a governed Finreg tax treatment for: "
+            detail="Configure o tratamento fiscal destes serviços: "
             + ", ".join(sorted(missing_tax)),
         )
     products, lines = [], []
@@ -446,66 +446,6 @@ async def guardian_pupils(
         {"id": str(child.id), "display_name": f"{child.first_name} {child.last_name}"}
         for child in rows
     ]
-
-
-@router.post("/workspace-launch/{capability_id}")
-async def workspace_launch(
-    capability_id: str,
-    user=Depends(require_finance_access),
-    school_id=Depends(get_school_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """Create a short-lived handoff to the complete authoritative Finreg UI."""
-    connection = (await db.execute(select(FinregSchoolConnection).where(
-        FinregSchoolConnection.school_id == school_id
-    ))).scalar_one_or_none()
-    if connection is None or connection.mode not in {"shadow", "pilot", "live"}:
-        raise HTTPException(status_code=409, detail="Finreg is not operational for this school")
-    school = await _school(db, school_id)
-    try:
-        manifest = await HttpFinregAdapter().capabilities(str(user.id))
-        plan = _manifest_plan(school, manifest)
-        if capability_id in FINREG_ERP_CAPABILITIES and not plan["erp_enabled"]:
-            raise HTTPException(status_code=403, detail={
-                "code": "finreg_erp_not_enabled",
-                "message": "The full FinReg ERP add-on is not enabled for this school",
-            })
-        workspace_ids = {
-            str(item["capability_id"])
-            for item in manifest.get("workspaces") or []
-        }
-        if capability_id not in _allowed_local_capabilities(
-            school, user, _plan_allowed_capabilities(school, workspace_ids, manifest)
-        ):
-            raise HTTPException(
-                status_code=403, detail="Module is not granted to this school role"
-            )
-        roles = list(
-            getattr(user, "_roles_list", None)
-            or getattr(user, "roles", None)
-            or []
-        )
-        display_name = (
-            getattr(user, "username", None)
-            or getattr(user, "email", None)
-            or str(user.id)
-        )
-        return_to = None
-        if settings.CELLEN_WEB_URL and settings.CELLEN_WEB_URL.startswith(
-            ("http://", "https://")
-        ):
-            return_to = {"label": "Cellen", "url": settings.CELLEN_WEB_URL}
-        return await HttpFinregAdapter().workspace_launch(
-            capability_id=capability_id,
-            external_user_id=str(user.id),
-            display_name=display_name,
-            roles=roles,
-            web_base_url=settings.FINREG_WEB_URL or settings.finreg_origin,
-            actor_reference=str(user.id),
-            return_to=return_to,
-        )
-    except FinregError as exc:
-        raise http_error(exc) from exc
 
 
 @router.get("/local-access-policy")
@@ -919,7 +859,7 @@ async def upsert_billing_plan(
     if missing_tax:
         raise HTTPException(
             status_code=422,
-            detail="Select a governed Finreg tax treatment for: "
+            detail="Configure o tratamento fiscal destes serviços: "
             + ", ".join(sorted(missing_tax)),
         )
     adapter = HttpFinregAdapter()
@@ -1310,7 +1250,7 @@ async def parent_receipts(current_user=Depends(require_parent), db: AsyncSession
     return [{
         "id": str(payment.id),
         "finreg": True,
-        "full_document_number": f"Finreg RC · {str(payment.id)[:8]}",
+        "full_document_number": f"Recibo · {str(payment.id)[:8]}",
         "system_entry_date": payment.created_at.isoformat(),
         "gross_total": float(payment.amount),
         "payment_method": payment.payment_method,

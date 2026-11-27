@@ -2741,7 +2741,7 @@ async def _require_internal_payment_mode(db: AsyncSession, school_id: uuid.UUID)
     if await finreg_is_active(db, school_id):
         raise HTTPException(
             status_code=409,
-            detail="O controlo interno não está disponível enquanto o Finreg estiver activo",
+            detail="O controlo interno não está disponível enquanto a faturação certificada estiver activa",
         )
 
 

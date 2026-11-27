@@ -1,7 +1,7 @@
 # Cellen Engineering and Finreg Integration Handbook
 
 Status: canonical starting point for Cellen engineers and operators
-Last reviewed: 2026-10-26
+Last reviewed: 2026-11-27 (headless invoicing: docs/FINREG_HEADLESS_INVOICING_PLAN.org)
 
 ## 1. Purpose
 
@@ -25,18 +25,18 @@ SAF-T, and AGT workflows.
 The integration rule is:
 
 ```text
-Cellen school context
-  + delegated identity and permissions
-  + pinned finreg-kit (backend connector)
+Cellen school context and Cellen UI (the only interface a school sees)
+  + pinned finreg-kit (backend connector, server to server)
   -> Finreg integration API and database (fiscal authority)
-  -> single-use delegated launch of standalone Finreg in the browser
+  -> FinregDocument ledger in Cellen (read model of what Finreg returned)
 ```
 
-Cellen must not maintain a reduced copy of a Finreg page or recreate its state
-machine. Generic defects are fixed in Finreg and consumed through the pinned
-connector kit on the backend and the delegated launch in the browser.
-Cellen-specific presentation may frame, label, or add school context, but the
-authoritative Finreg workflow runs inside Finreg itself.
+Finreg is headless for schools: Cellen's own screens list, open, issue,
+correct and export fiscal documents, and Finreg does the fiscal work in the
+background. Cellen never recreates Finreg's fiscal state machine: every
+number, total, status, PDF and SAF-T file shown in Cellen was returned by
+Finreg. Generic fiscal defects are fixed in Finreg and consumed through the
+pinned connector kit.
 
 ## 3. Non-negotiable integration rules
 
@@ -44,20 +44,19 @@ authoritative Finreg workflow runs inside Finreg itself.
    and fiscal authority.
 2. Cellen never generates official numbering, tax totals, receipts, accounting
    entries, or SAF-T independently for new Finreg-managed documents.
-3. Cellen does not embed Finreg packages. The admin surface is a launcher:
-   Finreg opens standalone after a single-use delegated code is exchanged.
+3. Cellen does not embed or launch Finreg UI. All Finreg interaction is
+   server to server through the integrations API; the school never sees
+   Finreg.
 4. The backend consumes `softensor/finreg-kit` at the exact commit SHA in
    `.github/finreg-kit-ref`. The Flutter tree has no Finreg dependency; the
    legacy `.github/finreg-packages-ref` pin is only the source revision the
    backend contract tests read module manifests from.
-5. The host mints a launch with the external user id, display name and host
-   roles; it never passes Finreg credentials or tokens to the client.
-6. Deep links land on the corresponding Finreg workspace home (for example
-   `/admin/finance/invoices` selects the billing workspace). Cellen does not
-   synthesize Finreg sub-page routes; the admin navigates inside Finreg.
-7. Cellen-native screens are appropriate for school context such as student
-   billing plans or guardian collection views. Fiscal actions still call
-   Finreg.
+5. Finreg credentials and tokens never reach the client.
+6. Cellen owns all finance navigation. Native screens map to Finreg
+   integration endpoints; there are no Finreg deep links.
+7. Fiscal actions are native Cellen screens that call Finreg through the
+   backend. Totals shown before issuing come from Finreg's preview; Cellen
+   never computes tax. Fiscal mutations go through the outbox.
 8. UI permission checks improve navigation; Finreg API permission, scope,
    tenant, and capability enforcement remains authoritative.
 9. Integration mutations retain their instruction UUID/idempotency key across
@@ -77,7 +76,11 @@ Detailed authority is recorded in
 | `alembic/versions` | Cellen database migrations |
 | `mobile` | Flutter application for Web/mobile clients |
 | `mobile/lib/core/router/router.dart` | Cellen route composition |
-| `mobile/lib/features/admin/finance/finreg_sales_host_screen.dart` | Finreg workspace launcher ("Abrir no FinReg") plus Cellen-native school finance surfaces |
+| `mobile/lib/features/admin/finance/school_finance_screen.dart` | The school finance shell (tabs); never depends on Finreg being reachable |
+| `mobile/lib/features/admin/finance/fiscal/` | Native fiscal screens: invoices, credit notes, receipts, statement, SAF-T, fiscal log, setup |
+| `app/routers/finreg_admin.py` | Backend for the native fiscal screens (`/finreg/admin/*`) |
+| `app/services/finreg_ledger.py` | `FinregDocument` read model: fed by the outbox, events and refreshes |
+| `app/services/finreg_errors.py` | Finreg failures translated to school language |
 | `.github/finreg-kit-ref` | Immutable `softensor/finreg-kit` commit consumed by CI and every deploy |
 | `.github/finreg-packages-ref` | Finreg source revision read by backend contract tests (manifest fixtures) |
 | `.github/workflows/backend_tests.yml` | Backend required checks |
@@ -95,21 +98,24 @@ Never point CI at a moving branch.
 
 ## 5. Request and UI composition
 
-### Admin surface: delegated launch
+### Admin surface: native fiscal screens
 
-The host reads the authoritative Finreg manifest through the backend
-(`GET /api/v1/finreg/capabilities`), shows one tab per operational workspace,
-and on tap calls `POST /api/v1/finreg/workspace-launch/{capability_id}`. The
-backend asks Finreg for a single-use delegated launch (scope `workspace:launch`,
-60-second code) and returns `{url, target_path, expires_in}`. The app opens that
-URL in the system browser with `LaunchMode.externalApplication`
-(`webOnlyWindowName: '_blank'` on web); Finreg exchanges the code, establishes
-the delegated session, and renders the workspace.
+The admin finance routes (`/admin/finance/invoices`, `credit-notes`,
+`receipts`, `statement`, `saft`, `audit-log`, `fiscal-setup`) are Cellen
+screens backed by `/api/v1/finreg/admin/*`:
 
-No Finreg token, client secret, or SDK type ever reaches the client. Deep links
-(`/admin/finance/invoices`, `/admin/finance/receipts`, …) select the matching
-workspace tab via `initialCapabilityId`; the landing sub-page is Finreg's own
-workspace home, by the accepted workspace-level decision.
+- documents are listed from the local `FinregDocument` ledger, which the
+  outbox fills on confirmation, the event poller updates, and a refresh pass
+  re-reads from Finreg while a document can still change (draft, pending AGT);
+- the official PDF and receipts are streamed from Finreg on demand;
+- corrections (credit notes) are outbox instructions (`correction`) with one
+  request id per dialog, so an unknown outcome is resent, never duplicated;
+- one-off invoices show Finreg's `preview` totals, then issue under the same
+  request id;
+- every Finreg failure is shown through `finreg_errors.explain`.
+
+There is no delegated launch: the `workspace-launch` route and the
+`workspace:launch` scope are gone from Cellen.
 
 ### Parent surface: native Cellen screens
 
@@ -123,7 +129,7 @@ in native screens.
 `app/services/finreg.py` wraps `softensor/finreg-kit`. `FINREG_BASE_URL` is the
 Finreg origin (no `/api/v1`); the kit appends `/api/v1/integrations`. Requests
 carry a scope bundle instead of a per-call token: `_READ_SCOPES`,
-`_WRITE_SCOPES` and `_LAUNCH_SCOPES`, one token per bundle per actor, cached
+and `_WRITE_SCOPES`, one token per bundle per actor, cached
 per (origin, client id, secret fingerprint, actor). Finreg caps token mints at
 10 per client per 15 minutes; the bundles keep even a busy school far below
 that. `actor_reference` stays in the JWT so Finreg audits per user.
@@ -139,7 +145,7 @@ the browser.
 |---|---|
 | Generic invoice, POS, product, customer, payment, receipt, report, or UI-state defect | Finreg |
 | Tax, numbering, issuance, correction, AGT, audit, accounting, or SAF-T | Finreg with compliance review |
-| Delegated launch or Finreg workspace behaviour | Finreg, then update Cellen's launch contract |
+| A fiscal screen in Cellen needs data Finreg does not expose | Finreg integration API, then the kit pin, then Cellen |
 | Pupil/guardian mapping or school billing context | Cellen integration layer |
 | Attendance, teaching, communication, or unrelated school workflow | Cellen |
 | School wording around an authoritative Finreg workflow | Usually profile/localization; avoid page duplication |
@@ -159,9 +165,8 @@ resulting exact commit.
 5. Release Finreg through a PR and obtain the immutable commit/artifact.
 6. Update `.github/finreg-kit-ref` (and `.github/finreg-packages-ref` for the
    manifest fixtures) in Cellen.
-7. Launch behaviour is manifest-driven: a new operational workspace appears as
-   a tab without a Cellen change. Only the title/icon registry and contextual
-   panes live in Cellen.
+7. A new fiscal capability the school needs is a native Cellen screen over
+   the integration API, never a link into Finreg.
 8. Validate Cellen backend, Flutter, Web, and integration tests against the pin.
 
 ### 7.2 School-specific functionality
@@ -217,11 +222,11 @@ flutter test
 flutter build web --release
 ```
 
-Run targeted Cellen integration tests after any host or launcher change:
+Run targeted Cellen integration tests after any fiscal screen or integration change:
 
 ```bash
 cd /Users/jorgehel/projects/cellen
-./.venv/bin/pytest tests/test_finreg_integration_unit.py
+./.venv/bin/pytest tests/test_finreg_integration_unit.py tests/test_finreg_ledger.py tests/test_finreg_errors.py
 ```
 
 Warnings should be maintained as technical debt, but compiler errors, test
@@ -235,10 +240,10 @@ Finreg and Cellen now release independently.
 - A Finreg change that alters the integration API is released in Finreg first,
   then `softensor/finreg-kit` is released with the matching operation and Cellen
   pins the new kit SHA.
-- A change confined to Finreg's own UI requires no Cellen release: the delegated
-  launch opens whatever Finreg is serving.
-- A Cellen-only change (school domain, launcher, native screens) needs no
-  Finreg release and no Finreg restart.
+- A change confined to Finreg's own UI never reaches schools: they only use
+  Cellen's screens.
+- A Cellen-only change (school domain, native screens) needs no Finreg
+  release and no Finreg restart.
 
 The Finreg repository still owns its own Web artifact release and identity
 verification. Remain at the terminal for SSH authentication. A line saying that
@@ -296,10 +301,9 @@ Required Cellen configuration names include `FINREG_BASE_URL`,
 `FINREG_TIMEOUT_SECONDS`, `FINREG_VERIFY_TLS`, optional `FINREG_TLS_CA_FILE`,
 and `FINREG_INTEGRATION_ENABLED`. `FINREG_BASE_URL` is the Finreg origin, not
 the API mount point: a legacy value ending in `/api/v1` is normalized, but new
-deployments write the origin. Optional `CELLEN_WEB_URL` is Cellen's own public
-address; when set, delegated FinReg launches carry it as the host return
-target and the FinReg session offers "voltar a Cellen". Document names, never
-secret values.
+deployments write the origin. `FINREG_WEB_URL` and `CELLEN_WEB_URL` are no longer used by
+the integration (there is no delegated launch). Document names, never secret
+values.
 
 ## 11. VPS deployment
 
@@ -399,8 +403,8 @@ A Cellen/Finreg change is complete only when:
 
 - the ownership matrix is respected;
 - Cellen pins the reviewed exact Finreg SHA;
-- delegated launch opens the correct Finreg workspace in the browser and a
-  reused code is refused;
+- the native fiscal screens show the change without opening Finreg, and every
+  value they show was returned by Finreg;
 - parent document, receipt and statement screens work natively from the
   integration proxy;
 - backend, Flutter, Web, Android/iOS as applicable, and integration tests pass;
