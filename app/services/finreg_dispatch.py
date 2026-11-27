@@ -421,6 +421,22 @@ async def enqueue_enrollment_fee_instruction(
     return instruction
 
 
+async def _ledger_confirmed(db: AsyncSession, instruction: FinregBillingInstruction) -> None:
+    """Put a confirmed document in the school's ledger.
+
+    The instruction is already committed as confirmed: a ledger failure must
+    never turn issuance into a retry. The refresh pass backfills a miss.
+    """
+    from app.services.finreg_ledger import record_instruction
+
+    try:
+        await record_instruction(db, instruction)
+        await db.commit()
+    except Exception:
+        logger.exception("Finreg ledger: could not record instruction %s", instruction.id)
+        await db.rollback()
+
+
 async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstruction, *, adapter=None):
     if not settings.FINREG_INTEGRATION_ENABLED:
         raise FinregError("integration_disabled", "Finreg integration is globally disabled")
@@ -486,6 +502,7 @@ async def dispatch_instruction(db: AsyncSession, instruction: FinregBillingInstr
         instruction.error_code = instruction.error_detail = None
         instruction.next_attempt_at = None
         await db.commit()
+        await _ledger_confirmed(db, instruction)
         return instruction
     except FinregError as exc:
         instruction.error_code, instruction.error_detail = exc.code, exc.detail

@@ -251,6 +251,7 @@ async def run_finreg_dispatcher():
     )
     from app.services.billing_run import apply_confirmed_plan_results, refresh_open_runs
     from app.services.finreg_events import synchronize_enabled_connections
+    from app.services.finreg_ledger import refresh_pending
     from app.services.late_fees import reconcile_assessments
     from app.services.principia_pay import (
         issue_references_for_confirmed_runs,
@@ -262,6 +263,16 @@ async def run_finreg_dispatcher():
             try:
                 confirmed, failed = await dispatch_pending(db)
                 events, sync_failed = await synchronize_enabled_connections(db)
+                try:
+                    ledger, ledger_failed = await refresh_pending(db)
+                except Exception:
+                    logger.exception("Finreg ledger refresh failed")
+                    await db.rollback()
+                else:
+                    if ledger or ledger_failed:
+                        logger.info(
+                            "Finreg ledger: refreshed=%d failed=%d", ledger, ledger_failed
+                        )
                 activated = await reconcile_enrollment_fee_settlements(db)
                 plans = await apply_confirmed_plan_results(db)
                 runs = await refresh_open_runs(db)

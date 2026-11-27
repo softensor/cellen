@@ -1,12 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -99,3 +102,59 @@ class FinregEventReceipt(Base):
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FinregDocument(Base):
+    """Cellen's read model of one FinReg fiscal document.
+
+    FinReg stays the authority: every number, total, status and PDF here was
+    returned by FinReg. The row exists so the school's own screens can list,
+    filter and search documents without asking FinReg for each one, and so a
+    document is still listed while FinReg is unreachable.
+
+    ``reference`` is the id FinReg's integrations API accepts for this
+    document: the outbox instruction id for a Cellen draft, the correction
+    reference for a credit note, and FinReg's own id for a document a billing
+    plan generated.
+    """
+
+    __tablename__ = "finreg_documents"
+    __table_args__ = (
+        UniqueConstraint("school_id", "finreg_document_id", name="uq_finreg_document_school"),
+        Index("ix_finreg_document_listing", "school_id", "document_date"),
+        Index("ix_finreg_document_refresh", "needs_refresh", "refreshed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("schools.id"), nullable=False)
+    finreg_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    instruction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("finreg_billing_instructions.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(20), default="invoice", nullable=False)
+    document_type: Mapped[str | None] = mapped_column(String(40))
+    full_document_number: Mapped[str | None] = mapped_column(String(80))
+    document_status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
+    agt_status: Mapped[str | None] = mapped_column(String(40))
+    agt_message: Mapped[str | None] = mapped_column(Text)
+    currency_code: Mapped[str] = mapped_column(String(3), default="AOA", nullable=False)
+    net_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    gross_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    document_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    customer_name: Mapped[str | None] = mapped_column(String(255))
+    customer_tax_id: Mapped[str | None] = mapped_column(String(40))
+    guardian_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    pupil_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    billing_period: Mapped[str | None] = mapped_column(String(7))
+    corrects_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    corrected_by_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    needs_refresh: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    refresh_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
