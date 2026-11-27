@@ -707,3 +707,133 @@ async def attention(
         "pending_documents": pending,
         "failed_operations": failed,
     }
+
+
+# ── Fiscal setup checklist ──────────────────────────────────────────────────
+
+MODE_LABELS = {
+    "disabled": "Desligada",
+    "fake": "Modo de teste",
+    "shadow": "Ensaio (sem documentos fiscais)",
+    "pilot": "Piloto",
+    "live": "Em produção",
+}
+
+
+def _check(key: str, label: str, level: str, detail: str | None = None) -> dict:
+    return {"key": key, "label": label, "level": level, "detail": detail}
+
+
+@router.get("/setup")
+async def fiscal_setup(
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """The school's certified-invoicing setup, as a checklist.
+
+    Read-only on purpose: the fiscal identity, AGT channel and series are
+    configured once by the platform owner. The school sees what is in place
+    and what it can fix itself (service tax treatment, guardian NIFs).
+    """
+    from app.models.finance import BillingItem
+
+    connection = await _connection(db, school_id)
+    mode = connection.mode if connection else "disabled"
+    operational = bool(
+        settings.FINREG_INTEGRATION_ENABLED
+        and connection is not None
+        and not connection.kill_switch
+        and mode in {"pilot", "live"}
+    )
+    checks = []
+    if operational:
+        checks.append(_check("connection", "Faturação certificada activa", "ok", MODE_LABELS[mode]))
+    elif connection is not None and connection.kill_switch:
+        checks.append(_check(
+            "connection", "Faturação certificada suspensa", "error",
+            "A emissão está temporariamente suspensa. Contacte o suporte Cellen.",
+        ))
+    else:
+        checks.append(_check(
+            "connection", "Faturação certificada não activa", "warning",
+            MODE_LABELS.get(mode, mode),
+        ))
+
+    profile = None
+    profile_message = None
+    if settings.FINREG_INTEGRATION_ENABLED and connection is not None and mode not in {"disabled", "fake"}:
+        try:
+            profile = await HttpFinregAdapter().request(
+                "GET", "fiscal-profile", None, actor_reference=str(user.id)
+            )
+        except FinregError as exc:
+            profile_message = (
+                "Os dados fiscais estarão visíveis após a próxima actualização do sistema."
+                if exc.code in {"http_404", "not_found"}
+                else explain_stored(exc.code, exc.detail, status="rejected")
+            )
+    if profile:
+        verified = not profile.get("non_fiscal")
+        checks.append(_check(
+            "fiscal_profile",
+            "Dados fiscais validados" if verified else "Dados fiscais por validar",
+            "ok" if verified else "warning",
+            f"{profile.get('name') or '—'} · NIF {profile.get('tax_id') or '—'}",
+        ))
+        channel = profile.get("agt_channel")
+        checks.append(_check(
+            "agt_channel",
+            {
+                "production": "Ligação à AGT em produção",
+                "sandbox": "Ligação à AGT em ambiente de testes",
+                "offline": "Ligação à AGT em contingência",
+            }.get(channel, "Ligação à AGT desligada"),
+            "ok" if channel == "production" else ("warning" if channel in {"sandbox", "offline"} else "error"),
+        ))
+        active_invoice_series = [
+            item for item in profile.get("series") or []
+            if item.get("is_active") and item.get("document_type") in {"invoice", "invoice_receipt", "FT", "FR"}
+        ]
+        checks.append(_check(
+            "series",
+            "Série de faturação activa" if active_invoice_series else "Sem série de faturação activa",
+            "ok" if active_invoice_series else "error",
+            ", ".join(item["series_code"] for item in active_invoice_series) or None,
+        ))
+    elif profile_message:
+        checks.append(_check("fiscal_profile", "Dados fiscais", "warning", profile_message))
+
+    missing_tax = (await db.execute(select(BillingItem.name).where(
+        BillingItem.school_id == school_id,
+        BillingItem.is_active.is_(True),
+        or_(BillingItem.finreg_tax_option_code.is_(None), BillingItem.finreg_tax_option_code == ""),
+    ).order_by(BillingItem.name))).scalars().all()
+    checks.append(_check(
+        "billing_items",
+        "Todos os serviços têm tratamento fiscal" if not missing_tax
+        else f"{len(missing_tax)} serviço(s) sem tratamento fiscal",
+        "ok" if not missing_tax else "error",
+        ", ".join(missing_tax[:8]) + ("…" if len(missing_tax) > 8 else "") if missing_tax else None,
+    ))
+    without_nif = (await db.execute(select(func.count()).select_from(Guardian).where(
+        Guardian.school_id == school_id,
+        or_(Guardian.nif.is_(None), Guardian.nif == ""),
+    ))).scalar_one()
+    checks.append(_check(
+        "guardian_nif",
+        "Todos os encarregados têm NIF" if not without_nif
+        else f"{without_nif} encarregado(s) sem NIF",
+        "ok" if not without_nif else "warning",
+        None if not without_nif else "Preencha o NIF na ficha do encarregado para evitar faturas recusadas.",
+    ))
+    return {
+        "mode": mode,
+        "mode_label": MODE_LABELS.get(mode, mode),
+        "operational": operational,
+        "profile": {
+            key: profile.get(key)
+            for key in ("name", "tax_id", "address", "city", "phone", "email", "software_cert_number", "agt_channel")
+        } if profile else None,
+        "checks": checks,
+    }

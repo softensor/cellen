@@ -21,6 +21,7 @@ import '../../features/admin/finance/fiscal/fiscal_activity_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_documents_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_receipts_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_saft_screen.dart';
+import '../../features/admin/finance/fiscal/fiscal_setup_screen.dart';
 import '../../features/admin/finance/fiscal/fiscal_statement_screen.dart';
 import '../../features/admin/finance/expenses_screen.dart';
 import '../../features/admin/academic/turmas_screen.dart';
@@ -1255,6 +1256,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/admin/finance/audit-log',
               builder: (_, __) => const FiscalActivityScreen()),
+          GoRoute(
+              path: '/admin/finance/fiscal-setup',
+              builder: (_, __) => const FiscalSetupScreen()),
           GoRoute(
               path: '/admin/finance/payment-references',
               builder: (_, __) => const PaymentReferencesScreen()),

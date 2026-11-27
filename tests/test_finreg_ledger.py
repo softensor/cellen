@@ -423,3 +423,55 @@ async def test_receipts_are_listed_per_school(client, db, make_school):
 
     foreign = await client.get(f"/finreg/admin/receipts/{mine.id}/pdf", headers=auth(other_token))
     assert foreign.status_code == 404
+
+
+async def test_fiscal_setup_is_a_read_only_checklist(client, db, make_school, monkeypatch):
+    from app.core.config import settings
+    from app.models.finance import BillingItem
+    from app.routers import finreg_admin
+
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    profile = {
+        "name": "Colégio Teste", "tax_id": "5000000001", "address": "Rua 1", "city": "Luanda",
+        "software_cert_number": "AGT/1/2026", "agt_channel": "sandbox", "non_fiscal": False,
+        "series": [{"document_type": "invoice", "series_code": "FT26", "is_active": True, "agt_registered": True}],
+        "agt_api_secret": "must-not-pass-through",
+    }
+
+    class _Adapter(FakeFinregAdapter):
+        async def request(self, method, operation, payload, **kwargs):
+            if operation == "fiscal-profile":
+                return profile
+            return await super().request(method, operation, payload, **kwargs)
+
+    monkeypatch.setattr(finreg_admin, "HttpFinregAdapter", _Adapter)
+    school_id, token, guardian, _ = await _school_with_family(db, make_school, mode="live")
+    db.add(Guardian(school_id=school_id, first_name="Sem", last_name="Nif"))
+    db.add(BillingItem(school_id=school_id, code=f"X-{uid()}", name="Uniforme", unit_price=Decimal("1000"),
+                       iva_rate=Decimal("14")))
+    await db.commit()
+
+    body = (await client.get("/finreg/admin/setup", headers=auth(token))).json()
+    assert body["operational"] is True
+    assert body["profile"]["name"] == "Colégio Teste"
+    assert "agt_api_secret" not in body["profile"]
+    levels = {check["key"]: check["level"] for check in body["checks"]}
+    assert levels == {
+        "connection": "ok",
+        "fiscal_profile": "ok",
+        "agt_channel": "warning",  # sandbox, not production
+        "series": "ok",
+        "billing_items": "error",
+        "guardian_nif": "warning",
+    }
+    items = next(check for check in body["checks"] if check["key"] == "billing_items")
+    assert "Uniforme" in items["detail"]
+
+
+async def test_fiscal_setup_without_a_connection_says_so(client, db, make_school):
+    school, token, _, _ = await make_school("nosetup")
+    body = (await client.get("/finreg/admin/setup", headers=auth(token))).json()
+    assert body["operational"] is False
+    assert body["profile"] is None
+    assert body["checks"][0]["key"] == "connection"
+    assert body["checks"][0]["level"] == "warning"
