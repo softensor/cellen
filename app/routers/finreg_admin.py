@@ -34,7 +34,7 @@ from app.services.finreg_dispatch import (
     dispatch_instruction,
     enqueue_billing_instruction,
 )
-from app.services.finreg_errors import http_error
+from app.services.finreg_errors import explain_stored, http_error
 
 router = APIRouter(prefix="/finreg/admin", tags=["Finreg Native Admin"])
 
@@ -661,7 +661,8 @@ async def fiscal_activity(
             "raw_status": row.status,
             "attempts": row.attempts,
             "error_code": row.error_code,
-            "error_detail": row.error_detail,
+            "error_detail": explain_stored(row.error_code, row.error_detail, status=row.status),
+            "support_detail": row.error_detail,
             "actor": actors.get(actor) if actor else "Sistema",
             "document_id": str(document.id) if document else None,
             "document_number": document.full_document_number if document else None,
@@ -677,3 +678,32 @@ def _uuid_or_none(value) -> uuid.UUID | None:
         return uuid.UUID(str(value)) if value else None
     except (TypeError, ValueError):
         return None
+
+
+@router.get("/attention")
+async def attention(
+    user=Depends(require_finance_access),
+    school_id=Depends(get_school_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """What in certified invoicing needs a person right now."""
+    rows = (await db.execute(select(FinregDocument).where(
+        FinregDocument.school_id == school_id,
+        FinregDocument.document_status != "cancelled",
+        or_(
+            FinregDocument.needs_refresh.is_(True),
+            func.lower(func.coalesce(FinregDocument.agt_status, "")).in_(REJECTED_AGT),
+        ),
+    ))).scalars().all()
+    rejected = sum(1 for row in rows if agt_state(row) == "rejected")
+    pending = sum(1 for row in rows if agt_state(row) in {"processing", "submitted"})
+    failed = (await db.execute(select(func.count()).select_from(FinregBillingInstruction).where(
+        FinregBillingInstruction.school_id == school_id,
+        FinregBillingInstruction.status == "rejected",
+        FinregBillingInstruction.command_type != "billing_plan_upsert",
+    ))).scalar_one()
+    return {
+        "rejected_documents": rejected,
+        "pending_documents": pending,
+        "failed_operations": failed,
+    }

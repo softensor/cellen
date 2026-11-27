@@ -7,6 +7,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/currency_provider.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import 'fee_automation_common.dart';
+import 'fiscal/fiscal_attention_card.dart';
 
 final _dashboardProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -194,6 +195,7 @@ class _DashboardBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        const FiscalAttentionCard(),
         if (month.isNotEmpty) ...[
           _MonthStatusCard(month: month, currency: currency),
           const SizedBox(height: 16),

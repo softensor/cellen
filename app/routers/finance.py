@@ -131,6 +131,7 @@ from app.services.finance import (
     reverse_payment,
 )
 from app.services.finreg import FinregError
+from app.services.finreg_errors import explain, http_error
 from app.services.finreg_dispatch import (
     dispatch_instruction,
     enqueue_contract_instruction,
@@ -535,7 +536,7 @@ async def generate_contract_invoice(
                 await dispatch_instruction(db, instruction)
             except FinregError as exc:
                 if not exc.retryable:
-                    raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.detail})
+                    raise http_error(exc) from exc
             return {"billing_instruction_id": str(instruction.id), "status": instruction.status,
                     "finreg_document_id": str(instruction.finreg_document_id) if instruction.finreg_document_id else None}
 
@@ -1007,7 +1008,7 @@ async def bulk_create_invoices(
                     try:
                         await dispatch_instruction(db, instruction)
                     except FinregError as exc:
-                        warnings.append({"child_id": str(contract.child_id), "reason": exc.detail,
+                        warnings.append({"child_id": str(contract.child_id), "reason": explain(exc).message,
                                          "code": exc.code, "billing_instruction_id": str(instruction.id)})
                         continue
                     created.append(instruction)
@@ -1410,10 +1411,7 @@ async def approve_payment(
                 actor_reference=str(getattr(_, "id", "school-finance")),
             )
         except FinregError as exc:
-            raise HTTPException(
-                status_code=503 if exc.retryable else 422,
-                detail={"code": exc.code, "message": exc.detail},
-            )
+            raise http_error(exc) from exc
         payment.status = "normal"
         payment.finreg_payment_external_reference = reference
         await db.commit()
