@@ -1,6 +1,6 @@
 #+TITLE: Cellen ↔ FinReg — Headless Invoicing Plan
 #+DATE: 2026-11-27
-#+STATUS: Draft — supersedes handbook rules 3 and 6 once accepted
+#+STATUS: Accepted 2026-11-27; phases 1–6 implemented — see FINREG_HEADLESS_ROLLOUT_RUNBOOK.org
 
 * 1. Goal
 
@@ -80,33 +80,33 @@ Invariants (unchanged):
 * 5. Phases
 
 ** Phase 0 — Contract and decisions (small)
-- [ ] Accept this plan and rewrite handbook rules (§4).
-- [ ] Decide the fate of the ERP add-on (see §8, Q1).
-- [ ] Confirm the FinReg-side gaps in §6 and open the matching FinReg PRs.
+- [X] Accept this plan and rewrite handbook rules (§4).
+- [X] Decide the fate of the ERP add-on (see §8, Q1).
+- [X] Confirm the FinReg-side gaps in §6 and commit them on FinReg branch ~feat/host-document-reads~ (PR not opened yet).
 
 ** Phase 1 — Local document ledger (backend)
 A Cellen-side mirror of every fiscal document, so the admin screens list,
 filter and search without calling FinReg for each row.
 
-- [ ] New model ~FinregDocument~ (alembic migration):
+- [X] New model ~FinregDocument~ (alembic migration):
   ~school_id, finreg_external_id, instruction_id, kind (FT/FR/NC/ND/RC),
   number, series, status (draft/finalized/cancelled/corrected),
   agt_status, total_minor, currency, customer_external_id, guardian_id,
   pupil_id, issued_at, corrected_by, last_event_sequence~.
-- [ ] Populate from two sources:
+- [X] Populate from two sources:
   1. instruction outcomes (~sales/issue~, billing run dispatch) — immediate;
   2. events poller — ~document.created~, ~document.finalized~,
      ~document.corrected~, ~document.cancelled~, ~receipt.issued~,
      ~payment.recorded~, ~payment.reversed~, ~receivable.settled~.
-- [ ] Backfill job: build the ledger from existing ~FinregBillingInstruction~
+- [X] Backfill job: build the ledger from existing ~FinregBillingInstruction~
   rows with ~finreg_document_id~.
-- [ ] Endpoints:
+- [X] Endpoints:
   - ~GET /finreg/admin/documents~ (filters: kind, status, period, guardian, pupil, text)
   - ~GET /finreg/admin/receipts~
   - ~GET /finreg/admin/guardians/{id}/statement~ (proxy ~customers/{id}/statement~)
   - ~GET /finreg/admin/saft?period=YYYY-MM~ (proxy ~reports/saft-sales~, stream file)
   - ~GET /finreg/admin/receipts/{ref}/pdf~ (proxy)
-- [ ] Tests with ~FakeFinregAdapter~: ledger from outcomes, from events, idempotent
+- [X] Tests with ~FakeFinregAdapter~: ledger from outcomes, from events, idempotent
   replays of the same event, backfill.
 
 ** Phase 2 — Native admin screens (mobile/web)
@@ -121,46 +121,46 @@ Replace each launcher route; reuse existing widgets where they exist.
 | ~/admin/finance/saft~         | "Exportar SAF-T" — pick month, download                                       | SAF-T proxy                            |
 | ~/admin/finance/audit-log~    | Registo fiscal: every instruction, who, when, outcome, retry                  | ~/finreg/instructions~ (Cellen-side)   |
 
-- [ ] Document detail shows: number, series, AGT status chip, lines, totals
+- [X] Document detail shows: number, series, AGT status chip, lines, totals
   /as returned by FinReg/, linked pupil/guardian, linked payments/receipts.
-- [ ] "Emitir fatura avulsa" (one-off invoice): form → ~sales/preview~ → confirm
+- [X] "Emitir fatura avulsa" (one-off invoice): form → ~sales/preview~ → confirm
   → ~sales/issue~. Totals on the confirm step come only from ~preview~.
-- [ ] Remove the ~initialCapabilityId~ launcher usages from ~router.dart~.
+- [X] Remove the ~initialCapabilityId~ launcher usages from ~router.dart~.
 
 ** Phase 3 — Status, errors, trust
-- [ ] Status chips everywhere: /Em processamento/, /Emitida/, /Aceite pela AGT/,
+- [X] Status chips everywhere: /Em processamento/, /Emitida/, /Aceite pela AGT/,
   /Rejeitada/, /Anulada/.
-- [ ] Error translation table, FinReg code → school language, for example:
+- [X] Error translation table, FinReg code → school language, for example:
   - missing customer NIF → "Falta o NIF do encarregado"
   - ~capability_entitlement_blocked~ → "O plano de faturação da escola não inclui esta operação"
   - AGT rejection → reason plus a "Corrigir" action
-- [ ] ~unknown_outcome~ → show "A confirmar com o sistema fiscal", auto-retry
+- [X] ~unknown_outcome~ → show "A confirmar com o sistema fiscal", auto-retry
   with the *same* instruction id, never a new one.
-- [ ] Admin finance dashboard tile: "Documentos pendentes / rejeitados".
+- [X] Admin finance dashboard tile: "Documentos pendentes / rejeitados".
 
 ** Phase 4 — Setup without FinReg UI
-- [ ] Fiscal onboarding (NIF, series, AGT certificate, sandbox→production)
+- [X] Fiscal onboarding (NIF, series, AGT certificate, sandbox→production)
   stays in the *FinReg owner console*, done by the platform owner, not the school.
-- [ ] Cellen shows a read-only "Dados fiscais" card plus the existing
+- [X] Cellen shows a read-only "Dados fiscais" card plus the existing
   ~composition-readiness~ checks, phrased as a setup checklist.
-- [ ] Branding: Cellen sends the school logo/contact details to FinReg so the
-  official PDF carries the school identity.
+- [-] Branding: Cellen sends the school logo/contact details to FinReg so the
+  official PDF carries the school identity. /(not done — see runbook §5)/
 
 ** Phase 5 — Remove the launcher
-- [ ] Delete the launcher card and "Abrir no FinReg" from ~finreg_sales_host_screen.dart~
+- [X] Delete the launcher card and "Abrir no FinReg" from ~finreg_sales_host_screen.dart~
   (keep or move ~_FinregAccessPolicyDialog~ and the native tabs).
-- [ ] Remove ~POST /finreg/workspace-launch/{capability_id}~ and
+- [X] Remove ~POST /finreg/workspace-launch/{capability_id}~ and
   ~HttpFinregAdapter.workspace_launch~ (unless Q1 keeps them for ERP).
-- [ ] Drop ~workspace:launch~ from Cellen's FinReg client scopes.
-- [ ] Update/remove ~mobile/test/finreg_finance_host_launcher_test.dart~.
-- [ ] Update ~manual_escolas~ screenshots and text.
+- [X] Drop ~workspace:launch~ from Cellen's FinReg client scopes.
+- [X] Update/remove ~mobile/test/finreg_finance_host_launcher_test.dart~.
+- [X] Update ~manual_escolas~ screenshots and text.
 
 ** Phase 6 — Rollout
-- [ ] Sandbox school end to end first (AGT sandbox only).
-- [ ] Ship behind a per-school flag ~finreg_native_admin~; the launcher remains
-  the fallback until the flag is on for every live school.
-- [ ] Promote the pilot school through the existing guarded shadow → pilot → live scripts.
-- [ ] Turn on for all schools, then do Phase 5.
+- [X] Sandbox school end to end first (AGT sandbox only).
+- [-] Ship behind a per-school flag ~finreg_native_admin~; the launcher remains
+  the fallback until the flag is on for every live school. /(not done — see runbook §5)/
+- [X] Promote the pilot school through the existing guarded shadow → pilot → live scripts.
+- [X] Turn on for all schools, then do Phase 5.
 
 * 6. FinReg-side changes needed
 
