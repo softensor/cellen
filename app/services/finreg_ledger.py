@@ -29,6 +29,7 @@ from app.models.finreg_integration import (
     FinregDocument,
     FinregSchoolConnection,
 )
+from app.core.config import settings
 from app.services.finreg import FinregError, HttpFinregAdapter
 from app.services.finreg_dispatch import (
     BILLING_PLAN_UPSERT_COMMAND,
@@ -456,6 +457,8 @@ def _due_for_refresh(row: FinregDocument, now: datetime) -> bool:
 
 async def refresh_pending(db: AsyncSession, *, limit: int = 25) -> tuple[int, int]:
     """Refresh rows FinReg may still change, for every live connection."""
+    if not settings.FINREG_INTEGRATION_ENABLED:
+        return 0, 0
     connections = (await db.execute(select(FinregSchoolConnection).where(
         FinregSchoolConnection.mode.in_(["pilot", "live", "shadow"]),
         FinregSchoolConnection.kill_switch.is_(False),

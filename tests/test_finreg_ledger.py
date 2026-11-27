@@ -475,3 +475,29 @@ async def test_fiscal_setup_without_a_connection_says_so(client, db, make_school
     assert body["profile"] is None
     assert body["checks"][0]["key"] == "connection"
     assert body["checks"][0]["level"] == "warning"
+
+
+async def test_the_refresh_pass_is_silent_while_integration_is_off(db, make_school, monkeypatch):
+    from app.core.config import settings
+
+    calls = []
+
+    class _Recording(FakeFinregAdapter):
+        async def request(self, method, operation, payload, **kwargs):
+            calls.append(operation)
+            return await super().request(method, operation, payload, **kwargs)
+
+    monkeypatch.setattr(finreg_ledger, "HttpFinregAdapter", _Recording)
+    school_id, _, guardian, child = await _school_with_family(db, make_school, mode="live")
+    document_id = uuid.uuid4()
+    db.add(_draft_instruction(school_id, guardian, child, document_id=document_id,
+                              snapshot=_document(document_id)))
+    await db.commit()
+
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", False)
+    assert await finreg_ledger.refresh_pending(db) == (0, 0)
+    assert calls == []
+
+    monkeypatch.setattr(settings, "FINREG_INTEGRATION_ENABLED", True)
+    await finreg_ledger.refresh_pending(db)
+    assert any(call.startswith("documents/") for call in calls)
