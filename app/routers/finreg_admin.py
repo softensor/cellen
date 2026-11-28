@@ -231,6 +231,14 @@ async def list_documents(
     }
 
 
+def _first_present(mapping: dict, *keys):
+    """The first of ``keys`` the mapping holds a value for; 0 counts."""
+    for key in keys:
+        if mapping.get(key) is not None:
+            return mapping[key]
+    return None
+
+
 @router.get("/documents/{document_id}")
 async def document_detail(
     document_id: uuid.UUID,
@@ -259,7 +267,10 @@ async def document_detail(
             "unit_price": line.get("unit_price"),
             "discount_pct": line.get("discount_pct"),
             "tax_rate": line.get("tax_rate"),
-            "line_total": line.get("line_total") or line.get("gross_total") or line.get("total"),
+            "net_amount": line.get("net_amount"),
+            "tax_amount": line.get("tax_amount"),
+            # FinReg's DocumentLineOut calls the line's total gross_amount.
+            "line_total": _first_present(line, "gross_amount", "line_total", "gross_total", "total"),
         }
         for line in snapshot.get("lines") or []
     ]
@@ -773,6 +784,20 @@ async def fiscal_setup(
                 if exc.code in {"http_404", "not_found"}
                 else explain_stored(exc.code, exc.detail, status="rejected")
             )
+    if profile and not profile.get("software_cert_number"):
+        # FinReg stamps its certificate on each document from platform-wide
+        # configuration; the tenant record may leave it empty. Show the one
+        # FinReg actually printed on this school's latest document.
+        latest = (await db.execute(
+            select(FinregDocument.snapshot)
+            .where(FinregDocument.school_id == school_id, FinregDocument.snapshot.is_not(None))
+            .order_by(FinregDocument.created_at.desc())
+            .limit(20)
+        )).scalars().all()
+        printed = next((snap.get("software_cert_number") for snap in latest
+                        if isinstance(snap, dict) and snap.get("software_cert_number")), None)
+        if printed:
+            profile = {**profile, "software_cert_number": printed}
     if profile:
         verified = not profile.get("non_fiscal")
         checks.append(_check(
